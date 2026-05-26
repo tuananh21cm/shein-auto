@@ -1,0 +1,18 @@
+{
+  "_comment": "Normalize size từ SHEIN sang TikTok US standard. Key lowercase, value giữ nguyên case.",
+  "map": {
+    "0 (xxs)": "XXS",
+    "2 (xs)": "XS",
+    "4 (s)": "S",
+    "6 (m)": "M",
+    "8/10 (l)": "L",
+    "8 (l)": "L",
+    "10 (l)": "L",
+    "12 (xl)": "XL",
+    "14 (xxl)": "XXL",
+    "16 (3xl)": "3XL",
+    "curve": "2XL",
+    "plus": "2XL",
+    "one size": "One Size"
+  }
+}

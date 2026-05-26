@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Shein Auto · Login</title>
+  <style>
+    :root {
+      --bg: #0b1020;
+      --bg-elev: #131a30;
+      --bg-card: #1a2241;
+      --border: #2a3358;
+      --text: #e6e9f5;
+      --text-dim: #8a93b8;
+      --accent: #6c8dff;
+      --danger: #f87171;
+      --danger-soft: rgba(248, 113, 113, 0.15);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; min-height: 100vh;
+      font-family: 'Inter', system-ui, "Segoe UI", sans-serif;
+      display: flex; align-items: center; justify-content: center;
+      background: radial-gradient(ellipse at top, #1a2241 0%, var(--bg) 60%);
+      color: var(--text);
+    }
+    .login-card {
+      width: min(420px, 92vw);
+      padding: 36px 32px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      box-shadow: 0 24px 80px rgba(0,0,0,0.4);
+    }
+    .brand {
+      display: flex; align-items: center; gap: 10px;
+      margin-bottom: 24px; font-weight: 800; font-size: 1.2rem;
+      letter-spacing: 0.04em;
+    }
+    .brand .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 14px var(--accent); }
+    h1 { margin: 0 0 6px; font-size: 1.5rem; }
+    p.subtitle { margin: 0 0 24px; color: var(--text-dim); font-size: 0.92rem; }
+    label { display: block; font-size: 0.84rem; color: var(--text-dim); margin: 14px 0 6px; }
+    input {
+      width: 100%; padding: 11px 14px;
+      background: var(--bg-elev); border: 1px solid var(--border);
+      border-radius: 10px; color: var(--text);
+      font-family: inherit; font-size: 0.95rem;
+      transition: border-color 0.15s;
+    }
+    input:focus { outline: none; border-color: var(--accent); }
+    button {
+      width: 100%; margin-top: 22px;
+      border: none; border-radius: 10px;
+      padding: 13px 18px;
+      background: var(--accent); color: white;
+      font-weight: 700; font-size: 0.95rem;
+      cursor: pointer; transition: opacity 0.15s;
+    }
+    button:hover { opacity: 0.92; }
+    .msg {
+      margin-top: 16px; padding: 12px 14px;
+      background: var(--danger-soft); color: var(--danger);
+      border-radius: 8px; font-size: 0.88rem;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="login-card">
+    <div class="brand"><span class="dot"></span>Shein Auto</div>
+    <h1>Đăng nhập</h1>
+    <p class="subtitle">Truy cập Admin UI</p>
+    <form id="loginForm">
+      <label for="username">Username</label>
+      <input id="username" name="username" autocomplete="username" required />
+      <label for="password">Password</label>
+      <input id="password" name="password" type="password" autocomplete="current-password" required />
+      <button type="submit">Đăng nhập</button>
+      <div id="loginMessage" class="msg"></div>
+    </form>
+  </div>
+
+  <script>
+    const form = document.getElementById('loginForm');
+    const msg = document.getElementById('loginMessage');
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      msg.style.display = 'none';
+      try {
+        const res = await fetch('/admin/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            username: document.getElementById('username').value.trim(),
+            password: document.getElementById('password').value,
+          }),
+        });
+        if (!res.ok) {
+          const data = await res.json();
+          throw new Error(data.error || 'Đăng nhập thất bại');
+        }
+        location.href = '/admin';
+      } catch (err) {
+        msg.textContent = err.message;
+        msg.style.display = 'block';
+      }
+    });
+  </script>
+</body>
+</html>

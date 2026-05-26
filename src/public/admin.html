@@ -1,0 +1,1235 @@
+<!DOCTYPE html>
+<html lang="vi" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Shein Auto · Admin</title>
+  <style>
+    :root[data-theme="dark"] {
+      --bg: #0b1020;
+      --bg-elev: #131a30;
+      --bg-card: #1a2241;
+      --bg-card-hover: #222b4f;
+      --border: #2a3358;
+      --text: #e6e9f5;
+      --text-dim: #8a93b8;
+      --text-mute: #5e6890;
+      --accent: #6c8dff;
+      --accent-soft: rgba(108, 141, 255, 0.18);
+      --success: #4ade80;
+      --success-soft: rgba(74, 222, 128, 0.15);
+      --danger: #f87171;
+      --danger-soft: rgba(248, 113, 113, 0.15);
+      --warn: #fbbf24;
+      --warn-soft: rgba(251, 191, 36, 0.15);
+      --shadow: 0 10px 40px rgba(0, 0, 0, 0.35);
+    }
+    :root[data-theme="light"] {
+      --bg: #f4f6fb;
+      --bg-elev: #ffffff;
+      --bg-card: #ffffff;
+      --bg-card-hover: #f8fafc;
+      --border: #e2e8f0;
+      --text: #0f172a;
+      --text-dim: #475569;
+      --text-mute: #94a3b8;
+      --accent: #2563eb;
+      --accent-soft: rgba(37, 99, 235, 0.12);
+      --success: #16a34a;
+      --success-soft: rgba(22, 163, 74, 0.12);
+      --danger: #dc2626;
+      --danger-soft: rgba(220, 38, 38, 0.12);
+      --warn: #d97706;
+      --warn-soft: rgba(217, 119, 6, 0.12);
+      --shadow: 0 10px 40px rgba(15, 23, 42, 0.08);
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; height: 100%; background: var(--bg); color: var(--text); font-family: 'Inter', system-ui, -apple-system, "Segoe UI", sans-serif; font-size: 14px; }
+    a { color: var(--accent); text-decoration: none; }
+    button { font-family: inherit; }
+
+    .app { display: grid; grid-template-columns: 240px 1fr; min-height: 100vh; }
+    .sidebar { background: var(--bg-elev); border-right: 1px solid var(--border); padding: 24px 16px; display: flex; flex-direction: column; gap: 8px; position: sticky; top: 0; height: 100vh; }
+    .brand { font-weight: 800; font-size: 1.1rem; letter-spacing: 0.04em; padding: 4px 12px 16px; display: flex; align-items: center; gap: 8px; }
+    .brand .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 12px var(--accent); }
+    .nav-item { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 10px; cursor: pointer; color: var(--text-dim); transition: all 0.15s; user-select: none; }
+    .nav-item:hover { background: var(--bg-card); color: var(--text); }
+    .nav-item.active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+    .nav-item .ico { width: 18px; height: 18px; display: inline-flex; }
+    .nav-spacer { flex: 1; }
+    .nav-footer { display: flex; flex-direction: column; gap: 8px; padding: 8px 0; border-top: 1px solid var(--border); margin-top: 8px; }
+    .nav-user { font-size: 0.85rem; color: var(--text-mute); padding: 6px 12px; }
+
+    .main { padding: 28px 32px; overflow-x: hidden; }
+    .page-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 22px; gap: 16px; flex-wrap: wrap; }
+    .page-head h1 { margin: 0; font-size: 1.5rem; font-weight: 700; }
+    .page-head .subtitle { color: var(--text-mute); font-size: 0.9rem; margin-top: 4px; }
+    .btn { border: none; border-radius: 8px; padding: 9px 16px; cursor: pointer; font-weight: 600; font-size: 0.9rem; transition: all 0.15s; }
+    .btn-primary { background: var(--accent); color: white; }
+    .btn-primary:hover { transform: translateY(-1px); opacity: 0.92; }
+    .btn-ghost { background: transparent; color: var(--text-dim); border: 1px solid var(--border); }
+    .btn-ghost:hover { background: var(--bg-card); color: var(--text); }
+    .btn-danger { background: var(--danger); color: white; }
+    .btn-danger:hover { opacity: 0.9; }
+    .btn-icon { padding: 8px 10px; }
+    .btn[disabled] { opacity: 0.5; cursor: not-allowed; }
+
+    .grid { display: grid; gap: 18px; }
+    .grid-stats { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+    .grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    @media (max-width: 900px) {
+      .app { grid-template-columns: 1fr; }
+      .sidebar { position: relative; height: auto; }
+      .grid-2, .grid-3 { grid-template-columns: 1fr; }
+    }
+
+    .card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 14px; padding: 20px; }
+    .card h3 { margin: 0 0 14px; font-size: 0.95rem; font-weight: 600; color: var(--text); }
+    .card .label { color: var(--text-mute); font-size: 0.78rem; letter-spacing: 0.06em; text-transform: uppercase; }
+    .stat-num { font-size: 1.9rem; font-weight: 700; margin-top: 6px; }
+    .stat-sub { color: var(--text-mute); font-size: 0.85rem; margin-top: 4px; }
+
+    .badge { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; font-size: 0.78rem; font-weight: 600; }
+    .badge-success { background: var(--success-soft); color: var(--success); }
+    .badge-danger  { background: var(--danger-soft); color: var(--danger); }
+    .badge-warn    { background: var(--warn-soft); color: var(--warn); }
+    .badge-info    { background: var(--accent-soft); color: var(--accent); }
+    .pulse { width: 8px; height: 8px; border-radius: 50%; background: currentColor; animation: pulse 1.4s ease-in-out infinite; }
+    @keyframes pulse { 0%, 100% { opacity: 0.4; } 50% { opacity: 1; } }
+
+    table { width: 100%; border-collapse: collapse; }
+    th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--border); font-size: 0.88rem; }
+    th { font-weight: 600; color: var(--text-mute); text-transform: uppercase; font-size: 0.74rem; letter-spacing: 0.06em; }
+    tr:hover td { background: var(--bg-card-hover); }
+    td.mono, code { font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; font-size: 0.82rem; }
+    td .truncate { max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-block; vertical-align: middle; }
+
+    input, select, textarea { width: 100%; background: var(--bg-elev); border: 1px solid var(--border); border-radius: 8px; padding: 9px 12px; color: var(--text); font-family: inherit; font-size: 0.9rem; transition: border-color 0.15s; }
+    input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); }
+    textarea { resize: vertical; min-height: 80px; font-family: 'JetBrains Mono', monospace; font-size: 0.82rem; }
+    label.field { display: block; margin-bottom: 12px; }
+    label.field > span { display: block; font-size: 0.82rem; color: var(--text-dim); margin-bottom: 6px; }
+
+    .log-panel { background: #050811; border: 1px solid var(--border); border-radius: 10px; padding: 12px; height: 360px; overflow-y: auto; font-family: 'JetBrains Mono', monospace; font-size: 0.78rem; line-height: 1.5; }
+    .log-line { padding: 2px 0; white-space: pre-wrap; word-break: break-word; }
+    .log-line.info { color: #cdd6f4; }
+    .log-line.warn { color: #fbbf24; }
+    .log-line.error { color: #f87171; }
+    .log-line .ts { color: #5e6890; margin-right: 8px; }
+
+    .filter-bar { display: flex; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
+    .filter-bar select, .filter-bar input { width: auto; min-width: 140px; }
+
+    .toast { position: fixed; bottom: 24px; right: 24px; padding: 14px 18px; border-radius: 10px; font-weight: 600; box-shadow: var(--shadow); z-index: 1000; transform: translateY(100px); opacity: 0; transition: all 0.3s; }
+    .toast.show { transform: translateY(0); opacity: 1; }
+    .toast.success { background: var(--success); color: white; }
+    .toast.error   { background: var(--danger); color: white; }
+
+    .modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,0.55); display: none; align-items: center; justify-content: center; padding: 20px; z-index: 500; }
+    .modal-bg.show { display: flex; }
+    .modal { background: var(--bg-card); border: 1px solid var(--border); border-radius: 14px; padding: 24px; max-width: 800px; width: 100%; max-height: 85vh; overflow-y: auto; box-shadow: var(--shadow); }
+    .modal-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+    .modal h2 { margin: 0; font-size: 1.1rem; }
+    .json-view { background: #050811; color: #cdd6f4; padding: 16px; border-radius: 8px; font-family: 'JetBrains Mono', monospace; font-size: 0.78rem; max-height: 50vh; overflow: auto; white-space: pre-wrap; }
+
+    /* Shop summary cards (landing view of Listings) */
+    .shops-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; }
+    .shop-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; cursor: pointer; transition: transform .15s, border-color .15s; display: flex; flex-direction: column; }
+    .shop-card:hover { transform: translateY(-2px); border-color: var(--accent); }
+    .shop-card .cover { aspect-ratio: 16/9; background: var(--bg-elev); position: relative; overflow: hidden; }
+    .shop-card .cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .shop-card .cover .placeholder { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; color: var(--text-mute); font-size: 0.85rem; }
+    .shop-card .body { padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+    .shop-card .name { font-family: 'JetBrains Mono', monospace; font-size: 1rem; font-weight: 700; color: var(--text); }
+    .shop-card .counters { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+    .shop-card .counter { padding: 8px 4px; background: var(--bg-elev); border: 1px solid var(--border); border-radius: 8px; text-align: center; }
+    .shop-card .counter .val { font-size: 1.15rem; font-weight: 700; line-height: 1; }
+    .shop-card .counter .lbl { font-size: 0.68rem; color: var(--text-mute); text-transform: uppercase; letter-spacing: 0.06em; margin-top: 4px; }
+    .shop-card .counter.pending .val { color: var(--warn); }
+    .shop-card .counter.success .val { color: var(--success); }
+    .shop-card .counter.fail .val { color: var(--danger); }
+
+    .back-bar { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; padding: 10px 14px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; }
+    .back-bar .crumb { color: var(--text-mute); font-size: 0.88rem; }
+    .back-bar .crumb code { color: var(--text); font-weight: 600; }
+
+    /* Listings cards */
+    .listings-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; }
+    .listing-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; display: flex; flex-direction: column; transition: transform .15s, border-color .15s; position: relative; }
+    .listing-card:hover { transform: translateY(-2px); border-color: var(--accent); }
+    .listing-card .img-wrap { aspect-ratio: 3/4; background: var(--bg-elev); position: relative; overflow: hidden; }
+    .listing-card .img-wrap img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .listing-card .img-wrap .placeholder { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; color: var(--text-mute); font-size: 0.8rem; }
+    .listing-card .status-badge { position: absolute; top: 8px; left: 8px; }
+    .listing-card .folder-badge { position: absolute; top: 8px; right: 8px; background: rgba(0,0,0,0.55); color: white; padding: 3px 8px; border-radius: 999px; font-size: 0.72rem; font-family: 'JetBrains Mono', monospace; }
+    .listing-card .body { padding: 12px 12px 14px; display: flex; flex-direction: column; gap: 8px; flex: 1; }
+    .listing-card .title { font-size: 0.85rem; font-weight: 500; line-height: 1.35; color: var(--text); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; min-height: 2.5em; }
+    .listing-card .price { font-size: 1.05rem; font-weight: 700; color: var(--accent); }
+    .listing-card .meta { display: flex; gap: 6px; flex-wrap: wrap; font-size: 0.72rem; color: var(--text-mute); }
+    .listing-card .meta .pill { background: var(--bg-elev); border: 1px solid var(--border); padding: 2px 8px; border-radius: 999px; }
+    .listing-card .time-row { display: flex; align-items: center; gap: 6px; padding: 0 12px 8px; font-size: 0.72rem; color: var(--text-mute); }
+    .listing-card .time-row .scraped { margin-left: auto; opacity: 0.7; }
+    .shop-card .last-time { padding: 0 16px 12px; font-size: 0.78rem; color: var(--text-mute); display: flex; align-items: center; gap: 6px; }
+    .listing-card .actions { display: flex; gap: 6px; padding: 0 12px 12px; }
+    .listing-card .actions button { flex: 1; padding: 7px 10px; font-size: 0.78rem; border-radius: 8px; cursor: pointer; border: 1px solid var(--border); background: var(--bg-elev); color: var(--text-dim); transition: all .15s; }
+    .listing-card .actions button:hover { color: var(--text); border-color: var(--accent); }
+    .listing-card .actions button.retry { background: var(--accent); color: white; border-color: var(--accent); }
+    .listing-card .actions button.retry:hover { opacity: 0.92; }
+    .listing-card .actions button.delete:hover { background: var(--danger-soft); color: var(--danger); border-color: var(--danger); }
+    .listing-card .error-snippet { padding: 8px 12px 12px; font-size: 0.72rem; color: var(--danger); font-family: 'JetBrains Mono', monospace; max-height: 60px; overflow: hidden; line-height: 1.3; }
+
+    .empty { text-align: center; padding: 40px; color: var(--text-mute); }
+    .view { display: none; }
+    .view.active { display: block; }
+
+    .theme-toggle { background: transparent; border: 1px solid var(--border); width: 34px; height: 34px; border-radius: 8px; cursor: pointer; color: var(--text-dim); display: inline-flex; align-items: center; justify-content: center; }
+    .theme-toggle:hover { color: var(--text); }
+  </style>
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <div class="brand"><span class="dot"></span>Shein Auto</div>
+    <div class="nav-item active" data-view="dashboard">
+      <span class="ico">📊</span><span>Dashboard</span>
+    </div>
+    <div class="nav-item" data-view="listings">
+      <span class="ico">🛍️</span><span>Listings</span>
+    </div>
+    <div class="nav-item" data-view="history">
+      <span class="ico">📜</span><span>History</span>
+    </div>
+    <div class="nav-item" data-view="users">
+      <span class="ico">👥</span><span>Users</span>
+    </div>
+    <div class="nav-item" data-view="settings">
+      <span class="ico">⚙️</span><span>Settings</span>
+    </div>
+    <div class="nav-item" data-view="cookie">
+      <span class="ico">🍪</span><span>Cookie 4Seller</span>
+    </div>
+    <div class="nav-spacer"></div>
+    <div class="nav-footer">
+      <div class="nav-user" id="navUser">…</div>
+      <div style="display:flex; gap:8px; padding: 0 4px;">
+        <button class="theme-toggle" id="themeToggle" title="Đổi theme">🌙</button>
+        <button class="btn btn-ghost" style="flex:1;" onclick="logout()">Đăng xuất</button>
+      </div>
+    </div>
+  </aside>
+
+  <main class="main">
+
+    <!-- ───── DASHBOARD ───── -->
+    <section class="view active" id="view-dashboard">
+      <div class="page-head">
+        <div>
+          <h1>Dashboard</h1>
+          <div class="subtitle">Trạng thái worker & hàng đợi realtime</div>
+        </div>
+        <button class="btn btn-ghost" onclick="refreshDashboard()">Refresh</button>
+      </div>
+
+      <div class="grid grid-stats" id="statsCards"></div>
+
+      <div class="grid grid-2" style="margin-top: 18px;">
+        <div class="card">
+          <h3>Hàng đợi theo shop</h3>
+          <div id="queueTableWrap"><div class="empty">Đang tải…</div></div>
+        </div>
+        <div class="card">
+          <h3>Job đang chạy</h3>
+          <div id="activeJobsWrap"><div class="empty">Không có job nào</div></div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top: 18px;">
+        <h3 style="display:flex; justify-content:space-between; align-items:center;">
+          <span>Live Log</span>
+          <button class="btn btn-ghost" onclick="clearLogs()">Clear</button>
+        </h3>
+        <div class="log-panel" id="logPanel"></div>
+      </div>
+    </section>
+
+    <!-- ───── LISTINGS ───── -->
+    <section class="view" id="view-listings">
+      <div class="page-head">
+        <div>
+          <h1>Listings</h1>
+          <div class="subtitle" id="listingsSubtitle">Click shop để xem danh sách listing</div>
+        </div>
+        <button class="btn btn-ghost" id="listingsRefreshBtn" onclick="loadShopsOrListings()">Refresh</button>
+      </div>
+
+      <!-- View 1: Shop summary cards (mặc định) -->
+      <div id="shopsView">
+        <div class="card">
+          <div id="shopsGrid"><div class="empty">Đang tải…</div></div>
+        </div>
+      </div>
+
+      <!-- View 2: Listings của 1 shop được chọn -->
+      <div id="listingsDetailView" style="display:none;">
+        <div class="back-bar">
+          <button class="btn btn-ghost btn-icon" onclick="exitShopDetail()">← Back</button>
+          <div class="crumb">Shop: <code id="detailShopName">—</code></div>
+          <div style="flex:1;"></div>
+          <select id="listStatus" onchange="loadListings()" style="width:auto; min-width:160px;">
+            <option value="">Tất cả status</option>
+            <option value="pending">⏳ Pending</option>
+            <option value="success">✓ Success</option>
+            <option value="fail">✕ Fail</option>
+          </select>
+          <input id="listSearch" placeholder="Tìm title..." oninput="renderListings()" style="width: 200px;" />
+        </div>
+        <div class="card">
+          <div id="listingsGrid"><div class="empty">Đang tải…</div></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ───── HISTORY ───── -->
+    <section class="view" id="view-history">
+      <div class="page-head">
+        <div>
+          <h1>History</h1>
+          <div class="subtitle">Toàn bộ listing đã chạy</div>
+        </div>
+        <button class="btn btn-ghost" onclick="loadHistory()">Refresh</button>
+      </div>
+      <div class="card">
+        <div class="filter-bar">
+          <select id="histStatus" onchange="loadHistory()">
+            <option value="">Tất cả</option>
+            <option value="success">Success</option>
+            <option value="fail">Fail</option>
+          </select>
+          <input id="histFolder" placeholder="Lọc folder (vd: P5-008)" onchange="loadHistory()" />
+        </div>
+        <div id="histTableWrap"><div class="empty">Đang tải…</div></div>
+      </div>
+    </section>
+
+    <!-- ───── USERS ───── -->
+    <section class="view" id="view-users">
+      <div class="page-head">
+        <div>
+          <h1>Users</h1>
+          <div class="subtitle">Quản lý quyền truy cập Admin UI</div>
+        </div>
+        <div style="display:flex; gap:8px;">
+          <button class="btn btn-ghost" id="btnAddUser" onclick="addUser()">+ Thêm user</button>
+          <button class="btn btn-primary" id="btnSaveUsers" onclick="saveConfig()">Lưu</button>
+        </div>
+      </div>
+      <div class="card">
+        <div id="usersTableWrap"><div class="empty">Đang tải…</div></div>
+        <p style="color: var(--text-mute); font-size: 0.85rem; margin-top: 14px;">
+          Password để trống = giữ nguyên password cũ. Khi đổi password, hệ thống sẽ tự hash (bcrypt).
+        </p>
+      </div>
+    </section>
+
+    <!-- ───── SETTINGS ───── -->
+    <section class="view" id="view-settings">
+      <div class="page-head">
+        <div>
+          <h1>Settings</h1>
+          <div class="subtitle">Cấu hình worker (config/worker.json)</div>
+        </div>
+        <button class="btn btn-primary" onclick="saveSettings()">Lưu</button>
+      </div>
+      <div class="card">
+        <div class="grid grid-2">
+          <label class="field"><span>Concurrency (số browser song song)</span>
+            <input type="number" id="setConcurrency" min="1" max="10" />
+          </label>
+          <label class="field"><span>Headless mode</span>
+            <select id="setHeadless">
+              <option value="false">Không (hiện browser)</option>
+              <option value="true">Có (chạy ngầm)</option>
+            </select>
+          </label>
+          <label class="field"><span>Cron File Router</span>
+            <input id="setCronFileRouter" placeholder="*/30 * * * * *" />
+          </label>
+          <label class="field"><span>Cron Queue Manager</span>
+            <input id="setCronQueueManager" placeholder="*/1 * * * *" />
+          </label>
+          <label class="field"><span>Image upload wait per image (ms)</span>
+            <input type="number" id="setImgWait" />
+          </label>
+          <label class="field"><span>Max product images</span>
+            <input type="number" id="setImgMax" />
+          </label>
+          <label class="field"><span>Description images count</span>
+            <input type="number" id="setDescImg" />
+          </label>
+          <label class="field"><span>Description max attributes</span>
+            <input type="number" id="setDescAttr" />
+          </label>
+        </div>
+      </div>
+      <div class="card" style="margin-top:18px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+          <h3 style="margin:0;">🏷️ Brand mapping theo shop profile</h3>
+          <div style="display:flex; gap:8px;">
+            <button class="btn btn-ghost" onclick="addBrandRow()">+ Thêm dòng</button>
+            <button class="btn btn-primary" onclick="saveBrands()">Lưu brands</button>
+          </div>
+        </div>
+        <div style="display: grid; grid-template-columns: 1fr 2fr; gap: 12px; margin-bottom: 16px;">
+          <label class="field"><span>Default brand <span style="color:var(--text-mute);">(dùng cho profile chưa có trong list)</span></span>
+            <input id="brandDefault" placeholder="LUSHLACE" />
+          </label>
+        </div>
+        <div id="brandsTableWrap"><div class="empty">Đang tải…</div></div>
+        <p style="color: var(--text-mute); font-size: 0.82rem; margin-top: 10px;">
+          Profile name = tên folder + suffix thị trường. Vd: folder <code>P5-014</code> → profile <code>P5-014_US</code>, folder <code>P5-014_DE</code> → profile <code>P5-014_DE</code>.
+        </p>
+      </div>
+
+      <div class="card" style="margin-top:18px;">
+        <h3>Cấu hình runtime (read-only)</h3>
+        <table>
+          <tr><td>Download dir</td><td class="mono" id="rtDownload">…</td></tr>
+          <tr><td>Base dir</td><td class="mono" id="rtBase">…</td></tr>
+          <tr><td>Gemini API key</td><td id="rtGemini">…</td></tr>
+          <tr><td>Telegram notification</td><td id="rtTelegram">…</td></tr>
+        </table>
+        <p style="color: var(--text-mute); font-size: 0.85rem; margin-top: 10px;">
+          Các giá trị trên sửa qua file <code>.env</code>, cần restart worker.
+        </p>
+      </div>
+    </section>
+
+    <!-- ───── COOKIE ───── -->
+    <section class="view" id="view-cookie">
+      <div class="page-head">
+        <div>
+          <h1>Cookie 4Seller</h1>
+          <div class="subtitle">Update cookie khi 4Seller logout</div>
+        </div>
+        <div style="display:flex; gap:8px;">
+          <button class="btn btn-ghost" onclick="testCookie()">Test cookie</button>
+          <button class="btn btn-primary" onclick="saveCookie()">Lưu cookie</button>
+        </div>
+      </div>
+      <div class="card">
+        <label class="field">
+          <span>Paste JSON cookie (export từ Cookie-Editor extension)</span>
+          <textarea id="cookieJson" rows="14" placeholder='[{ "name": "...", "value": "...", "domain": "...", ... }]'></textarea>
+        </label>
+        <div id="cookieTestResult"></div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<div class="modal-bg" id="modalBg" onclick="if(event.target===this)closeModal()">
+  <div class="modal">
+    <div class="modal-head">
+      <h2 id="modalTitle">…</h2>
+      <button class="btn btn-ghost btn-icon" onclick="closeModal()">✕</button>
+    </div>
+    <div id="modalBody"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ─── State ────────────────────────────────────────────
+const state = {
+  user: { username: "", role: "viewer" },
+  config: { users: [], settings: { adminPort: 3000 } },
+  history: { items: [], total: 0 },
+  settings: null,
+};
+const $ = (sel) => document.querySelector(sel);
+const escapeHtml = (v) => String(v ?? "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;");
+
+const relTime = (ms) => {
+  if (!ms || isNaN(ms)) return "—";
+  const diff = Date.now() - ms;
+  if (diff < 0) return "just now";
+  const s = Math.floor(diff / 1000);
+  if (s < 60) return s + "s ago";
+  const m = Math.floor(s / 60);
+  if (m < 60) return m + "m ago";
+  const h = Math.floor(m / 60);
+  if (h < 24) return h + "h ago";
+  const d = Math.floor(h / 24);
+  if (d < 30) return d + "d ago";
+  const mo = Math.floor(d / 30);
+  if (mo < 12) return mo + "mo ago";
+  return Math.floor(mo / 12) + "y ago";
+};
+const absTime = (ms) => (ms ? new Date(ms).toLocaleString() : "—");
+
+// Wrapper fetch: tự detect session expired (HTML response / 401) → redirect login
+async function apiFetch(url, opts) {
+  const res = await fetch(url, opts);
+  if (res.status === 401 || res.redirected) {
+    location.href = "/admin/login";
+    throw new Error("Session expired");
+  }
+  const contentType = res.headers.get("content-type") || "";
+  if (!contentType.includes("application/json") && res.status >= 300) {
+    location.href = "/admin/login";
+    throw new Error("Server returned HTML — session likely expired");
+  }
+  return res;
+}
+
+// ─── Toast ────────────────────────────────────────────
+const toast = (msg, type = "success") => {
+  const el = $("#toast");
+  el.textContent = msg;
+  el.className = `toast ${type} show`;
+  setTimeout(() => el.classList.remove("show"), 3000);
+};
+
+// ─── Theme ────────────────────────────────────────────
+const setTheme = (theme) => {
+  document.documentElement.dataset.theme = theme;
+  localStorage.setItem("theme", theme);
+  $("#themeToggle").textContent = theme === "dark" ? "☀️" : "🌙";
+};
+$("#themeToggle").onclick = () => setTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark");
+setTheme(localStorage.getItem("theme") || "dark");
+
+// ─── Navigation ───────────────────────────────────────
+document.querySelectorAll(".nav-item").forEach((item) => {
+  item.onclick = () => {
+    const view = item.dataset.view;
+    document.querySelectorAll(".nav-item").forEach((i) => i.classList.remove("active"));
+    document.querySelectorAll(".view").forEach((v) => v.classList.remove("active"));
+    item.classList.add("active");
+    $(`#view-${view}`).classList.add("active");
+    if (view === "history") loadHistory();
+    if (view === "listings") loadShopsOrListings();
+    if (view === "users") renderUsers();
+    if (view === "settings") { loadSettings(); loadBrands(); }
+  };
+});
+
+// ─── Auth & boot ──────────────────────────────────────
+const logout = () => fetch("/admin/logout").then(() => location.href = "/admin/login");
+
+async function bootstrap() {
+  try {
+    const me = await fetch("/admin/api/auth/me");
+    if (!me.ok) return location.href = "/admin/login";
+    state.user = await me.json();
+    $("#navUser").textContent = `${state.user.username} · ${state.user.role}`;
+    const canEdit = state.user.role !== "viewer";
+    const isAdmin = state.user.role === "admin";
+    $("#btnAddUser").style.display = isAdmin ? "" : "none";
+    $("#btnSaveUsers").disabled = !canEdit;
+
+    await Promise.all([refreshDashboard(), loadConfig()]);
+    connectSSE();
+  } catch (err) {
+    console.error(err);
+  }
+}
+
+// ─── Dashboard ────────────────────────────────────────
+async function refreshDashboard() {
+  try {
+    const res = await fetch("/admin/api/dashboard");
+    const data = await res.json();
+    renderStats(data);
+    renderQueue(data.queue);
+    renderActive(data.worker);
+  } catch (err) {
+    toast("Không tải được dashboard", "error");
+  }
+}
+
+function renderStats(data) {
+  const totalPending = (data.queue.folders || []).reduce((s, f) => s + f.pendingCount, 0);
+  const activeCount = data.worker.active.length;
+  const last = data.worker.lastFinishedAt ? new Date(data.worker.lastFinishedAt).toLocaleTimeString() : "—";
+  $("#statsCards").innerHTML = `
+    <div class="card">
+      <div class="label">Worker</div>
+      <div class="stat-num">${activeCount} <span style="font-size:0.9rem;color:var(--text-mute);">/ ${data.config.concurrency}</span></div>
+      <div class="stat-sub">${activeCount > 0 ? '<span class="badge badge-info"><span class="pulse"></span>Đang chạy</span>' : '<span class="badge badge-info">Idle</span>'}</div>
+    </div>
+    <div class="card">
+      <div class="label">File pending</div>
+      <div class="stat-num">${totalPending}</div>
+      <div class="stat-sub">${(data.queue.folders||[]).length} folder shop</div>
+    </div>
+    <div class="card">
+      <div class="label">Last finished</div>
+      <div class="stat-num" style="font-size:1.4rem;">${last}</div>
+      <div class="stat-sub">Last folder: <code>${escapeHtml(data.worker.lastFolder || "—")}</code></div>
+    </div>
+    <div class="card">
+      <div class="label">Telegram</div>
+      <div class="stat-num" style="font-size:1.4rem;">${data.config.telegramEnabled ? '🟢 On' : '⚪ Off'}</div>
+      <div class="stat-sub">${data.config.telegramEnabled ? 'Notify success/fail' : 'Chưa cấu hình env'}</div>
+    </div>
+  `;
+}
+
+function renderQueue(queue) {
+  const folders = queue?.folders || [];
+  if (folders.length === 0) {
+    $("#queueTableWrap").innerHTML = '<div class="empty">Chưa có folder nào</div>';
+    return;
+  }
+  $("#queueTableWrap").innerHTML = `
+    <table>
+      <thead><tr><th>Shop</th><th>Pending</th><th>Next file</th></tr></thead>
+      <tbody>
+        ${folders.map(f => `
+          <tr>
+            <td><code>${escapeHtml(f.name)}</code></td>
+            <td>${f.pendingCount > 0 ? `<span class="badge badge-warn">${f.pendingCount}</span>` : '<span class="badge badge-success">0</span>'}</td>
+            <td class="mono"><span class="truncate" title="${escapeHtml(f.oldestFile || '')}">${escapeHtml(f.oldestFile || '—')}</span></td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+  `;
+}
+
+function renderActive(worker) {
+  if (!worker.active || worker.active.length === 0) {
+    $("#activeJobsWrap").innerHTML = '<div class="empty">Không có job đang chạy</div>';
+    return;
+  }
+  $("#activeJobsWrap").innerHTML = `
+    <table>
+      <thead><tr><th>Profile</th><th>File</th><th>Bắt đầu</th></tr></thead>
+      <tbody>
+        ${worker.active.map(j => `
+          <tr>
+            <td><code>${escapeHtml(j.profile)}</code></td>
+            <td class="mono"><span class="truncate" title="${escapeHtml(j.file)}">${escapeHtml(j.file)}</span></td>
+            <td>${new Date(j.startedAt).toLocaleTimeString()}</td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+  `;
+}
+
+// ─── SSE ──────────────────────────────────────────────
+let sse;
+function connectSSE() {
+  if (sse) sse.close();
+  sse = new EventSource("/admin/api/events/stream");
+  sse.addEventListener("log", (e) => {
+    const data = JSON.parse(e.data);
+    appendLog(data);
+  });
+  sse.addEventListener("worker", (e) => {
+    const snap = JSON.parse(e.data);
+    renderActive(snap);
+  });
+  sse.addEventListener("queue", (e) => {
+    const snap = JSON.parse(e.data);
+    renderQueue(snap);
+  });
+  sse.addEventListener("history", () => {
+    if ($("#view-history").classList.contains("active")) loadHistory();
+  });
+  sse.onerror = () => {
+    setTimeout(connectSSE, 3000);
+  };
+}
+
+const MAX_LOG_LINES = 500;
+function appendLog(entry) {
+  const panel = $("#logPanel");
+  const ts = new Date(entry.ts).toLocaleTimeString();
+  const line = document.createElement("div");
+  line.className = `log-line ${entry.level}`;
+  line.innerHTML = `<span class="ts">${ts}</span>${escapeHtml(entry.message)}`;
+  panel.appendChild(line);
+  while (panel.children.length > MAX_LOG_LINES) panel.removeChild(panel.firstChild);
+  panel.scrollTop = panel.scrollHeight;
+}
+const clearLogs = () => $("#logPanel").innerHTML = "";
+
+// ─── History ──────────────────────────────────────────
+async function loadHistory() {
+  try {
+    const params = new URLSearchParams();
+    if ($("#histStatus").value) params.set("status", $("#histStatus").value);
+    if ($("#histFolder").value) params.set("folder", $("#histFolder").value);
+    params.set("limit", "100");
+    const res = await fetch("/admin/api/history?" + params.toString());
+    state.history = await res.json();
+    renderHistory();
+  } catch {
+    toast("Không tải được history", "error");
+  }
+}
+
+function renderHistory() {
+  const items = state.history.items || [];
+  if (items.length === 0) {
+    $("#histTableWrap").innerHTML = '<div class="empty">Chưa có entry nào</div>';
+    return;
+  }
+  const canRetry = state.user.role !== "viewer";
+  $("#histTableWrap").innerHTML = `
+    <table>
+      <thead><tr><th>Status</th><th>Profile</th><th>File</th><th>Duration</th><th>Finished</th><th></th></tr></thead>
+      <tbody>
+        ${items.map(e => `
+          <tr>
+            <td>${e.status === 'success' ? '<span class="badge badge-success">✓ success</span>' : '<span class="badge badge-danger">✕ fail</span>'}</td>
+            <td><code>${escapeHtml(e.profile)}</code></td>
+            <td class="mono"><span class="truncate" title="${escapeHtml(e.file)}">${escapeHtml(e.file)}</span></td>
+            <td>${Math.round(e.durationMs / 1000)}s</td>
+            <td>${new Date(e.finishedAt).toLocaleString()}</td>
+            <td style="text-align:right; white-space:nowrap;">
+              <button class="btn btn-ghost btn-icon" onclick="viewHistoryDetail('${e.id}')">👁</button>
+              ${e.status === 'fail' && canRetry ? `<button class="btn btn-ghost btn-icon" title="Retry" onclick="retryEntry('${e.id}')">↻</button>` : ''}
+            </td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+    <div style="color:var(--text-mute); margin-top: 10px; font-size: 0.85rem;">${items.length} / ${state.history.total} entries</div>
+  `;
+}
+
+async function viewHistoryDetail(id) {
+  try {
+    const res = await fetch(`/admin/api/history/${id}/json`);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Lỗi");
+    const e = data.entry;
+    $("#modalTitle").textContent = `${e.profile} · ${e.file}`;
+    $("#modalBody").innerHTML = `
+      <div style="margin-bottom: 12px; font-size:0.85rem; color: var(--text-dim);">
+        ${e.status === 'success' ? '<span class="badge badge-success">✓ success</span>' : '<span class="badge badge-danger">✕ fail</span>'}
+        · ${Math.round(e.durationMs/1000)}s · ${new Date(e.finishedAt).toLocaleString()}
+      </div>
+      ${e.errorMessage ? `<div class="card" style="background:var(--danger-soft); border-color:var(--danger); margin-bottom:14px;"><strong>Lỗi:</strong> <pre style="margin:8px 0 0; white-space:pre-wrap; font-size:0.82rem;">${escapeHtml(e.errorMessage)}</pre></div>` : ''}
+      <div class="json-view">${escapeHtml(JSON.stringify(data.content, null, 2))}</div>
+    `;
+    $("#modalBg").classList.add("show");
+  } catch (err) {
+    toast(err.message, "error");
+  }
+}
+
+async function retryEntry(id) {
+  if (!confirm("Move file về lại folder shop để chạy lại?")) return;
+  try {
+    const res = await fetch(`/admin/api/history/${id}/retry`, { method: "POST" });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+    toast("Đã đưa file về queue, sẽ chạy lại ở cron tới");
+    loadHistory();
+  } catch (err) {
+    toast(err.message, "error");
+  }
+}
+const closeModal = () => $("#modalBg").classList.remove("show");
+
+// ─── Listings: 2 view (shops summary + detail drill-down) ───
+state.listings = {
+  shops: [],
+  items: [],
+  selectedShop: null, // null = ở view shops
+};
+
+const loadShopsOrListings = () => state.listings.selectedShop ? loadListings() : loadShops();
+
+async function loadShops() {
+  try {
+    const res = await fetch("/admin/api/listings/shops");
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+    state.listings.shops = data.shops || [];
+    renderShops();
+  } catch (err) {
+    toast("Không tải được shops: " + err.message, "error");
+    $("#shopsGrid").innerHTML = '<div class="empty">Lỗi tải dữ liệu</div>';
+  }
+}
+
+function renderShops() {
+  const shops = state.listings.shops;
+  const totals = shops.reduce(
+    (acc, s) => ({ pending: acc.pending + s.pending, success: acc.success + s.success, fail: acc.fail + s.fail }),
+    { pending: 0, success: 0, fail: 0 }
+  );
+  $("#listingsSubtitle").innerHTML =
+    `${shops.length} shop &nbsp;·&nbsp;` +
+    `<span style="color:var(--warn);">⏳ ${totals.pending}</span> &nbsp;·&nbsp;` +
+    `<span style="color:var(--success);">✓ ${totals.success}</span> &nbsp;·&nbsp;` +
+    `<span style="color:var(--danger);">✕ ${totals.fail}</span>`;
+
+  if (shops.length === 0) {
+    $("#shopsGrid").innerHTML = '<div class="empty">Chưa có shop nào</div>';
+    return;
+  }
+
+  $("#shopsGrid").innerHTML =
+    '<div class="shops-grid">' +
+    shops
+      .map(
+        (s) => `
+      <div class="shop-card" onclick="enterShopDetail('${escapeHtml(s.folder)}', '${escapeHtml(s.owner)}')">
+        <div class="cover">
+          ${s.cover
+            ? `<img src="${escapeHtml(s.cover)}" alt="" loading="lazy" onerror="this.parentElement.innerHTML='<div class=&quot;placeholder&quot;>(no image)</div>'" />`
+            : `<div class="placeholder">(no image)</div>`}
+        </div>
+        <div class="body">
+          <div class="name">${escapeHtml(s.folder)} <span style="font-size:0.7rem; color: var(--text-mute); font-weight:400; margin-left: 6px;">@${escapeHtml(s.owner.split(',')[0])}</span></div>
+          <div class="counters">
+            <div class="counter pending"><div class="val">${s.pending}</div><div class="lbl">Pending</div></div>
+            <div class="counter success"><div class="val">${s.success}</div><div class="lbl">Success</div></div>
+            <div class="counter fail"><div class="val">${s.fail}</div><div class="lbl">Fail</div></div>
+          </div>
+        </div>
+        <div class="last-time" title="${escapeHtml(absTime(s.lastActivityMs))}">⏱ Last activity: ${escapeHtml(relTime(s.lastActivityMs))}</div>
+      </div>
+    `
+      )
+      .join("") +
+    "</div>";
+}
+
+function enterShopDetail(folder, owner) {
+  state.listings.selectedShop = folder;
+  state.listings.selectedOwner = owner || null;
+  $("#shopsView").style.display = "none";
+  $("#listingsDetailView").style.display = "";
+  $("#detailShopName").textContent = `${folder} @${(owner||'').split(',')[0]}`;
+  // Reset filters
+  $("#listStatus").value = "";
+  $("#listSearch").value = "";
+  loadListings();
+}
+
+function exitShopDetail() {
+  state.listings.selectedShop = null;
+  $("#shopsView").style.display = "";
+  $("#listingsDetailView").style.display = "none";
+  loadShops();
+}
+
+async function loadListings() {
+  const folder = state.listings.selectedShop;
+  if (!folder) return; // không ở detail view
+  try {
+    const params = new URLSearchParams();
+    if ($("#listStatus").value) params.set("status", $("#listStatus").value);
+    params.set("folder", folder);
+    const res = await fetch("/admin/api/listings?" + params.toString());
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+    state.listings.items = data.items;
+    renderListings();
+  } catch (err) {
+    toast("Không tải được listings: " + err.message, "error");
+    $("#listingsGrid").innerHTML = '<div class="empty">Lỗi tải dữ liệu</div>';
+  }
+}
+
+function renderListings() {
+  const search = ($("#listSearch").value || "").toLowerCase().trim();
+  let items = state.listings.items;
+  if (search) items = items.filter((it) => (it.title || "").toLowerCase().includes(search));
+
+  const grouped = {
+    pending: items.filter((i) => i.status === "pending").length,
+    success: items.filter((i) => i.status === "success").length,
+    fail: items.filter((i) => i.status === "fail").length,
+  };
+  $("#listingsSubtitle").innerHTML =
+    `${state.listings.selectedShop}: ${items.length} listing &nbsp;·&nbsp;` +
+    `<span style="color:var(--warn);">⏳ ${grouped.pending} pending</span> &nbsp;·&nbsp;` +
+    `<span style="color:var(--success);">✓ ${grouped.success} success</span> &nbsp;·&nbsp;` +
+    `<span style="color:var(--danger);">✕ ${grouped.fail} fail</span>`;
+
+  if (items.length === 0) {
+    $("#listingsGrid").innerHTML = '<div class="empty">Chưa có listing nào khớp filter</div>';
+    return;
+  }
+
+  const canEdit = state.user.role !== "viewer";
+  const isAdmin = state.user.role === "admin";
+
+  const statusBadge = {
+    pending: '<span class="badge badge-warn status-badge">⏳ pending</span>',
+    success: '<span class="badge badge-success status-badge">✓ success</span>',
+    fail: '<span class="badge badge-danger status-badge">✕ fail</span>',
+  };
+
+  const fmtPrice = (pr) => {
+    if (!pr) return "—";
+    if (pr.min === pr.max) return `${pr.currency}${pr.min.toFixed(2)}`;
+    return `${pr.currency}${pr.min.toFixed(2)} – ${pr.currency}${pr.max.toFixed(2)}`;
+  };
+
+  $("#listingsGrid").innerHTML =
+    '<div class="listings-grid">' +
+    items
+      .map((it) => {
+        const idEnc = encodeURIComponent(it.id);
+        return `
+        <div class="listing-card">
+          <div class="img-wrap">
+            ${it.image
+              ? `<img src="${escapeHtml(it.image)}" alt="" loading="lazy" onerror="this.parentElement.innerHTML='<div class=&quot;placeholder&quot;>(no image)</div>'" />`
+              : `<div class="placeholder">(no image)</div>`}
+            ${statusBadge[it.status]}
+            <div class="folder-badge">${escapeHtml(it.folder)}</div>
+          </div>
+          <div class="body">
+            <div class="title" title="${escapeHtml(it.title)}">${escapeHtml(it.title)}</div>
+            <div class="price">${escapeHtml(fmtPrice(it.priceRange))}</div>
+            <div class="meta">
+              <span class="pill">${it.variantCount} variant</span>
+              <span class="pill">${it.colorCount}c × ${it.sizeCount}s</span>
+            </div>
+          </div>
+          ${it.errorMessage ? `<div class="error-snippet" title="${escapeHtml(it.errorMessage)}">${escapeHtml(it.errorMessage.split("\\n").slice(2).join(" ").slice(0, 140))}</div>` : ""}
+          <div class="time-row">
+            <span title="${escapeHtml(absTime(it.mtimeMs))}">⏱ ${escapeHtml(relTime(it.mtimeMs))}</span>
+            ${it.scrapedAt ? `<span class="scraped" title="Scraped at ${escapeHtml(new Date(it.scrapedAt).toLocaleString())}">📦 ${escapeHtml(relTime(new Date(it.scrapedAt).getTime()))}</span>` : ""}
+          </div>
+          <div class="actions">
+            <button onclick="viewListing('${idEnc}')">View</button>
+            ${it.status === "fail" && canEdit ? `<button class="retry" onclick="retryListing('${idEnc}')">↻ Retry</button>` : ""}
+            ${isAdmin ? `<button class="delete" onclick="deleteListing('${idEnc}')">🗑</button>` : ""}
+          </div>
+        </div>
+      `;
+      })
+      .join("") +
+    "</div>";
+}
+
+async function viewListing(idEnc) {
+  const id = decodeURIComponent(idEnc);
+  try {
+    const res = await fetch("/admin/api/listings/json?id=" + encodeURIComponent(id));
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+    $("#modalTitle").textContent = id;
+    $("#modalBody").innerHTML = `<div class="json-view">${escapeHtml(JSON.stringify(data.content, null, 2))}</div>`;
+    $("#modalBg").classList.add("show");
+  } catch (err) {
+    toast(err.message, "error");
+  }
+}
+
+async function retryListing(idEnc) {
+  const id = decodeURIComponent(idEnc);
+  if (!confirm("Đẩy file này về folder shop để worker chạy lại?")) return;
+  try {
+    const res = await fetch("/admin/api/listings/retry", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+    toast(`Đã đưa về ${data.folder}/ — chờ cron pick lên`);
+    loadShopsOrListings();
+  } catch (err) {
+    toast(err.message, "error");
+  }
+}
+
+async function deleteListing(idEnc) {
+  const id = decodeURIComponent(idEnc);
+  if (!confirm("Xoá hẳn file JSON này? Không thể khôi phục.")) return;
+  try {
+    const res = await fetch("/admin/api/listings", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+    toast("Đã xoá");
+    loadShopsOrListings();
+  } catch (err) {
+    toast(err.message, "error");
+  }
+}
+
+// ─── Users ────────────────────────────────────────────
+async function loadConfig() {
+  try {
+    const res = await fetch("/admin/api/config");
+    state.config = await res.json();
+    renderUsers();
+  } catch (err) {
+    toast("Không tải được config", "error");
+  }
+}
+
+function renderUsers() {
+  const users = state.config.users || [];
+  const isAdmin = state.user.role === "admin";
+  const canEdit = state.user.role !== "viewer";
+  if (users.length === 0) {
+    $("#usersTableWrap").innerHTML = '<div class="empty">Chưa có user</div>';
+    return;
+  }
+  $("#usersTableWrap").innerHTML = users.map((u, i) => `
+    <div style="border:1px solid var(--border); border-radius: 12px; padding: 16px; margin-bottom: 14px; background: var(--bg-elev);">
+      <div style="display: grid; grid-template-columns: 1fr 1fr 160px; gap: 12px;">
+        <label class="field"><span>Username</span>
+          <input value="${escapeHtml(u.username)}" data-i="${i}" data-field="username" ${isAdmin?'':'disabled'} />
+        </label>
+        <label class="field"><span>Mật khẩu mới <span style="color:var(--text-mute);">(rỗng = giữ nguyên)</span></span>
+          <input type="password" placeholder="••••••" data-i="${i}" data-field="password" ${canEdit?'':'disabled'} />
+        </label>
+        <label class="field"><span>Role</span>
+          <select data-i="${i}" data-field="role" ${isAdmin?'':'disabled'}>
+            <option value="admin" ${u.role==='admin'?'selected':''}>admin</option>
+            <option value="editor" ${u.role==='editor'?'selected':''}>editor</option>
+            <option value="viewer" ${u.role==='viewer'?'selected':''}>viewer</option>
+          </select>
+        </label>
+      </div>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+        <label class="field"><span>📥 Download Dir <span style="color:var(--text-mute);">(nơi scraper tải về)</span></span>
+          <input value="${escapeHtml(u.downloadDir||'')}" placeholder="C:/Users/UserA/Downloads (rỗng = dùng env)" data-i="${i}" data-field="downloadDir" ${canEdit?'':'disabled'} />
+        </label>
+        <label class="field"><span>📂 Base SheinAuto Dir <span style="color:var(--text-mute);">(nơi quản lý shop)</span></span>
+          <input value="${escapeHtml(u.baseSheinAutoDir||'')}" placeholder="C:/Users/UserA/Downloads/SheinAuto (rỗng = dùng env)" data-i="${i}" data-field="baseSheinAutoDir" ${canEdit?'':'disabled'} />
+        </label>
+      </div>
+      <label class="field"><span>Profiles <span style="color:var(--text-mute);">(list shop tách dòng/phẩy — rỗng = tất cả trong base dir)</span></span>
+        <textarea rows="2" placeholder="P5-014&#10;P5-008" data-i="${i}" data-field="profiles" ${canEdit?'':'disabled'}>${escapeHtml((u.profiles||[]).join('\n'))}</textarea>
+      </label>
+      ${isAdmin?`<div style="text-align:right; margin-top:6px;"><button class="btn btn-danger" onclick="removeUser(${i})">🗑 Xoá user</button></div>`:''}
+    </div>
+  `).join('');
+  document.querySelectorAll("[data-field]").forEach((el) => {
+    el.oninput = () => {
+      const i = +el.dataset.i;
+      const f = el.dataset.field;
+      if (f === "profiles") {
+        state.config.users[i].profiles = el.value.split(/\r?\n|,/).map(s => s.trim()).filter(Boolean);
+      } else {
+        state.config.users[i][f] = el.value;
+      }
+    };
+  });
+}
+
+function addUser() {
+  state.config.users.push({ username: "", password: "", role: "editor", profiles: [] });
+  renderUsers();
+}
+function removeUser(i) {
+  if (!confirm("Xoá user này?")) return;
+  state.config.users.splice(i, 1);
+  renderUsers();
+}
+async function saveConfig() {
+  try {
+    const res = await fetch("/admin/api/config", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(state.config),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+    state.config = data;
+    renderUsers();
+    toast("Đã lưu cấu hình");
+  } catch (err) {
+    toast("Lưu thất bại: " + err.message, "error");
+  }
+}
+
+// ─── Settings ─────────────────────────────────────────
+async function loadSettings() {
+  try {
+    const res = await fetch("/admin/api/settings");
+    const data = await res.json();
+    state.settings = data;
+    $("#setConcurrency").value = data.concurrency;
+    $("#setHeadless").value = String(data.headless);
+    $("#setCronFileRouter").value = data.fileRouterCron;
+    $("#setCronQueueManager").value = data.queueManagerCron;
+    $("#setImgWait").value = data.overrides?.imageUploadWaitPerImageMs ?? 7000;
+    $("#setImgMax").value = data.overrides?.imageUploadMaxImages ?? 9;
+    $("#setDescImg").value = data.overrides?.descriptionImagesCount ?? 8;
+    $("#setDescAttr").value = data.overrides?.descriptionMaxAttributes ?? 8;
+    $("#rtDownload").textContent = data.downloadDir;
+    $("#rtBase").textContent = data.baseSheinAutoDir;
+    $("#rtGemini").innerHTML = data.geminiApiKeySet
+      ? '<span class="badge badge-success">đã set</span>'
+      : '<span class="badge badge-danger">chưa set</span>';
+    $("#rtTelegram").innerHTML = data.telegram.enabled
+      ? '<span class="badge badge-success">đã set</span>'
+      : '<span class="badge badge-warn">chưa set</span>';
+  } catch {
+    toast("Không tải được settings", "error");
+  }
+}
+
+async function saveSettings() {
+  if (state.user.role !== "admin") return toast("Chỉ admin mới sửa được", "error");
+  try {
+    const body = {
+      concurrency: Number($("#setConcurrency").value),
+      headless: $("#setHeadless").value === "true",
+      fileRouterCron: $("#setCronFileRouter").value,
+      queueManagerCron: $("#setCronQueueManager").value,
+      imageUploadWaitPerImageMs: Number($("#setImgWait").value),
+      imageUploadMaxImages: Number($("#setImgMax").value),
+      descriptionImagesCount: Number($("#setDescImg").value),
+      descriptionMaxAttributes: Number($("#setDescAttr").value),
+    };
+    const res = await fetch("/admin/api/settings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+    toast("Đã lưu settings. Cron schedule có thể cần restart để áp dụng.");
+  } catch (err) {
+    toast(err.message, "error");
+  }
+}
+
+// ─── Brand mapping ────────────────────────────────────
+state.brands = { default: "LUSHLACE", profiles: {} };
+
+async function loadBrands() {
+  try {
+    const res = await fetch("/admin/api/brands");
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+    state.brands = { default: data.default, profiles: data.profiles || {} };
+    $("#brandDefault").value = state.brands.default;
+    renderBrands();
+  } catch (err) {
+    toast("Không tải được brands: " + err.message, "error");
+  }
+}
+
+function renderBrands() {
+  const entries = Object.entries(state.brands.profiles);
+  if (entries.length === 0) {
+    $("#brandsTableWrap").innerHTML = '<div class="empty">Chưa có mapping nào</div>';
+    return;
+  }
+  const isAdmin = state.user.role === "admin";
+  $("#brandsTableWrap").innerHTML = `
+    <table>
+      <thead><tr><th>Profile</th><th>Brand</th>${isAdmin?'<th></th>':''}</tr></thead>
+      <tbody>
+        ${entries.map(([profile, brand], i) => `
+          <tr>
+            <td><input value="${escapeHtml(profile)}" data-brand-i="${i}" data-brand-key="profile" placeholder="P5-014_US" ${isAdmin?'':'disabled'} /></td>
+            <td><input value="${escapeHtml(brand)}" data-brand-i="${i}" data-brand-key="brand" placeholder="LUSHLACE" ${isAdmin?'':'disabled'} /></td>
+            ${isAdmin?`<td style="width:60px;"><button class="btn btn-danger btn-icon" onclick="removeBrandRow(${i})">🗑</button></td>`:''}
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+  `;
+  document.querySelectorAll("[data-brand-i]").forEach((el) => {
+    el.oninput = () => {
+      // Rebuild brands object từ DOM hiện tại để tránh stale state
+      const rows = $("#brandsTableWrap").querySelectorAll("tbody tr");
+      const next = {};
+      rows.forEach((row) => {
+        const p = row.querySelector('[data-brand-key="profile"]').value.trim();
+        const b = row.querySelector('[data-brand-key="brand"]').value.trim();
+        if (p) next[p] = b;
+      });
+      state.brands.profiles = next;
+    };
+  });
+}
+
+function addBrandRow() {
+  state.brands.profiles[""] = "";
+  renderBrands();
+  // Focus dòng vừa thêm
+  const lastRow = $("#brandsTableWrap").querySelector("tbody tr:last-child input");
+  if (lastRow) lastRow.focus();
+}
+
+function removeBrandRow(i) {
+  const keys = Object.keys(state.brands.profiles);
+  delete state.brands.profiles[keys[i]];
+  renderBrands();
+}
+
+async function saveBrands() {
+  if (state.user.role !== "admin") return toast("Chỉ admin", "error");
+  try {
+    state.brands.default = $("#brandDefault").value.trim() || "LUSHLACE";
+    const res = await fetch("/admin/api/brands", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(state.brands),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+    toast(`Đã lưu ${Object.keys(state.brands.profiles).length} mapping + default ${data.default}`);
+  } catch (err) {
+    toast(err.message, "error");
+  }
+}
+
+// ─── Cookie ───────────────────────────────────────────
+async function saveCookie() {
+  try {
+    const raw = $("#cookieJson").value.trim();
+    if (!raw) throw new Error("Cookie rỗng");
+    const arr = JSON.parse(raw);
+    if (!Array.isArray(arr)) throw new Error("Cookie phải là JSON array");
+    const res = await fetch("/admin/api/cookie", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ cookie: arr }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+    toast(`Đã lưu ${data.count} cookie`);
+    $("#cookieJson").value = "";
+  } catch (err) {
+    toast(err.message, "error");
+  }
+}
+
+async function testCookie() {
+  $("#cookieTestResult").innerHTML = '<div style="color:var(--text-mute);margin-top:10px;">Đang test (mở Chromium headless)…</div>';
+  try {
+    const res = await fetch("/admin/api/cookie/test", { method: "POST" });
+    const data = await res.json();
+    if (data.ok) {
+      $("#cookieTestResult").innerHTML = `<div style="margin-top:10px;"><span class="badge badge-success">✓ Cookie hợp lệ</span> <span style="color:var(--text-mute);">(${escapeHtml(data.finalUrl)})</span></div>`;
+    } else {
+      $("#cookieTestResult").innerHTML = `<div style="margin-top:10px;"><span class="badge badge-danger">✕ Không hợp lệ</span> <span style="color:var(--text-mute);">${escapeHtml(data.finalUrl || data.error || '')}</span></div>`;
+    }
+  } catch (err) {
+    $("#cookieTestResult").innerHTML = `<div style="margin-top:10px;"><span class="badge badge-danger">✕ Lỗi</span> ${escapeHtml(err.message)}</div>`;
+  }
+}
+
+bootstrap();
+</script>
+</body>
+</html>

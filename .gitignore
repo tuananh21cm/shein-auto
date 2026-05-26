@@ -1,0 +1,21 @@
+node_modules/
+dist/
+
+# Secrets - KHÔNG được commit
+.env
+src/cookies/listing4sellerCookie.json
+
+# Runtime data
+data/admin-config.json
+data/history.json
+data/settings.json
+data/cache/
+data/screenshots/
+
+# Worker temp
+*.log
+temp_failed_cleanup/
+temp_images_*/
+temp_variants_*/
+temp_size_chart_*.png
+.last_folder.txt

@@ -1,0 +1,11 @@
+{
+  "_comment": "concurrency: số browser chạy song song. 1 = sequential như cũ.",
+  "concurrency": 1,
+  "headless": false,
+  "fileRouterCron": "*/30 * * * * *",
+  "queueManagerCron": "*/1 * * * *",
+  "imageUploadWaitPerImageMs": 7000,
+  "imageUploadMaxImages": 9,
+  "descriptionImagesCount": 8,
+  "descriptionMaxAttributes": 8
+}

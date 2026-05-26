@@ -1,0 +1,12 @@
+{
+  "_comment": "Formula: finalPrice = (originalPrice + offset) / divisor. offset = profit buffer + shipping. divisor = profit margin factor (0.623 => ~37.7% margin).",
+  "offset": 13,
+  "divisor": 0.623,
+  "defaultQty": 5,
+  "defaultWeight": "0.3",
+  "defaultDimensions": {
+    "length": "9",
+    "width": "1",
+    "height": "6"
+  }
+}

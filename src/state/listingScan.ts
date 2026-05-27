@@ -20,6 +20,8 @@ export interface ListingCard {
   scrapedAt: string | null;
   mtimeMs: number;
   errorMessage?: string;
+  /** URL relative để load screenshot debug (vd "/admin/data/screenshots/xxx.png") */
+  screenshotUrl?: string;
 }
 
 export interface ShopSummary {
@@ -106,12 +108,19 @@ const parseListingFile = async (
     const variantCount = colors * sizes || colors || sizes || 0;
 
     let errorMessage: string | undefined;
+    let screenshotUrl: string | undefined;
     if (status === "fail") {
       const logPath = `${filePath}.error.log`;
       if (await fs.pathExists(logPath)) {
         try {
           const log = await fs.readFile(logPath, "utf-8");
           errorMessage = log.length > 800 ? log.slice(0, 800) + "..." : log;
+          // Parse "Screenshot: <path>" line từ error log
+          const m = log.match(/Screenshot:\s*([^\r\n]+\.png)/i);
+          if (m) {
+            const scFileName = path.basename(m[1].trim());
+            screenshotUrl = `/admin/data/screenshots/${scFileName}`;
+          }
         } catch {
           // ignore
         }
@@ -133,6 +142,7 @@ const parseListingFile = async (
       scrapedAt: typeof data.scraped_at === "string" ? data.scraped_at : null,
       mtimeMs: stat.mtimeMs,
       errorMessage,
+      screenshotUrl,
     };
   } catch {
     return null;
@@ -343,7 +353,11 @@ export const resolveListingPath = async (
   if (!file.toLowerCase().endsWith(".json")) return null;
 
   const allDirs = await getAllUserDirs();
-  const dir = allDirs.find((d) => d.username.split(",").includes(owner));
+  // owner trong id có thể là dạng merged "a,b,c" (do dedup baseDir) hoặc single "a".
+  // Thử direct equality trước, sau đó fallback substring includes.
+  const dir =
+    allDirs.find((d) => d.username === owner) ||
+    allDirs.find((d) => d.username.split(",").includes(owner));
   if (!dir) return null;
 
   const subdir = STATUS_TO_SUBDIR[status];

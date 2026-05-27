@@ -1,13 +1,22 @@
 /**
- * Test cookie 4Seller: mở Chromium, navigate đến create page, in URL cuối.
+ * Test cookie 4Seller của 1 user.
+ * Usage: npx tsx src/scripts/testCookie.ts --user=admin
  */
 import "dotenv/config";
 import { chromium } from "playwright-core";
 import { configCookie } from "../utils/configCookie";
 
 const main = async () => {
-  console.log("▶️ Test cookie 4Seller...");
-  const cookie = await configCookie();
+  const args = process.argv.slice(2);
+  const userArg = args.find((a) => a.startsWith("--user="));
+  const username = userArg?.slice("--user=".length);
+  if (!username) {
+    console.error("Usage: npx tsx src/scripts/testCookie.ts --user=<username>");
+    process.exit(1);
+  }
+
+  console.log(`▶️ Test cookie 4Seller cho user "${username}"...`);
+  const cookie = await configCookie(username);
   console.log(`🍪 Loaded ${cookie.length} cookies`);
 
   const browser = await chromium.launch({ headless: true });

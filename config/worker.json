@@ -1,5 +1,6 @@
 {
-  "_comment": "concurrency: số browser chạy song song. 1 = sequential như cũ.",
+  "_comment": "concurrency: số browser chạy song song. 1 = sequential như cũ. autoCron: bật/tắt cron tự động.",
+  "autoCron": true,
   "concurrency": 1,
   "headless": false,
   "fileRouterCron": "*/30 * * * * *",

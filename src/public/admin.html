@@ -168,6 +168,10 @@
     .listing-card .price { font-size: 1.05rem; font-weight: 700; color: var(--accent); }
     .listing-card .meta { display: flex; gap: 6px; flex-wrap: wrap; font-size: 0.72rem; color: var(--text-mute); }
     .listing-card .meta .pill { background: var(--bg-elev); border: 1px solid var(--border); padding: 2px 8px; border-radius: 999px; }
+    .listing-card .select-cb { position: absolute; top: 8px; left: 8px; z-index: 5; width: 20px; height: 20px; cursor: pointer; accent-color: var(--accent); background: rgba(0,0,0,0.55); border-radius: 4px; }
+    .listing-card.selected { outline: 3px solid var(--accent); outline-offset: -2px; }
+    .bulk-bar { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); background: var(--bg-card); border: 1px solid var(--accent); border-radius: 14px; padding: 12px 18px; display: flex; align-items: center; gap: 14px; box-shadow: 0 10px 40px rgba(0,0,0,0.4); z-index: 400; }
+    .bulk-bar .count { font-weight: 700; color: var(--accent); }
     .listing-card .time-row { display: flex; align-items: center; gap: 6px; padding: 0 12px 8px; font-size: 0.72rem; color: var(--text-mute); }
     .listing-card .time-row .scraped { margin-left: auto; opacity: 0.7; }
     .shop-card .last-time { padding: 0 16px 12px; font-size: 0.78rem; color: var(--text-mute); display: flex; align-items: center; gap: 6px; }
@@ -177,7 +181,7 @@
     .listing-card .actions button.retry { background: var(--accent); color: white; border-color: var(--accent); }
     .listing-card .actions button.retry:hover { opacity: 0.92; }
     .listing-card .actions button.delete:hover { background: var(--danger-soft); color: var(--danger); border-color: var(--danger); }
-    .listing-card .error-snippet { padding: 8px 12px 12px; font-size: 0.72rem; color: var(--danger); font-family: 'JetBrains Mono', monospace; max-height: 60px; overflow: hidden; line-height: 1.3; }
+    .listing-card .error-snippet { padding: 8px 12px; margin: 0 12px 8px; font-size: 0.72rem; color: var(--danger); font-family: 'JetBrains Mono', monospace; line-height: 1.4; background: var(--danger-soft); border-radius: 6px; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; cursor: help; }
 
     .empty { text-align: center; padding: 40px; color: var(--text-mute); }
     .view { display: none; }
@@ -203,7 +207,7 @@
     <div class="nav-item" data-view="users">
       <span class="ico">👥</span><span>Users</span>
     </div>
-    <div class="nav-item" data-view="settings">
+    <div class="nav-item" data-view="settings" data-admin-only="1">
       <span class="ico">⚙️</span><span>Settings</span>
     </div>
     <div class="nav-item" data-view="cookie">
@@ -260,7 +264,10 @@
           <h1>Listings</h1>
           <div class="subtitle" id="listingsSubtitle">Click shop để xem danh sách listing</div>
         </div>
-        <button class="btn btn-ghost" id="listingsRefreshBtn" onclick="loadShopsOrListings()">Refresh</button>
+        <div style="display: flex; gap: 8px;">
+          <button class="btn btn-primary" id="createShopBtn" onclick="openCreateShop()">+ Tạo shop</button>
+          <button class="btn btn-ghost" id="listingsRefreshBtn" onclick="loadShopsOrListings()">Refresh</button>
+        </div>
       </div>
 
       <!-- View 1: Shop summary cards (mặc định) -->
@@ -341,7 +348,23 @@
         </div>
         <button class="btn btn-primary" onclick="saveSettings()">Lưu</button>
       </div>
-      <div class="card">
+      <div class="card" style="background: linear-gradient(135deg, var(--bg-card), var(--bg-elev)); border-left: 4px solid var(--accent);">
+        <div style="display:flex; align-items:center; justify-content:space-between;">
+          <div>
+            <h3 style="margin:0 0 4px;">⏰ Tự động chạy (Cron)</h3>
+            <div style="color: var(--text-mute); font-size: 0.85rem;">
+              Bật = file router + queue manager tự chạy theo lịch.<br>
+              Tắt = chỉ chạy khi user bấm "Run now" trên UI.
+            </div>
+          </div>
+          <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+            <input type="checkbox" id="setAutoCron" style="width: 20px; height: 20px;" />
+            <span id="setAutoCronLabel" style="font-weight:600;">—</span>
+          </label>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top: 18px;">
         <div class="grid grid-2">
           <label class="field"><span>Concurrency (số browser song song)</span>
             <input type="number" id="setConcurrency" min="1" max="10" />
@@ -372,6 +395,25 @@
           </label>
         </div>
       </div>
+      <div class="card" style="margin-top:18px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+          <h3 style="margin:0;">💰 Pricing formula <span style="color:var(--text-mute); font-weight:400; font-size:0.85rem;">(price + shipFee) × multiplier + extra</span></h3>
+          <button class="btn btn-primary" onclick="savePricing()">Lưu pricing</button>
+        </div>
+        <div class="grid grid-3">
+          <label class="field"><span>📦 Ship fee <span style="color:var(--text-mute);">(cộng vào giá gốc — vd $5)</span></span>
+            <input type="number" step="0.01" id="setShipFee" oninput="previewPrice()" />
+          </label>
+          <label class="field"><span>📈 Multiplier <span style="color:var(--text-mute);">(margin — vd 1.6 = +60%)</span></span>
+            <input type="number" step="0.01" id="setMultiplier" oninput="previewPrice()" />
+          </label>
+          <label class="field"><span>➕ Extra add <span style="color:var(--text-mute);">(cộng cuối)</span></span>
+            <input type="number" step="0.01" id="setExtraAdd" oninput="previewPrice()" />
+          </label>
+        </div>
+        <div id="pricingPreview" style="margin-top: 10px; padding: 10px 14px; background: var(--bg-elev); border-radius: 8px; font-family: 'JetBrains Mono', monospace; font-size: 0.88rem; color: var(--text);"></div>
+      </div>
+
       <div class="card" style="margin-top:18px;">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
           <h3 style="margin:0;">🏷️ Brand mapping theo shop profile</h3>
@@ -410,13 +452,14 @@
       <div class="page-head">
         <div>
           <h1>Cookie 4Seller</h1>
-          <div class="subtitle">Update cookie khi 4Seller logout</div>
+          <div class="subtitle" id="cookieSubtitle">Mỗi user có cookie 4Seller riêng (data/cookies/&lt;user&gt;.json)</div>
         </div>
         <div style="display:flex; gap:8px;">
           <button class="btn btn-ghost" onclick="testCookie()">Test cookie</button>
           <button class="btn btn-primary" onclick="saveCookie()">Lưu cookie</button>
         </div>
       </div>
+      <div class="card" id="cookieStatusCard" style="margin-bottom: 14px;"></div>
       <div class="card">
         <label class="field">
           <span>Paste JSON cookie (export từ Cookie-Editor extension)</span>
@@ -513,7 +556,8 @@ document.querySelectorAll(".nav-item").forEach((item) => {
     if (view === "history") loadHistory();
     if (view === "listings") loadShopsOrListings();
     if (view === "users") renderUsers();
-    if (view === "settings") { loadSettings(); loadBrands(); }
+    if (view === "settings") { loadSettings(); loadBrands(); loadPricing(); }
+    if (view === "cookie") loadCookieStatus();
   };
 });
 
@@ -530,6 +574,10 @@ async function bootstrap() {
     const isAdmin = state.user.role === "admin";
     $("#btnAddUser").style.display = isAdmin ? "" : "none";
     $("#btnSaveUsers").disabled = !canEdit;
+    // Ẩn nav items có data-admin-only nếu không phải admin
+    document.querySelectorAll('.nav-item[data-admin-only]').forEach((el) => {
+      if (!isAdmin) el.style.display = 'none';
+    });
 
     await Promise.all([refreshDashboard(), loadConfig()]);
     connectSSE();
@@ -820,6 +868,8 @@ function enterShopDetail(folder, owner) {
 
 function exitShopDetail() {
   state.listings.selectedShop = null;
+  state.listings.selected = new Set();
+  renderBulkBar();
   $("#shopsView").style.display = "";
   $("#listingsDetailView").style.display = "none";
   loadShops();
@@ -879,13 +929,27 @@ function renderListings() {
     return `${pr.currency}${pr.min.toFixed(2)} – ${pr.currency}${pr.max.toFixed(2)}`;
   };
 
+  const pendingCount = items.filter((i) => i.status === "pending").length;
+  const selectedCount = state.listings.selected?.size ?? 0;
+  const toolbar = pendingCount > 0 && canEdit ? `
+    <div style="display:flex; align-items:center; gap:10px; margin-bottom: 12px; padding: 10px 14px; background: var(--bg-elev); border-radius: 8px; font-size: 0.85rem;">
+      <button class="btn btn-ghost" onclick="selectAllPending()" style="padding: 5px 12px;">☑ Chọn tất cả pending (${pendingCount})</button>
+      <button class="btn btn-ghost" onclick="clearListingSelect()" style="padding: 5px 12px;">Bỏ chọn</button>
+      <span style="color: var(--text-mute);">Tick vào checkbox góc trái card để chọn từng cái</span>
+    </div>` : '';
+
   $("#listingsGrid").innerHTML =
+    toolbar +
     '<div class="listings-grid">' +
     items
       .map((it) => {
         const idEnc = encodeURIComponent(it.id);
+        const isSelected = state.listings.selected?.has(it.id);
         return `
-        <div class="listing-card">
+        <div class="listing-card${isSelected ? ' selected' : ''}">
+          ${it.status === "pending" && canEdit
+            ? `<input type="checkbox" class="select-cb listing-select-cb" data-id="${escapeHtml(it.id)}" ${isSelected ? 'checked' : ''} onclick="toggleListingSelect('${idEnc}', this.checked); event.stopPropagation();" />`
+            : ''}
           <div class="img-wrap">
             ${it.image
               ? `<img src="${escapeHtml(it.image)}" alt="" loading="lazy" onerror="this.parentElement.innerHTML='<div class=&quot;placeholder&quot;>(no image)</div>'" />`
@@ -901,13 +965,19 @@ function renderListings() {
               <span class="pill">${it.colorCount}c × ${it.sizeCount}s</span>
             </div>
           </div>
-          ${it.errorMessage ? `<div class="error-snippet" title="${escapeHtml(it.errorMessage)}">${escapeHtml(it.errorMessage.split("\\n").slice(2).join(" ").slice(0, 140))}</div>` : ""}
+          ${it.errorMessage ? (() => {
+            // Bỏ dòng timestamp đầu, lấy phần message chính, giới hạn 200 char
+            const msg = it.errorMessage.replace(/^\d{4}-\d{2}-\d{2}T[^\n]+\n+/, "").trim();
+            const firstLines = msg.split("\n").slice(0, 3).join(" ").slice(0, 200);
+            return `<div class="error-snippet" title="Click View để xem đầy đủ\n\n${escapeHtml(msg)}">⚠️ ${escapeHtml(firstLines)}</div>`;
+          })() : ""}
           <div class="time-row">
             <span title="${escapeHtml(absTime(it.mtimeMs))}">⏱ ${escapeHtml(relTime(it.mtimeMs))}</span>
             ${it.scrapedAt ? `<span class="scraped" title="Scraped at ${escapeHtml(new Date(it.scrapedAt).toLocaleString())}">📦 ${escapeHtml(relTime(new Date(it.scrapedAt).getTime()))}</span>` : ""}
           </div>
           <div class="actions">
             <button onclick="viewListing('${idEnc}')">View</button>
+            ${it.status === "pending" && canEdit ? `<button class="retry" onclick="openRunNow('${idEnc}')">▶ Run</button>` : ""}
             ${it.status === "fail" && canEdit ? `<button class="retry" onclick="retryListing('${idEnc}')">↻ Retry</button>` : ""}
             ${isAdmin ? `<button class="delete" onclick="deleteListing('${idEnc}')">🗑</button>` : ""}
           </div>
@@ -925,8 +995,231 @@ async function viewListing(idEnc) {
     const data = await res.json();
     if (!res.ok) throw new Error(data.error);
     $("#modalTitle").textContent = id;
-    $("#modalBody").innerHTML = `<div class="json-view">${escapeHtml(JSON.stringify(data.content, null, 2))}</div>`;
+
+    // Tìm card metadata trong state để lấy errorMessage + status
+    const card = (state.listings.items || []).find((it) => it.id === id);
+    let errorBlock = "";
+    if (card && card.status === "fail" && card.errorMessage) {
+      const formatted = card.errorMessage.replace(/^\d{4}-\d{2}-\d{2}T[^\n]+\n+/, "").trim();
+      const screenshot = card.screenshotUrl
+        ? `<div style="margin-top: 12px;">
+             <div style="color: var(--text-mute); font-size: 0.82rem; margin-bottom: 6px;">📸 Screenshot debug (click ảnh để mở size đầy đủ):</div>
+             <a href="${escapeHtml(card.screenshotUrl)}" target="_blank">
+               <img src="${escapeHtml(card.screenshotUrl)}" alt="screenshot debug" style="max-width: 100%; border: 1px solid var(--border); border-radius: 8px; display: block;" />
+             </a>
+           </div>`
+        : "";
+      errorBlock = `
+        <div style="background: var(--danger-soft); border: 1px solid var(--danger); padding: 14px 16px; border-radius: 10px; margin-bottom: 14px;">
+          <div style="display:flex; align-items:center; gap:8px; margin-bottom: 8px;">
+            <span class="badge badge-danger">✕ FAIL</span>
+            <strong style="color: var(--danger);">Lỗi đăng listing</strong>
+          </div>
+          <pre style="margin:0; white-space:pre-wrap; word-break:break-word; font-size:0.82rem; color: var(--text);">${escapeHtml(formatted)}</pre>
+          ${screenshot}
+        </div>
+      `;
+    } else if (card && card.status === "success") {
+      errorBlock = `<div style="margin-bottom: 14px;"><span class="badge badge-success">✓ Đã đăng thành công</span></div>`;
+    }
+
+    $("#modalBody").innerHTML = `
+      ${errorBlock}
+      <details ${card?.status === "fail" ? "" : "open"}>
+        <summary style="cursor:pointer; color: var(--text-mute); margin-bottom: 10px;">📄 JSON gốc của sản phẩm</summary>
+        <div class="json-view">${escapeHtml(JSON.stringify(data.content, null, 2))}</div>
+      </details>
+    `;
     $("#modalBg").classList.add("show");
+  } catch (err) {
+    toast(err.message, "error");
+  }
+}
+
+// ─── Bulk select cho pending listings ────────────────
+function toggleListingSelect(idEnc, checked) {
+  const id = decodeURIComponent(idEnc);
+  if (!state.listings.selected) state.listings.selected = new Set();
+  if (checked) state.listings.selected.add(id);
+  else state.listings.selected.delete(id);
+  renderBulkBar();
+  // Update card outline without re-render
+  document.querySelectorAll('.listing-card').forEach((card) => {
+    const cb = card.querySelector('.listing-select-cb');
+    if (!cb) return;
+    if (cb.checked) card.classList.add('selected'); else card.classList.remove('selected');
+  });
+}
+
+function selectAllPending() {
+  if (!state.listings.selected) state.listings.selected = new Set();
+  for (const it of (state.listings.items || [])) {
+    if (it.status === "pending") state.listings.selected.add(it.id);
+  }
+  renderListings();
+  renderBulkBar();
+}
+
+function clearListingSelect() {
+  state.listings.selected = new Set();
+  renderListings();
+  renderBulkBar();
+}
+
+function renderBulkBar() {
+  const n = state.listings.selected?.size ?? 0;
+  let bar = document.getElementById('bulkBar');
+  if (n === 0) { if (bar) bar.remove(); return; }
+  if (!bar) {
+    bar = document.createElement('div');
+    bar.id = 'bulkBar';
+    bar.className = 'bulk-bar';
+    document.body.appendChild(bar);
+  }
+  bar.innerHTML = `
+    <span class="count">✓ ${n} đã chọn</span>
+    <button class="btn btn-primary" onclick="runBatch()">▶ Run ${n} listing</button>
+    <button class="btn btn-ghost" onclick="clearListingSelect()">Bỏ chọn</button>
+  `;
+}
+
+async function runBatch() {
+  const ids = Array.from(state.listings.selected || []);
+  if (ids.length === 0) return;
+  if (!confirm(`Chạy worker cho ${ids.length} listing pending? Mỗi file chạy trên shop hiện tại của nó.`)) return;
+  try {
+    const res = await fetch("/admin/api/listings/run-batch", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+    const skipMsg = data.skipped?.length ? ` (bỏ qua ${data.skipped.length})` : '';
+    toast(`▶ Spawn ${data.spawned.length} worker${skipMsg}`);
+    state.listings.selected = new Set();
+    renderBulkBar();
+    setTimeout(loadShopsOrListings, 1500);
+  } catch (err) {
+    toast(err.message, "error");
+  }
+}
+
+function openCreateShop() {
+  if (state.user.role === "viewer") return toast("Viewer không thể tạo shop", "error");
+  $("#modalTitle").textContent = "+ Tạo shop mới";
+  $("#modalBody").innerHTML = `
+    <div style="color: var(--text-mute); font-size: 0.88rem; margin-bottom: 12px;">
+      Tạo folder shop mới trong base directory của bạn. Worker sẽ scan folder này khi có file JSON mới.
+    </div>
+    <label class="field"><span>Tên shop <span style="color:var(--text-mute);">(format: P5-014 hoặc P5-014_DE/_US/_UK/_FR/_IT/_ES)</span></span>
+      <input id="newShopName" placeholder="P5-100" autocomplete="off" autofocus style="font-family: 'JetBrains Mono', monospace;" />
+    </label>
+    <div id="createShopError" style="color: var(--danger); font-size: 0.82rem; margin-top: 4px; min-height: 18px;"></div>
+    <div style="display:flex; gap:8px; margin-top: 16px;">
+      <button class="btn btn-ghost" onclick="closeModal()" style="flex:1;">Cancel</button>
+      <button class="btn btn-primary" onclick="confirmCreateShop()" style="flex:1;">+ Tạo</button>
+    </div>
+  `;
+  $("#modalBg").classList.add("show");
+  setTimeout(() => $("#newShopName")?.focus(), 100);
+  $("#newShopName")?.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") confirmCreateShop();
+  });
+}
+
+async function confirmCreateShop() {
+  const shop = $("#newShopName").value.trim().toUpperCase();
+  const errEl = $("#createShopError");
+  errEl.textContent = "";
+
+  if (!/^P\d-\d{3}(_[A-Z]{2})?$/i.test(shop)) {
+    errEl.textContent = "Tên không hợp lệ. Vd hợp lệ: P5-014, P5-014_DE";
+    return;
+  }
+  try {
+    const res = await fetch("/admin/api/listings/create-shop", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ shop }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+    closeModal();
+    const profileMsg = data.appendedToProfiles ? " (đã thêm vào profiles của bạn)" : "";
+    toast(`✓ Đã tạo shop ${shop}${profileMsg}`);
+    loadShopsOrListings();
+  } catch (err) {
+    errEl.textContent = err.message;
+  }
+}
+
+async function openRunNow(idEnc) {
+  const id = decodeURIComponent(idEnc);
+  const card = (state.listings.items || []).find((it) => it.id === id);
+  if (!card) return toast("Không tìm thấy listing", "error");
+
+  // Load shops list từ summary (lấy danh sách shop user có)
+  let shopsAvail = state.listings.shops || [];
+  if (shopsAvail.length === 0) {
+    try {
+      const res = await fetch("/admin/api/listings/shops");
+      const data = await res.json();
+      shopsAvail = (data.shops || []).filter((s) => s.owner.split(",").includes(state.user.username) || state.user.role === "admin");
+      state.listings.shops = shopsAvail;
+    } catch {}
+  }
+
+  // Chỉ lấy shops thuộc cùng owner với listing
+  const ownerShops = shopsAvail.filter((s) => s.owner === card.owner);
+  if (ownerShops.length === 0) {
+    return toast("Không có shop nào của owner này", "error");
+  }
+
+  $("#modalTitle").textContent = `▶ Run: ${card.title.slice(0, 60)}`;
+  $("#modalBody").innerHTML = `
+    <div style="color: var(--text-mute); font-size: 0.88rem; margin-bottom: 10px;">
+      Chọn shop(s) để đăng. Shop khác shop gốc sẽ được copy JSON trước khi chạy.
+    </div>
+    <div style="font-size: 0.82rem; margin-bottom: 14px;">
+      <strong>File:</strong> <code>${escapeHtml(card.file)}</code> &nbsp;·&nbsp;
+      <strong>Owner:</strong> <code>${escapeHtml(card.owner)}</code> &nbsp;·&nbsp;
+      <strong>Shop hiện tại:</strong> <code>${escapeHtml(card.folder)}</code>
+    </div>
+    <div id="runNowShops" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 6px; max-height: 280px; overflow-y: auto; padding: 8px; background: var(--bg-elev); border-radius: 8px;">
+      ${ownerShops.map((s) => `
+        <label style="display:flex; align-items:center; gap:6px; padding: 6px 10px; background: var(--bg-card); border-radius: 6px; cursor: pointer; font-size: 0.85rem;">
+          <input type="checkbox" class="runnow-shop-cb" value="${escapeHtml(s.folder)}" ${s.folder === card.folder ? 'checked' : ''} />
+          <code>${escapeHtml(s.folder)}</code>
+          <span style="color: var(--text-mute); font-size: 0.75rem; margin-left: auto;">⏳${s.pending}·✓${s.success}</span>
+        </label>
+      `).join('')}
+    </div>
+    <div style="display:flex; gap:8px; margin-top: 16px;">
+      <button class="btn btn-ghost" onclick="closeModal()" style="flex:1;">Cancel</button>
+      <button class="btn btn-primary" onclick="confirmRunNow('${idEnc}')" style="flex:1;">▶ RUN</button>
+    </div>
+  `;
+  $("#modalBg").classList.add("show");
+}
+
+async function confirmRunNow(idEnc) {
+  const id = decodeURIComponent(idEnc);
+  const shops = Array.from(document.querySelectorAll(".runnow-shop-cb:checked")).map((cb) => cb.value);
+  if (shops.length === 0) return toast("Chọn ít nhất 1 shop", "error");
+
+  try {
+    const res = await fetch("/admin/api/listings/run-now", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, shops }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+    closeModal();
+    const skipMsg = data.skipped?.length ? ` (bỏ qua ${data.skipped.length})` : '';
+    toast(`▶ Đã spawn worker cho ${data.spawned.length} shop${skipMsg}`);
+    setTimeout(loadShopsOrListings, 1500);
   } catch (err) {
     toast(err.message, "error");
   }
@@ -1006,41 +1299,237 @@ function renderUsers() {
       </div>
       <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
         <label class="field"><span>📥 Download Dir <span style="color:var(--text-mute);">(nơi scraper tải về)</span></span>
-          <input value="${escapeHtml(u.downloadDir||'')}" placeholder="C:/Users/UserA/Downloads (rỗng = dùng env)" data-i="${i}" data-field="downloadDir" ${canEdit?'':'disabled'} />
+          <div style="display:flex; gap:6px;">
+            <input style="flex:1;" value="${escapeHtml(u.downloadDir||'')}" placeholder="C:/Users/UserA/Downloads (rỗng = dùng env)" data-i="${i}" data-field="downloadDir" ${canEdit?'':'disabled'} />
+            <button class="btn btn-ghost" style="white-space:nowrap;" onclick="testUserPath(${i}, 'downloadDir')" ${canEdit?'':'disabled'}>Test</button>
+          </div>
+          <div id="pathFeedback-${i}-downloadDir" style="font-size:0.78rem; margin-top:4px;"></div>
         </label>
         <label class="field"><span>📂 Base SheinAuto Dir <span style="color:var(--text-mute);">(nơi quản lý shop)</span></span>
-          <input value="${escapeHtml(u.baseSheinAutoDir||'')}" placeholder="C:/Users/UserA/Downloads/SheinAuto (rỗng = dùng env)" data-i="${i}" data-field="baseSheinAutoDir" ${canEdit?'':'disabled'} />
+          <div style="display:flex; gap:6px;">
+            <input style="flex:1;" value="${escapeHtml(u.baseSheinAutoDir||'')}" placeholder="C:/Users/UserA/Downloads/SheinAuto (rỗng = dùng env)" data-i="${i}" data-field="baseSheinAutoDir" ${canEdit?'':'disabled'} />
+            <button class="btn btn-ghost" style="white-space:nowrap;" onclick="testUserPath(${i}, 'baseSheinAutoDir')" ${canEdit?'':'disabled'}>Test</button>
+          </div>
+          <div id="pathFeedback-${i}-baseSheinAutoDir" style="font-size:0.78rem; margin-top:4px;"></div>
         </label>
       </div>
-      <label class="field"><span>Profiles <span style="color:var(--text-mute);">(list shop tách dòng/phẩy — rỗng = tất cả trong base dir)</span></span>
-        <textarea rows="2" placeholder="P5-014&#10;P5-008" data-i="${i}" data-field="profiles" ${canEdit?'':'disabled'}>${escapeHtml((u.profiles||[]).join('\n'))}</textarea>
-      </label>
+      <div style="margin-top: 8px; padding: 12px; background: var(--bg-elev); border: 1px dashed var(--accent); border-radius: 8px;">
+        <div style="font-size: 0.82rem; color: var(--text-dim); margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
+          <span>🏪 <strong>Shops + Brand mapping</strong> &nbsp;<span style="color:var(--text-mute);">(rỗng = scan tất cả shop trong base dir, dùng brand global)</span></span>
+          ${canEdit ? `<button class="btn btn-ghost" style="padding:4px 10px; font-size:0.78rem;" onclick="addUserShopRow(${i})">+ Thêm shop</button>` : ''}
+        </div>
+        <label class="field" style="margin: 0 0 10px;"><span style="font-size: 0.78rem;">Default brand <span style="color:var(--text-mute);">(dùng cho shop không có brand riêng — rỗng = inherit global)</span></span>
+          <input type="text" placeholder="(rỗng = theo system)" value="${escapeHtml(u.brandProfilesOverride?.default || '')}" data-i="${i}" data-field="brandDefault" ${canEdit?'':'disabled'} />
+        </label>
+        <div id="shopsRows-${i}">
+          ${(() => {
+            const profiles = u.profiles || [];
+            const brandMap = u.brandProfilesOverride?.profiles || {};
+            // Tổng hợp shops từ cả profiles list và brand mapping (union)
+            const allShops = Array.from(new Set([...profiles, ...Object.keys(brandMap)]));
+            return allShops.map((shop) => `
+              <div class="shop-row" style="display:grid; grid-template-columns: 1fr 1fr auto; gap: 6px; margin-bottom: 6px;">
+                <input class="shop-input" type="text" placeholder="P5-014" value="${escapeHtml(shop)}" data-i="${i}" ${canEdit?'':'disabled'} />
+                <input class="shop-brand-input" type="text" placeholder="(brand — rỗng = dùng default)" value="${escapeHtml(brandMap[shop] || '')}" data-i="${i}" ${canEdit?'':'disabled'} />
+                ${canEdit ? `<button class="btn btn-ghost" style="padding:4px 8px;" onclick="removeUserShopRow(this)">🗑</button>` : ''}
+              </div>
+            `).join('');
+          })()}
+        </div>
+      </div>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 8px;">
+        <label class="field"><span>⏰ Auto cron <span style="color:var(--text-mute);">(cron tự pick file của user này)</span></span>
+          <select data-i="${i}" data-field="autoCronOverride" ${canEdit?'':'disabled'}>
+            <option value="" ${u.autoCronOverride === null || u.autoCronOverride === undefined ? 'selected' : ''}>Theo mặc định system</option>
+            <option value="true" ${u.autoCronOverride === true ? 'selected' : ''}>🟢 BẬT auto</option>
+            <option value="false" ${u.autoCronOverride === false ? 'selected' : ''}>🔴 TẮT (manual)</option>
+          </select>
+        </label>
+        <label class="field"><span>🖥️ Headless <span style="color:var(--text-mute);">(ẩn/hiện browser khi worker chạy)</span></span>
+          <select data-i="${i}" data-field="headlessOverride" ${canEdit?'':'disabled'}>
+            <option value="" ${u.headlessOverride === null || u.headlessOverride === undefined ? 'selected' : ''}>Theo mặc định system</option>
+            <option value="false" ${u.headlessOverride === false ? 'selected' : ''}>Hiện browser (debug)</option>
+            <option value="true" ${u.headlessOverride === true ? 'selected' : ''}>Chạy ngầm (production)</option>
+          </select>
+        </label>
+      </div>
+      <div style="margin-top: 8px; padding: 10px 12px; background: var(--bg-elev); border: 1px dashed var(--accent); border-radius: 8px;">
+        <div style="font-size: 0.82rem; color: var(--text-dim); margin-bottom: 6px;">
+          💰 <strong>Pricing override</strong> &nbsp;<span style="color:var(--text-mute);">(rỗng = theo system. Formula: (price + ship) × mult + extra)</span>
+        </div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px;">
+          <label class="field" style="margin:0;"><span style="font-size: 0.78rem;">📦 Ship fee</span>
+            <input type="number" step="0.01" placeholder="5" value="${u.shipFeeOverride !== null && u.shipFeeOverride !== undefined ? u.shipFeeOverride : ''}" data-i="${i}" data-field="shipFeeOverride" ${canEdit?'':'disabled'} />
+          </label>
+          <label class="field" style="margin:0;"><span style="font-size: 0.78rem;">📈 Multiplier</span>
+            <input type="number" step="0.01" placeholder="1.6" value="${u.multiplierOverride !== null && u.multiplierOverride !== undefined ? u.multiplierOverride : ''}" data-i="${i}" data-field="multiplierOverride" ${canEdit?'':'disabled'} />
+          </label>
+          <label class="field" style="margin:0;"><span style="font-size: 0.78rem;">➕ Extra add</span>
+            <input type="number" step="0.01" placeholder="0" value="${u.extraAddOverride !== null && u.extraAddOverride !== undefined ? u.extraAddOverride : ''}" data-i="${i}" data-field="extraAddOverride" ${canEdit?'':'disabled'} />
+          </label>
+        </div>
+      </div>
+      ${
+        u.username === state.user.username
+          ? `<div style="margin-top: 6px; padding: 12px; background: var(--bg-card); border: 1px dashed var(--accent); border-radius: 10px;">
+              <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
+                <strong>🔑 API Token <span style="color:var(--text-mute); font-weight:400;">(dùng cho Tampermonkey scraper)</span></strong>
+                <div style="display:flex; gap:6px;">
+                  <button class="btn btn-ghost" onclick="copyMyToken()">📋 Copy</button>
+                  <button class="btn btn-ghost" onclick="regenMyToken()">🔄 Regen</button>
+                </div>
+              </div>
+              <input id="myApiToken" readonly value="(đang tải...)" style="font-family:'JetBrains Mono', monospace; font-size: 0.78rem;" />
+            </div>`
+          : ''
+      }
       ${isAdmin?`<div style="text-align:right; margin-top:6px;"><button class="btn btn-danger" onclick="removeUser(${i})">🗑 Xoá user</button></div>`:''}
     </div>
   `).join('');
+  if (users.some((u) => u.username === state.user.username)) loadMyToken();
+  // Bind shop+brand row inputs cho mỗi user card
+  document.querySelectorAll(".shop-row input").forEach((el) => {
+    const userIdx = +el.dataset.i;
+    el.oninput = () => rebuildUserShops(userIdx);
+  });
   document.querySelectorAll("[data-field]").forEach((el) => {
-    el.oninput = () => {
+    const handler = () => {
       const i = +el.dataset.i;
       const f = el.dataset.field;
-      if (f === "profiles") {
-        state.config.users[i].profiles = el.value.split(/\r?\n|,/).map(s => s.trim()).filter(Boolean);
+      if (f === "brandDefault") {
+        rebuildUserShops(i);
+        return;
+      }
+      if (f === "autoCronOverride" || f === "headlessOverride") {
+        // 3-state: "" = null (inherit), "true" → true, "false" → false
+        if (el.value === "") state.config.users[i][f] = null;
+        else state.config.users[i][f] = el.value === "true";
+        // Auto-save ngay (toggle 1 click → ghi luôn DB, không cần bấm Lưu)
+        saveConfig(true);
+      } else if (f === "shipFeeOverride" || f === "multiplierOverride" || f === "extraAddOverride") {
+        // "" = inherit (null), number = explicit
+        const v = el.value.trim();
+        if (v === "") state.config.users[i][f] = null;
+        else {
+          const n = Number(v);
+          if (isFinite(n)) state.config.users[i][f] = n;
+        }
+        // Debounce auto-save 600ms để khỏi save mỗi keystroke
+        clearTimeout(state.pricingDebounce);
+        state.pricingDebounce = setTimeout(() => saveConfig(true), 600);
       } else {
         state.config.users[i][f] = el.value;
       }
     };
+    el.oninput = handler;
+    el.onchange = handler;  // select cần onchange
   });
 }
 
 function addUser() {
-  state.config.users.push({ username: "", password: "", role: "editor", profiles: [] });
+  state.config.users.push({
+    username: "", password: "", role: "editor", profiles: [],
+    downloadDir: "", baseSheinAutoDir: "",
+    autoCronOverride: null, headlessOverride: null,
+    shipFeeOverride: null, multiplierOverride: null, extraAddOverride: null,
+    brandProfilesOverride: null,
+  });
   renderUsers();
+}
+
+// ─── Shops + Brand mapping (merged) ────────────────────
+function rebuildUserShops(userIdx) {
+  const container = document.getElementById(`shopsRows-${userIdx}`);
+  const defaultBrandInput = document.querySelector(`[data-i="${userIdx}"][data-field="brandDefault"]`);
+  const profiles = [];
+  const brandMap = {};
+  if (container) {
+    container.querySelectorAll(".shop-row").forEach((row) => {
+      const shop = row.querySelector(".shop-input")?.value.trim();
+      const brand = row.querySelector(".shop-brand-input")?.value.trim();
+      if (shop) {
+        profiles.push(shop);
+        if (brand) brandMap[shop] = brand;
+      }
+    });
+  }
+  state.config.users[userIdx].profiles = profiles;
+
+  const defaultBrand = defaultBrandInput?.value.trim() || "";
+  if (!defaultBrand && Object.keys(brandMap).length === 0) {
+    state.config.users[userIdx].brandProfilesOverride = null;
+  } else {
+    state.config.users[userIdx].brandProfilesOverride = {
+      ...(defaultBrand ? { default: defaultBrand } : {}),
+      ...(Object.keys(brandMap).length > 0 ? { profiles: brandMap } : {}),
+    };
+  }
+  // Debounce save
+  clearTimeout(state.shopsDebounce);
+  state.shopsDebounce = setTimeout(() => saveConfig(true), 600);
+}
+
+function addUserShopRow(userIdx) {
+  const container = document.getElementById(`shopsRows-${userIdx}`);
+  if (!container) return;
+  const div = document.createElement("div");
+  div.className = "shop-row";
+  div.style.cssText = "display:grid; grid-template-columns: 1fr 1fr auto; gap: 6px; margin-bottom: 6px;";
+  div.innerHTML = `
+    <input class="shop-input" type="text" placeholder="P5-014" data-i="${userIdx}" />
+    <input class="shop-brand-input" type="text" placeholder="(brand — rỗng = dùng default)" data-i="${userIdx}" />
+    <button class="btn btn-ghost" style="padding:4px 8px;" onclick="removeUserShopRow(this)">🗑</button>
+  `;
+  container.appendChild(div);
+  div.querySelectorAll("input").forEach((inp) => {
+    inp.oninput = () => rebuildUserShops(userIdx);
+  });
+  div.querySelector(".shop-input")?.focus();
+}
+
+function removeUserShopRow(btn) {
+  const row = btn.closest(".shop-row");
+  if (!row) return;
+  const userIdx = +row.querySelector("input")?.dataset.i;
+  row.remove();
+  if (!isNaN(userIdx)) rebuildUserShops(userIdx);
+}
+
+async function testUserPath(userIndex, field) {
+  const path = state.config.users[userIndex]?.[field] || "";
+  const feedbackEl = document.getElementById(`pathFeedback-${userIndex}-${field}`);
+  if (!feedbackEl) return;
+
+  if (!path.trim()) {
+    feedbackEl.innerHTML = '<span style="color: var(--text-mute);">(trống — sẽ fallback env)</span>';
+    return;
+  }
+  feedbackEl.innerHTML = '<span style="color: var(--text-mute);">⏳ Đang test...</span>';
+
+  try {
+    const res = await fetch("/admin/api/path/test", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+
+    if (data.ok) {
+      feedbackEl.innerHTML = `<span style="color: var(--success);">✓ Hợp lệ</span> <span style="color: var(--text-mute);">${escapeHtml(data.resolved || "")}</span>`;
+    } else {
+      feedbackEl.innerHTML = `<span style="color: var(--danger);">✗ ${escapeHtml(data.error || "Không hợp lệ")}</span>`;
+    }
+  } catch (err) {
+    feedbackEl.innerHTML = `<span style="color: var(--danger);">✗ ${escapeHtml(err.message)}</span>`;
+  }
 }
 function removeUser(i) {
   if (!confirm("Xoá user này?")) return;
   state.config.users.splice(i, 1);
   renderUsers();
 }
-async function saveConfig() {
+async function saveConfig(autoSave = false) {
   try {
     const res = await fetch("/admin/api/config", {
       method: "POST",
@@ -1050,10 +1539,52 @@ async function saveConfig() {
     const data = await res.json();
     if (!res.ok) throw new Error(data.error);
     state.config = data;
-    renderUsers();
-    toast("Đã lưu cấu hình");
+    // KHÔNG re-render khi auto-save — tránh đóng dropdown đang mở của user
+    if (!autoSave) renderUsers();
+    toast(autoSave ? "✓ Đã lưu tự động" : "Đã lưu cấu hình");
   } catch (err) {
     toast("Lưu thất bại: " + err.message, "error");
+  }
+}
+
+// ─── API token (cho tampermonkey scraper) ─────────────
+async function loadMyToken() {
+  const el = document.getElementById("myApiToken");
+  if (!el) return;
+  try {
+    const res = await fetch("/admin/api/me/token");
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+    el.value = data.token || "(chưa có — bấm Regen để tạo)";
+  } catch (err) {
+    el.value = "(lỗi: " + err.message + ")";
+  }
+}
+
+async function regenMyToken() {
+  if (!confirm("Token mới sẽ ghi đè token cũ — Tampermonkey sẽ phải dán lại. Tiếp tục?")) return;
+  try {
+    const res = await fetch("/admin/api/me/token/regen", { method: "POST" });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+    const el = document.getElementById("myApiToken");
+    if (el) el.value = data.token;
+    toast("Đã tạo token mới — copy + paste vào Tampermonkey");
+  } catch (err) {
+    toast("Regen thất bại: " + err.message, "error");
+  }
+}
+
+async function copyMyToken() {
+  const el = document.getElementById("myApiToken");
+  if (!el || !el.value || el.value.startsWith("(")) return toast("Không có token để copy", "error");
+  try {
+    await navigator.clipboard.writeText(el.value);
+    toast("Đã copy token vào clipboard");
+  } catch {
+    el.select();
+    document.execCommand("copy");
+    toast("Đã copy (fallback)");
   }
 }
 
@@ -1063,6 +1594,11 @@ async function loadSettings() {
     const res = await fetch("/admin/api/settings");
     const data = await res.json();
     state.settings = data;
+    $("#setAutoCron").checked = !!data.autoCron;
+    $("#setAutoCronLabel").textContent = data.autoCron ? "🟢 BẬT" : "🔴 TẮT";
+    $("#setAutoCron").onchange = (e) => {
+      $("#setAutoCronLabel").textContent = e.target.checked ? "🟢 BẬT" : "🔴 TẮT";
+    };
     $("#setConcurrency").value = data.concurrency;
     $("#setHeadless").value = String(data.headless);
     $("#setCronFileRouter").value = data.fileRouterCron;
@@ -1088,6 +1624,7 @@ async function saveSettings() {
   if (state.user.role !== "admin") return toast("Chỉ admin mới sửa được", "error");
   try {
     const body = {
+      autoCron: $("#setAutoCron").checked,
       concurrency: Number($("#setConcurrency").value),
       headless: $("#setHeadless").value === "true",
       fileRouterCron: $("#setCronFileRouter").value,
@@ -1105,6 +1642,63 @@ async function saveSettings() {
     const data = await res.json();
     if (!res.ok) throw new Error(data.error);
     toast("Đã lưu settings. Cron schedule có thể cần restart để áp dụng.");
+  } catch (err) {
+    toast(err.message, "error");
+  }
+}
+
+// ─── Pricing formula ──────────────────────────────────
+state.pricing = { shipFee: 5, multiplier: 1.6, extraAdd: 0 };
+
+async function loadPricing() {
+  try {
+    const res = await fetch("/admin/api/pricing");
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+    state.pricing = data;
+    $("#setShipFee").value = data.shipFee;
+    $("#setMultiplier").value = data.multiplier;
+    $("#setExtraAdd").value = data.extraAdd;
+    previewPrice();
+  } catch (err) {
+    toast("Không tải được pricing: " + err.message, "error");
+  }
+}
+
+function previewPrice() {
+  const ship = Number($("#setShipFee").value) || 0;
+  const mult = Number($("#setMultiplier").value) || 1;
+  const extra = Number($("#setExtraAdd").value) || 0;
+  // Preview 3 mức giá gốc
+  const samples = [10, 20, 50];
+  const lines = samples.map((p) => {
+    const final = (p + ship) * mult + extra;
+    return `$${p.toFixed(2)} → <strong style="color:var(--accent);">$${final.toFixed(2)}</strong> &nbsp;<span style="color:var(--text-mute);">(${p}+${ship}) × ${mult} + ${extra}</span>`;
+  });
+  $("#pricingPreview").innerHTML = `<strong>Preview:</strong>&nbsp; ${lines.join(" &nbsp;·&nbsp; ")}`;
+}
+
+async function savePricing() {
+  if (state.user.role !== "admin") return toast("Chỉ admin", "error");
+  try {
+    const body = {
+      shipFee: Number($("#setShipFee").value),
+      multiplier: Number($("#setMultiplier").value),
+      extraAdd: Number($("#setExtraAdd").value),
+    };
+    if (!isFinite(body.shipFee) || !isFinite(body.multiplier) || !isFinite(body.extraAdd)) {
+      return toast("Các trường phải là số", "error");
+    }
+    if (body.multiplier <= 0) return toast("Multiplier phải > 0", "error");
+    const res = await fetch("/admin/api/pricing", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+    state.pricing = data;
+    toast(`✓ Đã lưu pricing: ship=${data.shipFee} mult=${data.multiplier} extra=${data.extraAdd}`);
   } catch (err) {
     toast(err.message, "error");
   }
@@ -1193,7 +1787,36 @@ async function saveBrands() {
   }
 }
 
-// ─── Cookie ───────────────────────────────────────────
+// ─── Cookie (per-user) ────────────────────────────────
+async function loadCookieStatus() {
+  try {
+    const res = await fetch("/admin/api/cookie/status");
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+    const c = data.userCookie;
+    $("#cookieStatusCard").innerHTML = `
+      <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap: 12px;">
+        <div>
+          <div style="font-weight:600; margin-bottom:4px;">🔑 Cookie của <code>${escapeHtml(data.username)}</code></div>
+          <div>${
+            c.exists
+              ? `<span class="badge badge-success">✓ Đã upload</span> <span style="color: var(--text-mute);">${c.count} cookies · cập nhật ${relTime(c.mtime)}</span>`
+              : `<span class="badge badge-danger">✕ Chưa có cookie</span>`
+          }</div>
+        </div>
+      </div>
+      ${!c.exists ? `
+        <div style="margin-top: 12px; padding: 12px 14px; background: var(--danger-soft); color: var(--danger); border-radius: 8px; font-size: 0.88rem;">
+          <strong>⚠️ Worker sẽ FAIL khi xử lý file của user này.</strong><br>
+          Mỗi user BẮT BUỘC có cookie 4Seller riêng (không còn fallback chung). Paste JSON cookie bên dưới + Lưu.
+        </div>
+      ` : ''}
+    `;
+  } catch (err) {
+    $("#cookieStatusCard").innerHTML = `<span class="badge badge-danger">Lỗi tải status</span> ${escapeHtml(err.message)}`;
+  }
+}
+
 async function saveCookie() {
   try {
     const raw = $("#cookieJson").value.trim();
@@ -1207,8 +1830,9 @@ async function saveCookie() {
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error);
-    toast(`Đã lưu ${data.count} cookie`);
+    toast(`Đã lưu ${data.count} cookie cho user ${state.user.username}`);
     $("#cookieJson").value = "";
+    loadCookieStatus();
   } catch (err) {
     toast(err.message, "error");
   }

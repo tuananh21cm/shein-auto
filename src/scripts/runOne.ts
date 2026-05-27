@@ -2,8 +2,9 @@
  * Runner độc lập để test 1 file JSON listing.
  *
  * Usage:
- *   npx tsx src/scripts/runOne.ts SheinAuto/P5-014/test.json [--dry-run] [--no-notify]
+ *   npx tsx src/scripts/runOne.ts <path> --user=<username> [--dry-run] [--no-notify]
  *
+ * --user=X    : (bắt buộc) username chủ cookie 4Seller (data/cookies/X.json)
  * --dry-run   : bỏ qua bước Save & Publish (chỉ tạo draft)
  * --no-notify : không gửi Telegram notification
  */
@@ -11,22 +12,29 @@ import "dotenv/config";
 import path from "path";
 import { listing4sellerShein } from "../core/listing4sellerShein";
 import { getProfileNameFromFolder } from "../core/steps/randomUtils";
-import { notifySuccess, notifyFail } from "../services/notification/telegram";
+import { notifyFail } from "../services/notification/telegram";
 
 const main = async () => {
   const args = process.argv.slice(2);
   const file = args.find((a) => !a.startsWith("--"));
   const dryRun = args.includes("--dry-run");
   const noNotify = args.includes("--no-notify");
+  const userArg = args.find((a) => a.startsWith("--user="));
+  const cookieUser = userArg?.slice("--user=".length);
 
   if (!file) {
     console.error(
-      "Usage: npx tsx src/scripts/runOne.ts <relative-path-from-Downloads> [--dry-run] [--no-notify]"
+      "Usage: npx tsx src/scripts/runOne.ts <path> --user=<username> [--dry-run] [--no-notify]"
     );
     process.exit(1);
   }
+  if (!cookieUser) {
+    console.error("Phải truyền --user=<username> để worker biết dùng cookie nào.");
+    process.exit(1);
+  }
 
-  const absFile = path.isAbsolute(file) ? file : path.join("C:/Users/KBT/Downloads", file);
+  // Relative path → resolve từ CWD (chứ không hardcode Downloads dir)
+  const absFile = path.isAbsolute(file) ? file : path.resolve(process.cwd(), file);
   const profile = getProfileNameFromFolder(absFile);
   const fileName = path.basename(absFile);
   const folder = path.basename(path.dirname(absFile));
@@ -36,13 +44,10 @@ const main = async () => {
   const t0 = Date.now();
 
   try {
-    await listing4sellerShein(absFile, { dryRun });
+    await listing4sellerShein(absFile, { dryRun, cookieUser });
     const durationMs = Date.now() - t0;
     console.log(`✅ Done in ${Math.round(durationMs / 1000)}s`);
-    if (!noNotify && !dryRun) {
-      await notifySuccess({ file: fileName, folder, profile, durationMs });
-      console.log("📤 Đã gửi Telegram notify (success)");
-    }
+    // Không bắn Telegram khi success — chỉ notify fail
     process.exit(0);
   } catch (err: any) {
     const durationMs = Date.now() - t0;

@@ -11,26 +11,57 @@ export interface PublishOutcome {
 const SCREENSHOT_DIR = path.resolve(process.cwd(), "data", "screenshots");
 
 /**
+ * Element Plus `.el-message--error` là toast auto-dismiss (~3s). 4Seller bắn
+ * nhiều toast transient lúc đang fill form (vd "Please select a variation
+ * attribute") mặc dù không phải lỗi thật. Để giảm false positive, sau khi
+ * thấy toast, đợi `confirmDelayMs` rồi check lại — nếu vẫn còn = lỗi thật.
+ */
+const isPersistentError = async (
+  page: any,
+  selector: string,
+  confirmDelayMs: number
+): Promise<string | null> => {
+  const loc = page.locator(selector).first();
+  if (!(await loc.isVisible({ timeout: 200 }).catch(() => false))) return null;
+  const firstText = ((await loc.textContent({ timeout: 500 }).catch(() => "")) ?? "").trim();
+  if (!firstText) return null;
+
+  // Đợi xem có biến mất không
+  await page.waitForTimeout(confirmDelayMs);
+
+  // Re-check: dùng locator mới để tránh stale handle
+  const recheck = page.locator(selector).first();
+  if (!(await recheck.isVisible({ timeout: 200 }).catch(() => false))) {
+    return null; // toast đã tắt → transient, OK
+  }
+  const finalText = ((await recheck.textContent({ timeout: 500 }).catch(() => "")) ?? "").trim();
+  return finalText || firstText;
+};
+
+/**
  * Kiểm tra error đang hiển thị trên page.
  *
  * @param includeInline true = check cả `.el-form-item__error` inline.
  *   Inline error luôn hiện cho field bắt buộc chưa fill, nên chỉ check
- *   sau khi đã click publish. Giữa các step nên dùng `false` để fail-fast
- *   chỉ theo toast (4Seller chỉ bắn toast khi backend từ chối thật sự).
+ *   sau khi đã click publish.
  * @returns text của error đầu tiên gặp, hoặc null.
  */
 export const checkPageErrors = async (
   page: any,
   includeInline: boolean = false
 ): Promise<string | null> => {
-  // Element Plus có 3 nơi hiện error:
-  //  - .el-message--error          : toast top (server reject / validation summary)
-  //  - .el-notification--error     : notification top-right
-  //  - .el-form-item__error        : inline dưới input (validate trước khi submit)
-  const errorSelectors = [".el-message--error", ".el-notification--error"];
-  if (includeInline) errorSelectors.push(".el-form-item__error");
+  // .el-message: toast 3s auto-dismiss → đợi 1500ms để loại transient
+  // .el-notification: persistent → check ngay
+  // .el-form-item__error: inline persistent → check ngay
+  const toastSelectors = [".el-message--error"];
+  const persistentSelectors = [".el-notification--error"];
+  if (includeInline) persistentSelectors.push(".el-form-item__error");
 
-  for (const sel of errorSelectors) {
+  for (const sel of toastSelectors) {
+    const txt = await isPersistentError(page, sel, 1500);
+    if (txt) return `${sel}: ${txt}`;
+  }
+  for (const sel of persistentSelectors) {
     try {
       const loc = page.locator(sel).first();
       if (await loc.isVisible({ timeout: 200 }).catch(() => false)) {

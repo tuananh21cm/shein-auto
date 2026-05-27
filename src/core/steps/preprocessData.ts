@@ -24,6 +24,19 @@ export const preprocessData = (data: any): { mergedProductImages: string[] } => 
     console.log(`📐 Size normalized: ${before.join(", ")} → ${data.listing_variations.sizes.join(", ")}`);
   }
 
+  // Quan trọng: cũng phải normalize size trong available_matrix vì
+  // 4Seller bảng dùng size đã normalized (S/M/L) — nếu matrix còn raw
+  // "4 (S)" thì removeUnavailableVariants sẽ xoá NHẦM hết variants.
+  if (data.available_matrix && typeof data.available_matrix === "object") {
+    const normalized: Record<string, string[]> = {};
+    for (const [color, sizes] of Object.entries(data.available_matrix)) {
+      const sizeArr = Array.isArray(sizes) ? sizes : [];
+      normalized[color] = sizeArr.map((s) => normalizeSize(String(s)));
+    }
+    data.available_matrix = normalized;
+    console.log(`📐 Matrix sizes normalized:`, normalized);
+  }
+
   // 2. VARIANT IMAGE DEDUP
   if (data.variant_images && data.variant_images.length > 0) {
     const imageSignatureMap = new Map<string, string>();

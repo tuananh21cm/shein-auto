@@ -1,6 +1,5 @@
-import fs from "fs-extra";
-import path from "path";
 import { eventBus } from "./eventBus";
+import { getDb } from "./db";
 
 export type HistoryStatus = "success" | "fail";
 
@@ -16,45 +15,65 @@ export interface HistoryEntry {
   errorMessage?: string;
 }
 
-const DATA_DIR = path.resolve(process.cwd(), "data");
-const HISTORY_FILE = path.join(DATA_DIR, "history.json");
 const MAX_ENTRIES = 500;
 
-let entries: HistoryEntry[] = [];
-let loaded = false;
+interface HistoryRow {
+  id: string;
+  file: string;
+  folder: string;
+  profile: string;
+  status: string;
+  started_at: number;
+  finished_at: number;
+  duration_ms: number;
+  error_message: string | null;
+}
 
-const ensureLoaded = async (): Promise<void> => {
-  if (loaded) return;
-  loaded = true;
-  await fs.ensureDir(DATA_DIR);
-  try {
-    if (await fs.pathExists(HISTORY_FILE)) {
-      const raw = await fs.readFile(HISTORY_FILE, "utf-8");
-      entries = JSON.parse(raw) as HistoryEntry[];
-    }
-  } catch (err) {
-    console.warn("⚠️ Không đọc được history.json:", err);
-    entries = [];
-  }
-};
-
-const persist = async (): Promise<void> => {
-  await fs.ensureDir(DATA_DIR);
-  await fs.writeFile(HISTORY_FILE, JSON.stringify(entries, null, 2), "utf-8");
-};
+const rowToEntry = (row: HistoryRow): HistoryEntry => ({
+  id: row.id,
+  file: row.file,
+  folder: row.folder,
+  profile: row.profile,
+  status: row.status as HistoryStatus,
+  startedAt: row.started_at,
+  finishedAt: row.finished_at,
+  durationMs: row.duration_ms,
+  errorMessage: row.error_message ?? undefined,
+});
 
 export const historyStore = {
   async init(): Promise<void> {
-    await ensureLoaded();
+    // DB init đã được bootstrap gọi; tạo connection lười.
+    getDb();
   },
 
   async add(entry: Omit<HistoryEntry, "id">): Promise<HistoryEntry> {
-    await ensureLoaded();
+    const db = getDb();
     const id = `${entry.finishedAt}-${Math.random().toString(36).slice(2, 8)}`;
     const full: HistoryEntry = { id, ...entry };
-    entries.unshift(full);
-    if (entries.length > MAX_ENTRIES) entries = entries.slice(0, MAX_ENTRIES);
-    await persist();
+    db.prepare(`
+      INSERT INTO history (id, file, folder, profile, status, started_at, finished_at, duration_ms, error_message)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      full.id,
+      full.file,
+      full.folder,
+      full.profile,
+      full.status,
+      full.startedAt,
+      full.finishedAt,
+      full.durationMs,
+      full.errorMessage ?? null
+    );
+    // Cap MAX_ENTRIES: xoá entry cũ nhất
+    db.prepare(`
+      DELETE FROM history
+      WHERE id IN (
+        SELECT id FROM history
+        ORDER BY finished_at DESC
+        LIMIT -1 OFFSET ?
+      )
+    `).run(MAX_ENTRIES);
     eventBus.emit("history", full);
     return full;
   },
@@ -62,26 +81,47 @@ export const historyStore = {
   async list(opts?: {
     status?: HistoryStatus;
     folder?: string;
+    /** Filter cho phép multi-folder (vd: scope theo user accessible shops). Nếu set kèm `folder`, intersect. */
+    folders?: string[];
     limit?: number;
     offset?: number;
   }): Promise<{ items: HistoryEntry[]; total: number }> {
-    await ensureLoaded();
-    let filtered = entries;
-    if (opts?.status) filtered = filtered.filter((e) => e.status === opts.status);
-    if (opts?.folder) filtered = filtered.filter((e) => e.folder === opts.folder);
-    const total = filtered.length;
-    const offset = opts?.offset ?? 0;
+    const db = getDb();
+    const where: string[] = [];
+    const params: any[] = [];
+    if (opts?.status) { where.push("status = ?"); params.push(opts.status); }
+    if (opts?.folder) { where.push("folder = ?"); params.push(opts.folder); }
+    if (opts?.folders && opts.folders.length > 0) {
+      const placeholders = opts.folders.map(() => "?").join(",");
+      where.push(`folder IN (${placeholders})`);
+      params.push(...opts.folders);
+    } else if (opts?.folders && opts.folders.length === 0) {
+      // Caller có scope rỗng = không có quyền xem gì → return ngay
+      return { items: [], total: 0 };
+    }
+    const whereSql = where.length > 0 ? "WHERE " + where.join(" AND ") : "";
+
+    const total = (db.prepare(`SELECT COUNT(*) as c FROM history ${whereSql}`).get(...params) as { c: number }).c;
+
     const limit = opts?.limit ?? 50;
-    return { items: filtered.slice(offset, offset + limit), total };
+    const offset = opts?.offset ?? 0;
+    const rows = db.prepare(`
+      SELECT * FROM history
+      ${whereSql}
+      ORDER BY finished_at DESC
+      LIMIT ? OFFSET ?
+    `).all(...params, limit, offset) as HistoryRow[];
+
+    return { items: rows.map(rowToEntry), total };
   },
 
   async find(id: string): Promise<HistoryEntry | null> {
-    await ensureLoaded();
-    return entries.find((e) => e.id === id) ?? null;
+    const db = getDb();
+    const row = db.prepare("SELECT * FROM history WHERE id = ?").get(id) as HistoryRow | undefined;
+    return row ? rowToEntry(row) : null;
   },
 
   async clear(): Promise<void> {
-    entries = [];
-    await persist();
+    getDb().prepare("DELETE FROM history").run();
   },
 };

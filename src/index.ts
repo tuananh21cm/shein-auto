@@ -7,6 +7,7 @@ import { installConsoleTap } from "./state/eventBus";
 import { historyStore } from "./state/historyStore";
 import { refreshQueueSnapshot } from "./state/queueState";
 import { geminiCache } from "./services/gemini/geminiCache";
+import { initDb, closeDb } from "./state/db";
 
 // Pipe console.* lên eventBus để SSE stream xuống UI. Phải gọi sớm.
 installConsoleTap();
@@ -21,6 +22,7 @@ console.log(`⏰ Queue manager: ${config.cronQueueManager}`);
 console.log("==============================================\n");
 
 const bootstrap = async () => {
+  await initDb(); // SQLite — phải init đầu tiên (auto-import legacy JSON)
   await Promise.all([historyStore.init(), geminiCache.init()]);
   refreshQueueSnapshot().catch(() => {});
   await startAdminServer();
@@ -34,6 +36,7 @@ cron.schedule(config.cronQueueManager, runQueueManagerOnce);
 
 const shutdown = (signal: string) => {
   console.log(`\n📴 Nhận ${signal}, dừng worker...`);
+  closeDb();
   process.exit(0);
 };
 process.on("SIGINT", () => shutdown("SIGINT"));

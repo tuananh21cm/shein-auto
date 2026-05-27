@@ -1,4 +1,57 @@
 /**
+ * Tìm option profile trên dropdown 4Seller match flexible:
+ *   1. Exact case-insensitive với targetProfile (vd "P5-022_US")
+ *   2. Fallback: bỏ suffix `_XX` (vd "P5-022")
+ *   3. Fallback: target không có suffix, thử thêm `_US` (legacy)
+ *
+ * Trả về index của option khớp hoặc -1.
+ */
+const findProfileOption = async (
+  page: any,
+  targetProfile: string
+): Promise<{ index: number; matchedTitle: string } | null> => {
+  // Đợi ít nhất 1 option xuất hiện
+  await page.waitForSelector(".el-select-dropdown__item span[title]", {
+    state: "visible",
+    timeout: 15000,
+  });
+
+  const options = page.locator(".el-select-dropdown__item span[title]");
+  const count = await options.count();
+
+  const titles: string[] = [];
+  for (let i = 0; i < count; i++) {
+    const t = ((await options.nth(i).getAttribute("title")) ?? "").trim();
+    titles.push(t);
+  }
+
+  const normalize = (s: string) => s.toLowerCase().trim();
+  const target = normalize(targetProfile);
+  const targetNoSuffix = target.replace(/_[a-z]{2}$/i, "");
+  const targetWithUs = target.endsWith("_us") ? target : `${target}_us`;
+
+  // Thử lần lượt
+  const tries = [
+    { variant: target, label: "exact" },
+    { variant: targetNoSuffix, label: "no-suffix" },
+    { variant: targetWithUs, label: "with-_us" },
+  ];
+
+  for (const { variant, label } of tries) {
+    if (!variant) continue;
+    const idx = titles.findIndex((t) => normalize(t) === variant);
+    if (idx >= 0) {
+      if (label !== "exact") {
+        console.log(`🔎 Profile match qua ${label}: "${targetProfile}" → "${titles[idx]}"`);
+      }
+      return { index: idx, matchedTitle: titles[idx] };
+    }
+  }
+  console.warn(`❌ Không tìm thấy profile match. Available: ${titles.join(", ")}`);
+  return null;
+};
+
+/**
  * Chọn Profile (shop) trên 4Seller dropdown. Throw nếu không tìm thấy
  * để tránh đăng nhầm shop.
  */
@@ -7,11 +60,16 @@ export const selectProfile = async (page: any, targetProfile: string): Promise<v
 
   try {
     await page.click("#shopInfo .el-input__inner");
-    const optionSelector = `.el-select-dropdown__item span[title="${targetProfile}"]`;
-    const profileOption = page.locator(optionSelector).last();
-    await profileOption.waitFor({ state: "visible", timeout: 15000 });
+
+    const found = await findProfileOption(page, targetProfile);
+    if (!found) {
+      throw new Error("not-found");
+    }
+    const profileOption = page
+      .locator(".el-select-dropdown__item span[title]")
+      .nth(found.index);
     await profileOption.click();
-    console.log(`✅ Đã chọn thành công Profile: ${targetProfile}`);
+    console.log(`✅ Đã chọn thành công Profile: ${found.matchedTitle}`);
 
     const messageBox = page.locator(".el-message-box");
     const confirmButton = messageBox.locator('button.el-button--primary:has-text("Confirm")');

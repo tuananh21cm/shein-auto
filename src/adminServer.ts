@@ -1,5 +1,6 @@
 import express from "express";
 import session from "express-session";
+import cors from "cors";
 import path from "path";
 import fs from "fs-extra";
 import { chromium } from "playwright-core";
@@ -11,15 +12,19 @@ import {
   verifyPassword,
   isHashed,
   hashPassword,
+  generateApiToken,
+  findUserByToken,
 } from "./adminConfig";
 import { config } from "./config";
 import { workerState } from "./state/workerState";
 import { refreshQueueSnapshot } from "./state/queueState";
 import { historyStore } from "./state/historyStore";
 import { scanListings, scanShopsSummary, resolveListingPath, ListingStatus } from "./state/listingScan";
+import { validatePath, detectDirConflicts, getUserDirsByName, getShopOwner } from "./state/userDirs";
+import { processFile } from "./queue/queueManager";
 import { eventBus } from "./state/eventBus";
 import { workerConfig, reloadAppConfig } from "./config/appConfig";
-import { configCookie } from "./utils/configCookie";
+import { configCookie, userCookiePath } from "./utils/configCookie";
 
 const adminSessionSecret = process.env.ADMIN_SESSION_SECRET || "shein-auto-secret";
 
@@ -32,6 +37,12 @@ const sanitizeUserForUi = (user: AdminUser) => ({
   profiles: user.profiles,
   downloadDir: user.downloadDir ?? "",
   baseSheinAutoDir: user.baseSheinAutoDir ?? "",
+  autoCronOverride: user.autoCronOverride ?? null,
+  headlessOverride: user.headlessOverride ?? null,
+  shipFeeOverride: user.shipFeeOverride ?? null,
+  multiplierOverride: user.multiplierOverride ?? null,
+  extraAddOverride: user.extraAddOverride ?? null,
+  brandProfilesOverride: user.brandProfilesOverride ?? null,
 });
 
 const sanitizeConfigForUi = (cfg: AdminConfig) => ({
@@ -55,16 +66,15 @@ export const startAdminServer = async () => {
     if (req.session && (req.session as any).user) return next();
     if (
       req.path.startsWith("/admin/api/auth") ||
+      req.path.startsWith("/admin/api/ingest") || // tampermonkey: Bearer token auth riêng
       req.path === "/admin/login" ||
       req.path === "/admin/logout"
     ) {
       return next();
     }
-    // API call → trả JSON 401 (cho client xử lý), không redirect HTML
     if (req.path.startsWith("/admin/api/")) {
       return res.status(401).json({ error: "Chưa đăng nhập" });
     }
-    // HTML navigation → redirect login page
     return res.redirect("/admin/login");
   };
   app.use(requireAuth);
@@ -116,6 +126,250 @@ export const startAdminServer = async () => {
     return res.status(401).json({ error: "Chưa đăng nhập" });
   });
 
+  // ── Screenshot debug (chỉ cho session đã auth) ────────
+  const SCREENSHOT_DIR = path.resolve(process.cwd(), "data", "screenshots");
+  app.get("/admin/data/screenshots/:file", async (req, res) => {
+    try {
+      const fileName = req.params.file;
+      // Path traversal guard
+      if (!/^[a-zA-Z0-9._-]+\.(png|jpg|jpeg)$/i.test(fileName)) {
+        return res.status(400).send("Invalid filename");
+      }
+      const full = path.join(SCREENSHOT_DIR, fileName);
+      if (!(await fs.pathExists(full))) return res.status(404).send("Not found");
+      res.sendFile(full);
+    } catch (err: any) {
+      res.status(500).send(err?.message ?? "Error");
+    }
+  });
+
+  // ── API token (cho tampermonkey scraper) ──────────────
+  app.get("/admin/api/me/token", async (req, res) => {
+    try {
+      const sessionUser = (req.session as any).user as SessionUser;
+      if (!sessionUser) return res.status(401).json({ error: "Chưa đăng nhập" });
+      const cfg = await loadAdminConfig();
+      const me = cfg.users.find((u) => u.username === sessionUser.username);
+      if (!me) return res.status(404).json({ error: "Không tìm thấy user" });
+      res.json({ token: me.apiToken ?? "" });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? "Lỗi đọc token" });
+    }
+  });
+
+  app.post("/admin/api/me/token/regen", async (req, res) => {
+    try {
+      const sessionUser = (req.session as any).user as SessionUser;
+      if (!sessionUser) return res.status(401).json({ error: "Chưa đăng nhập" });
+      const cfg = await loadAdminConfig();
+      const me = cfg.users.find((u) => u.username === sessionUser.username);
+      if (!me) return res.status(404).json({ error: "Không tìm thấy user" });
+      me.apiToken = generateApiToken();
+      await saveAdminConfig(cfg);
+      res.json({ token: me.apiToken });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? "Lỗi regen token" });
+    }
+  });
+
+  // ── Ingest API (cho tampermonkey scraper, Bearer token auth) ──
+  const ingestRouter = express.Router();
+  ingestRouter.use(
+    cors({
+      // Cho phép request từ shein.com / .co.uk / .de / .fr ...
+      origin: (origin, cb) => {
+        if (!origin) return cb(null, true); // server-to-server / curl
+        if (/^https?:\/\/([a-z0-9-]+\.)?shein\.(com|co\.uk|de|fr|it|es|cn)$/i.test(origin)) {
+          return cb(null, true);
+        }
+        cb(new Error(`Origin "${origin}" không được phép`));
+      },
+      credentials: false,
+      methods: ["GET", "POST", "OPTIONS"],
+      allowedHeaders: ["Content-Type", "Authorization"],
+    })
+  );
+
+  const ingestAuth: express.RequestHandler = async (req, res, next) => {
+    const auth = req.headers.authorization || "";
+    const token = auth.startsWith("Bearer ")
+      ? auth.slice(7).trim()
+      : ((req.query.token as string) || "").trim();
+    if (!token) return res.status(401).json({ error: "Thiếu Bearer token" });
+    const user = await findUserByToken(token);
+    if (!user) return res.status(401).json({ error: "Token không hợp lệ" });
+    (req as any).tokenUser = user;
+    next();
+  };
+
+  ingestRouter.get("/profiles", ingestAuth, async (req, res) => {
+    try {
+      const user = (req as any).tokenUser as AdminUser;
+      const explicit = user.profiles ?? [];
+      // Nếu user khai báo profiles list cứng → dùng list đó
+      if (explicit.length > 0) {
+        return res.json({ username: user.username, profiles: explicit, source: "explicit" });
+      }
+      // Profiles rỗng = "tất cả shop trong baseDir của user"
+      // Auto-scan để tampermonkey luôn có list mới nhất
+      const { getUserDirsByName } = await import("./state/userDirs");
+      const dirs = await getUserDirsByName(user.username);
+      if (!dirs?.baseSheinAutoDir || !(await fs.pathExists(dirs.baseSheinAutoDir))) {
+        return res.json({ username: user.username, profiles: [], source: "empty" });
+      }
+      const entries = await fs.readdir(dirs.baseSheinAutoDir);
+      const shops: string[] = [];
+      for (const name of entries) {
+        if (name.startsWith(".") || name === "Success" || name === "Fail") continue;
+        try {
+          const stats = await fs.stat(path.join(dirs.baseSheinAutoDir, name));
+          if (stats.isDirectory()) shops.push(name);
+        } catch {
+          // ignore
+        }
+      }
+      shops.sort();
+      res.json({ username: user.username, profiles: shops, source: "auto-scan" });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? "Lỗi load profiles" });
+    }
+  });
+
+  ingestRouter.post("/check", ingestAuth, async (req, res) => {
+    try {
+      const user = (req as any).tokenUser as AdminUser;
+      const { productId, shops } = req.body as { productId?: string; shops?: string[] };
+      if (!productId) return res.status(400).json({ error: "Thiếu productId" });
+      const userShops = Array.isArray(shops) ? shops : user.profiles ?? [];
+      const { getUserDirsByName } = await import("./state/userDirs");
+      const dirs = await getUserDirsByName(user.username);
+      if (!dirs?.baseSheinAutoDir) {
+        return res.status(400).json({ error: "User chưa cấu hình baseSheinAutoDir" });
+      }
+      const existsIn: string[] = [];
+      for (const shop of userShops) {
+        // Check trong pending + Success + Fail folder của shop
+        for (const sub of ["", "Success", "Fail"]) {
+          const dir = sub
+            ? path.join(dirs.baseSheinAutoDir, shop, sub)
+            : path.join(dirs.baseSheinAutoDir, shop);
+          if (!(await fs.pathExists(dir))) continue;
+          const files = (await fs.readdir(dir)).filter((f) => f.toLowerCase().endsWith(".json"));
+          // Grep cho productId trong filenames hoặc content
+          let found = files.some((f) => f.includes(productId));
+          if (!found) {
+            for (const f of files) {
+              try {
+                const raw = await fs.readFile(path.join(dir, f), "utf-8");
+                if (raw.includes(productId)) { found = true; break; }
+              } catch {}
+            }
+          }
+          if (found) { existsIn.push(shop); break; }
+        }
+      }
+      res.json({ existsIn });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? "Lỗi check" });
+    }
+  });
+
+  ingestRouter.post("/", ingestAuth, async (req, res) => {
+    try {
+      const user = (req as any).tokenUser as AdminUser;
+      const { data, shops } = req.body as { data?: any; shops?: string[] };
+      if (!data || typeof data !== "object") {
+        return res.status(400).json({ error: "Thiếu field data (JSON sản phẩm)" });
+      }
+      if (!Array.isArray(shops) || shops.length === 0) {
+        return res.status(400).json({ error: "Phải chọn ít nhất 1 shop" });
+      }
+      const { getUserDirsByName } = await import("./state/userDirs");
+      const dirs = await getUserDirsByName(user.username);
+      if (!dirs?.baseSheinAutoDir) {
+        return res.status(400).json({ error: "User chưa cấu hình baseSheinAutoDir" });
+      }
+      // Validate shops trong profiles user (nếu có profiles list)
+      if ((user.profiles ?? []).length > 0) {
+        const allowed = new Set(user.profiles);
+        const invalid = shops.filter((s) => !allowed.has(s));
+        if (invalid.length > 0) {
+          return res.status(403).json({ error: `User không có quyền vào shops: ${invalid.join(", ")}` });
+        }
+      }
+      const timestamp = Date.now();
+      const written: { shop: string; file: string }[] = [];
+      console.log(`📥 [INGEST] user=${user.username} shops=${JSON.stringify(shops)} timestamp=${timestamp}`);
+      for (const shop of shops) {
+        // Defensive: chặn path traversal (shop chứa / hoặc \ hoặc ..)
+        if (/[\/\\]|\.\./.test(shop)) {
+          console.warn(`⚠️ [INGEST] Refused shop name with path chars: "${shop}"`);
+          continue;
+        }
+        const folderPath = path.join(dirs.baseSheinAutoDir, shop);
+        await fs.ensureDir(folderPath);
+        const fileName = `${shop}_${timestamp}.json`;
+        const fullPath = path.join(folderPath, fileName);
+        await fs.writeFile(fullPath, JSON.stringify(data, null, 2), "utf-8");
+        console.log(`📥 [INGEST] Wrote: ${fullPath}`);
+        written.push({ shop, file: fileName });
+      }
+      // Refresh queue snapshot để dashboard cập nhật
+      refreshQueueSnapshot().catch(() => {});
+      res.json({ ok: true, queued: written, ts: timestamp });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? "Lỗi ingest" });
+    }
+  });
+
+  // SSE riêng cho tampermonkey: auth bằng query token, filter event theo owner
+  ingestRouter.get("/stream", ingestAuth, (req, res) => {
+    const user = (req as any).tokenUser as AdminUser;
+    res.set({
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      Connection: "keep-alive",
+      "X-Accel-Buffering": "no",
+    });
+    res.flushHeaders();
+
+    const send = (event: string, data: any) => {
+      res.write(`event: ${event}\n`);
+      res.write(`data: ${JSON.stringify(data)}\n\n`);
+    };
+    send("hello", { ts: Date.now(), user: user.username });
+
+    const onHistory = (entry: any) => {
+      // Chỉ push event nếu file thuộc shop của user
+      const userShops = user.profiles ?? [];
+      if (userShops.length > 0 && !userShops.includes(entry.folder)) return;
+      send("history", entry);
+    };
+    const onWorker = (snap: any) => send("worker", snap);
+    const keepalive = setInterval(() => res.write(":\n\n"), 15000);
+
+    eventBus.on("history", onHistory);
+    eventBus.on("worker:state", onWorker);
+    req.on("close", () => {
+      clearInterval(keepalive);
+      eventBus.off("history", onHistory);
+      eventBus.off("worker:state", onWorker);
+    });
+  });
+
+  app.use("/admin/api/ingest", ingestRouter);
+
+  // ── Path validator ─────────────────────────────────────
+  app.post("/admin/api/path/test", async (req, res) => {
+    try {
+      const p = (req.body?.path as string) || "";
+      const result = await validatePath(p);
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? "Lỗi test path" });
+    }
+  });
+
   // ── User config (giữ logic cũ) ────────────────────────────
   app.get("/admin/api/config", async (req, res) => {
     try {
@@ -147,6 +401,18 @@ export const startAdminServer = async () => {
           seen.add(u.username);
         }
 
+        // Validate path conflicts (downloadDir/baseSheinAutoDir không trùng/lồng nhau)
+        const conflictMsg = detectDirConflicts(
+          payload.users.map((u) => ({
+            username: u.username,
+            downloadDir: u.downloadDir,
+            baseSheinAutoDir: u.baseSheinAutoDir,
+          }))
+        );
+        if (conflictMsg) {
+          return res.status(400).json({ error: conflictMsg });
+        }
+
         const merged = payload.users.map((u) => {
           const existing = cfg.users.find((it) => it.username === u.username);
           return {
@@ -157,6 +423,24 @@ export const startAdminServer = async () => {
             downloadDir: typeof u.downloadDir === "string" ? u.downloadDir : existing?.downloadDir ?? "",
             baseSheinAutoDir:
               typeof u.baseSheinAutoDir === "string" ? u.baseSheinAutoDir : existing?.baseSheinAutoDir ?? "",
+            autoCronOverride: u.autoCronOverride === undefined
+              ? existing?.autoCronOverride ?? null
+              : u.autoCronOverride,
+            headlessOverride: u.headlessOverride === undefined
+              ? existing?.headlessOverride ?? null
+              : u.headlessOverride,
+            shipFeeOverride: u.shipFeeOverride === undefined
+              ? existing?.shipFeeOverride ?? null
+              : u.shipFeeOverride,
+            multiplierOverride: u.multiplierOverride === undefined
+              ? existing?.multiplierOverride ?? null
+              : u.multiplierOverride,
+            extraAddOverride: u.extraAddOverride === undefined
+              ? existing?.extraAddOverride ?? null
+              : u.extraAddOverride,
+            brandProfilesOverride: u.brandProfilesOverride === undefined
+              ? existing?.brandProfilesOverride ?? null
+              : u.brandProfilesOverride,
           };
         });
         const newCfg: AdminConfig = {
@@ -185,6 +469,24 @@ export const startAdminServer = async () => {
       }
       if (typeof updatedUser.baseSheinAutoDir === "string") {
         existingUser.baseSheinAutoDir = updatedUser.baseSheinAutoDir;
+      }
+      if (updatedUser.autoCronOverride !== undefined) {
+        existingUser.autoCronOverride = updatedUser.autoCronOverride;
+      }
+      if (updatedUser.headlessOverride !== undefined) {
+        existingUser.headlessOverride = updatedUser.headlessOverride;
+      }
+      if (updatedUser.shipFeeOverride !== undefined) {
+        existingUser.shipFeeOverride = updatedUser.shipFeeOverride;
+      }
+      if (updatedUser.multiplierOverride !== undefined) {
+        existingUser.multiplierOverride = updatedUser.multiplierOverride;
+      }
+      if (updatedUser.extraAddOverride !== undefined) {
+        existingUser.extraAddOverride = updatedUser.extraAddOverride;
+      }
+      if (updatedUser.brandProfilesOverride !== undefined) {
+        existingUser.brandProfilesOverride = updatedUser.brandProfilesOverride;
       }
 
       const saved = await saveAdminConfig(cfg);
@@ -259,7 +561,66 @@ export const startAdminServer = async () => {
     return sessionUser.role === "admin" ? undefined : sessionUser.username;
   };
 
+  /**
+   * Danh sách shop folders user được phép xem. Admin → undefined (xem tất cả).
+   * Non-admin → list folders theo profiles user khai báo, hoặc scan baseDir nếu profiles rỗng.
+   */
+  const accessibleFolders = async (req: express.Request): Promise<string[] | undefined> => {
+    const sessionUser = (req.session as any).user as SessionUser;
+    if (sessionUser.role === "admin") return undefined;
+    const dirs = await getUserDirsByName(sessionUser.username);
+    if (!dirs) return [];
+    if (dirs.profiles.length > 0) return dirs.profiles;
+    if (!dirs.baseSheinAutoDir || !(await fs.pathExists(dirs.baseSheinAutoDir))) return [];
+    const entries = await fs.readdir(dirs.baseSheinAutoDir);
+    return entries.filter((n) => !n.startsWith(".") && n !== "Success" && n !== "Fail");
+  };
+
   // ── Listings (product cards view) ────────────────────────
+  // Tạo shop folder mới trong baseSheinAutoDir của user đang login.
+  // Nếu user có profiles explicit, auto-append shop mới vào profiles của họ.
+  app.post("/admin/api/listings/create-shop", async (req, res) => {
+    try {
+      const sessionUser = (req.session as any).user as SessionUser;
+      if (sessionUser.role === "viewer") return res.status(403).json({ error: "Viewer không thể tạo shop" });
+
+      const shopRaw = (req.body?.shop as string) || "";
+      const shop = shopRaw.trim();
+      // Validate: P\d-\d{3} hoặc P\d-\d{3}_XX (vd P5-014, P5-014_DE)
+      if (!/^P\d-\d{3}(_[A-Z]{2})?$/i.test(shop)) {
+        return res.status(400).json({
+          error: "Tên shop không hợp lệ. Phải dạng P5-014 hoặc P5-014_DE/_US/_UK/_FR/...",
+        });
+      }
+
+      const dirs = await getUserDirsByName(sessionUser.username);
+      if (!dirs?.baseSheinAutoDir) {
+        return res.status(400).json({
+          error: "User chưa cấu hình baseSheinAutoDir. Vào Users tab để thiết lập.",
+        });
+      }
+
+      const target = path.join(dirs.baseSheinAutoDir, shop);
+      if (await fs.pathExists(target)) {
+        return res.status(400).json({ error: `Shop "${shop}" đã tồn tại.` });
+      }
+
+      await fs.ensureDir(target);
+
+      // Nếu user có profiles explicit, append shop vào list để vẫn thấy được sau khi tạo
+      const fullCfg = await loadAdminConfig();
+      const me = fullCfg.users.find((u) => u.username === sessionUser.username);
+      if (me && (me.profiles?.length ?? 0) > 0 && !me.profiles.includes(shop)) {
+        me.profiles.push(shop);
+        await saveAdminConfig(fullCfg);
+      }
+
+      res.json({ ok: true, shop, path: target, appendedToProfiles: !!(me && me.profiles.length > 0) });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? "Lỗi tạo shop" });
+    }
+  });
+
   app.get("/admin/api/listings/shops", async (req, res) => {
     try {
       const shops = await scanShopsSummary({ username: ownerScope(req) });
@@ -330,6 +691,118 @@ export const startAdminServer = async () => {
     }
   });
 
+  // Run nhiều listing pending cùng lúc, mỗi file chạy trên shop hiện tại
+  // (không broadcast). Spawn parallel — lock per (baseDir, folder) đảm bảo
+  // không 2 file cùng shop chạy đồng thời.
+  app.post("/admin/api/listings/run-batch", async (req, res) => {
+    try {
+      const sessionUser = (req.session as any).user as SessionUser;
+      if (sessionUser.role === "viewer") return res.status(403).json({ error: "Viewer không thể run" });
+
+      const { ids } = req.body as { ids?: string[] };
+      if (!Array.isArray(ids) || ids.length === 0) {
+        return res.status(400).json({ error: "Chọn ít nhất 1 listing" });
+      }
+
+      const spawned: { id: string; folder: string; file: string }[] = [];
+      const skipped: { id: string; reason: string }[] = [];
+
+      for (const id of ids) {
+        const resolved = await resolveListingPath(id);
+        if (!resolved) { skipped.push({ id, reason: "id không hợp lệ" }); continue; }
+        if (resolved.status !== "pending") {
+          skipped.push({ id, reason: `không phải pending (${resolved.status})` });
+          continue;
+        }
+        if (sessionUser.role !== "admin" && !resolved.owner.split(",").includes(sessionUser.username)) {
+          skipped.push({ id, reason: "không có quyền" });
+          continue;
+        }
+        if (!(await fs.pathExists(resolved.full))) {
+          skipped.push({ id, reason: "file đã mất" });
+          continue;
+        }
+        spawned.push({ id, folder: resolved.folder, file: resolved.file });
+        // Owner thật của shop (theo profiles explicit) thay vì merged dedup
+        const trueOwner = (await getShopOwner(resolved.folder)) || resolved.owner.split(",")[0];
+        // Fire-and-forget — processFile có lock per (baseDir, folder)
+        processFile(resolved.baseDir, resolved.folder, resolved.file, trueOwner)
+          .catch((err) => console.error(`❌ run-batch ${resolved.folder}/${resolved.file}:`, err));
+      }
+
+      res.json({ ok: true, spawned, skipped });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? "Lỗi run-batch" });
+    }
+  });
+
+  // Run 1 listing trên N shops ngay lập tức (bỏ qua cron). Broadcast = copy
+  // JSON gốc sang shop khác trước khi chạy nếu shop đó chưa có file.
+  app.post("/admin/api/listings/run-now", async (req, res) => {
+    try {
+      const sessionUser = (req.session as any).user as SessionUser;
+      if (sessionUser.role === "viewer") return res.status(403).json({ error: "Viewer không thể run" });
+
+      const { id, shops } = req.body as { id?: string; shops?: string[] };
+      if (!id) return res.status(400).json({ error: "Thiếu id listing" });
+      if (!Array.isArray(shops) || shops.length === 0) {
+        return res.status(400).json({ error: "Chọn ít nhất 1 shop" });
+      }
+
+      const resolved = await resolveListingPath(id);
+      if (!resolved) return res.status(400).json({ error: "Id không hợp lệ" });
+      if (resolved.status !== "pending") {
+        return res.status(400).json({ error: "Chỉ run được listing pending. Status hiện tại: " + resolved.status });
+      }
+      if (sessionUser.role !== "admin" && !resolved.owner.split(",").includes(sessionUser.username)) {
+        return res.status(403).json({ error: "Không có quyền run listing này" });
+      }
+      if (!(await fs.pathExists(resolved.full))) {
+        return res.status(404).json({ error: "File pending không còn tồn tại" });
+      }
+
+      const dirs = await getUserDirsByName(resolved.owner.split(",")[0]);
+      if (!dirs?.baseSheinAutoDir) {
+        return res.status(400).json({ error: "User chưa cấu hình baseSheinAutoDir" });
+      }
+
+      // Đọc JSON gốc 1 lần
+      const sourceJson = await fs.readFile(resolved.full, "utf-8");
+      const baseName = resolved.file;
+
+      const spawned: { shop: string; file: string }[] = [];
+      const skipped: { shop: string; reason: string }[] = [];
+
+      for (const targetShop of shops) {
+        const targetFolder = path.join(dirs.baseSheinAutoDir, targetShop);
+        await fs.ensureDir(targetFolder);
+        const targetPath = path.join(targetFolder, baseName);
+
+        // Nếu shop đích chính là shop hiện tại → dùng file gốc
+        // Nếu khác → copy JSON (không di chuyển file gốc — sẽ được consume bởi shop của nó)
+        if (targetShop !== resolved.folder) {
+          if (await fs.pathExists(targetPath)) {
+            skipped.push({ shop: targetShop, reason: "đã có file cùng tên" });
+            continue;
+          }
+          await fs.writeFile(targetPath, sourceJson, "utf-8");
+        }
+
+        spawned.push({ shop: targetShop, file: baseName });
+        // Owner thật của targetShop (theo profiles explicit) → đúng cookie/preferences
+        const trueOwner = (await getShopOwner(targetShop)) || resolved.owner.split(",")[0];
+        // Fire-and-forget — processFile có lock per (baseDir, folder)
+        processFile(dirs.baseSheinAutoDir, targetShop, baseName, trueOwner).catch((err) => {
+          console.error(`❌ run-now ${targetShop}/${baseName} crashed:`, err);
+        });
+      }
+
+      res.json({ ok: true, spawned, skipped });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? "Lỗi run-now" });
+    }
+  });
+
   app.delete("/admin/api/listings", async (req, res) => {
     try {
       const sessionUser = (req.session as any).user as SessionUser;
@@ -357,18 +830,36 @@ export const startAdminServer = async () => {
       const folder = (req.query.folder as string) || undefined;
       const offset = Number(req.query.offset ?? 0);
       const limit = Math.min(200, Number(req.query.limit ?? 50));
-      const result = await historyStore.list({ status, folder, offset, limit });
+
+      // Scope theo quyền user. Admin → undefined = tất cả.
+      // Non-admin → list folders accessible, nếu rỗng = không xem được gì.
+      const folders = await accessibleFolders(req);
+
+      const result = await historyStore.list({ status, folder, folders, offset, limit });
       res.json(result);
     } catch (err: any) {
       res.status(500).json({ error: err?.message ?? "Lỗi lấy history" });
     }
   });
 
+  /** Helper: check user có quyền xem entry này không (theo folder) */
+  const canAccessEntry = async (req: express.Request, entryFolder: string): Promise<boolean> => {
+    const folders = await accessibleFolders(req);
+    if (folders === undefined) return true; // admin
+    return folders.includes(entryFolder);
+  };
+
   app.get("/admin/api/history/:id/json", async (req, res) => {
     try {
       const entry = await historyStore.find(req.params.id);
       if (!entry) return res.status(404).json({ error: "Không tìm thấy entry" });
-      const baseDir = config.baseSheinAutoDir;
+      if (!(await canAccessEntry(req, entry.folder))) {
+        return res.status(403).json({ error: "Không có quyền xem entry này" });
+      }
+      // BaseDir của user owner (lấy từ profile owner, fallback global)
+      const sessionUser = (req.session as any).user as SessionUser;
+      const dirs = await getUserDirsByName(sessionUser.username);
+      const baseDir = dirs?.baseSheinAutoDir || config.baseSheinAutoDir;
       const dir = entry.status === "success" ? "Success" : "Fail";
       const filePath = path.join(baseDir, entry.folder, dir, entry.file);
       if (!(await fs.pathExists(filePath))) {
@@ -391,13 +882,17 @@ export const startAdminServer = async () => {
       if (!entry || entry.status !== "fail") {
         return res.status(400).json({ error: "Chỉ retry được entry fail" });
       }
-      const failPath = path.join(config.baseSheinAutoDir, entry.folder, "Fail", entry.file);
-      const targetPath = path.join(config.baseSheinAutoDir, entry.folder, entry.file);
+      if (!(await canAccessEntry(req, entry.folder))) {
+        return res.status(403).json({ error: "Không có quyền retry entry này" });
+      }
+      const dirs = await getUserDirsByName(sessionUser.username);
+      const baseDir = dirs?.baseSheinAutoDir || config.baseSheinAutoDir;
+      const failPath = path.join(baseDir, entry.folder, "Fail", entry.file);
+      const targetPath = path.join(baseDir, entry.folder, entry.file);
       if (!(await fs.pathExists(failPath))) {
         return res.status(404).json({ error: "File không còn trong Fail" });
       }
       await fs.move(failPath, targetPath, { overwrite: true });
-      // Cleanup error log nếu có
       const errLog = `${failPath}.error.log`;
       if (await fs.pathExists(errLog)) await fs.remove(errLog).catch(() => {});
       res.json({ ok: true });
@@ -409,13 +904,16 @@ export const startAdminServer = async () => {
   // ── Settings ─────────────────────────────────────────────
   const SETTINGS_FILE = path.resolve(process.cwd(), "data", "settings.json");
 
-  app.get("/admin/api/settings", async (_req, res) => {
+  app.get("/admin/api/settings", async (req, res) => {
     try {
+      const sessionUser = (req.session as any).user as SessionUser;
+      if (sessionUser.role !== "admin") return res.status(403).json({ error: "Chỉ admin" });
       const w = workerConfig();
       const overrides = (await fs.pathExists(SETTINGS_FILE))
         ? JSON.parse(await fs.readFile(SETTINGS_FILE, "utf-8"))
         : {};
       res.json({
+        autoCron: w.autoCron,
         concurrency: w.concurrency,
         headless: w.headless,
         fileRouterCron: config.cronFileRouter,
@@ -440,6 +938,7 @@ export const startAdminServer = async () => {
       if (sessionUser.role !== "admin") return res.status(403).json({ error: "Chỉ admin" });
 
       const body = req.body as Partial<{
+        autoCron: boolean;
         concurrency: number;
         headless: boolean;
         fileRouterCron: string;
@@ -461,11 +960,63 @@ export const startAdminServer = async () => {
     }
   });
 
+  // ── Pricing formula ──────────────────────────────────────
+  const PRICING_FILE = path.resolve(process.cwd(), "config", "pricing.json");
+
+  app.get("/admin/api/pricing", async (req, res) => {
+    try {
+      const sessionUser = (req.session as any).user as SessionUser;
+      if (sessionUser.role !== "admin") return res.status(403).json({ error: "Chỉ admin" });
+      const raw = await fs.readFile(PRICING_FILE, "utf-8");
+      const cfg = JSON.parse(raw);
+      res.json({
+        shipFee: typeof cfg.shipFee === "number" ? cfg.shipFee : 5,
+        multiplier: typeof cfg.multiplier === "number" ? cfg.multiplier : 1.6,
+        extraAdd: typeof cfg.extraAdd === "number" ? cfg.extraAdd : 0,
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? "Lỗi đọc pricing" });
+    }
+  });
+
+  app.post("/admin/api/pricing", async (req, res) => {
+    try {
+      const sessionUser = (req.session as any).user as SessionUser;
+      if (sessionUser.role !== "admin") return res.status(403).json({ error: "Chỉ admin" });
+
+      const body = req.body as { shipFee?: number; multiplier?: number; extraAdd?: number };
+      const shipFee = Number(body.shipFee);
+      const multiplier = Number(body.multiplier);
+      const extraAdd = Number(body.extraAdd);
+
+      if (!isFinite(shipFee) || !isFinite(multiplier) || !isFinite(extraAdd)) {
+        return res.status(400).json({ error: "Tất cả field phải là số" });
+      }
+      if (multiplier <= 0) {
+        return res.status(400).json({ error: "Multiplier phải > 0" });
+      }
+
+      // Merge với defaults sẵn có (qty, weight, dimensions)
+      const existing = JSON.parse(await fs.readFile(PRICING_FILE, "utf-8"));
+      const merged = { ...existing, shipFee, multiplier, extraAdd };
+      // Remove legacy fields nếu có
+      delete merged.offset;
+      delete merged.divisor;
+      await fs.writeFile(PRICING_FILE, JSON.stringify(merged, null, 2), "utf-8");
+      reloadAppConfig();
+      res.json({ ok: true, shipFee, multiplier, extraAdd });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? "Lỗi lưu pricing" });
+    }
+  });
+
   // ── Brand mapping per shop profile ───────────────────────
   const BRAND_FILE = path.resolve(process.cwd(), "config", "brand-profiles.json");
 
-  app.get("/admin/api/brands", async (_req, res) => {
+  app.get("/admin/api/brands", async (req, res) => {
     try {
+      const sessionUser = (req.session as any).user as SessionUser;
+      if (sessionUser.role !== "admin") return res.status(403).json({ error: "Chỉ admin" });
       const raw = await fs.readFile(BRAND_FILE, "utf-8");
       const cfg = JSON.parse(raw);
       res.json({
@@ -502,27 +1053,61 @@ export const startAdminServer = async () => {
     }
   });
 
-  // ── Cookie 4Seller ───────────────────────────────────────
+  // ── Cookie 4Seller (per-user) ─────────────────────────
+  // GET: cho UI biết user hiện tại đã upload cookie chưa
+  app.get("/admin/api/cookie/status", async (req, res) => {
+    try {
+      const sessionUser = (req.session as any).user as SessionUser;
+      const file = userCookiePath(sessionUser.username);
+      const exists = await fs.pathExists(file);
+      let count = 0;
+      let mtime: number | null = null;
+      if (exists) {
+        try {
+          const stat = await fs.stat(file);
+          mtime = stat.mtimeMs;
+          const raw = await fs.readFile(file, "utf-8");
+          const parsed = JSON.parse(raw);
+          const arr = Array.isArray(parsed) ? parsed : parsed?.cookies ?? [];
+          count = arr.length;
+        } catch {
+          // ignore parse fail
+        }
+      }
+      res.json({
+        username: sessionUser.username,
+        userCookie: { exists, count, mtime, path: file },
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? "Lỗi đọc status cookie" });
+    }
+  });
+
   app.post("/admin/api/cookie", async (req, res) => {
     try {
       const sessionUser = (req.session as any).user as SessionUser;
-      if (sessionUser.role !== "admin") return res.status(403).json({ error: "Chỉ admin" });
+      if (sessionUser.role === "viewer") return res.status(403).json({ error: "Viewer không thể upload cookie" });
 
       const body = req.body as { cookie: any[] };
       if (!Array.isArray(body.cookie)) {
         return res.status(400).json({ error: "Body phải có field 'cookie' là array" });
       }
-      await fs.writeFile(config.cookieFile, JSON.stringify(body.cookie, null, 2), "utf-8");
-      res.json({ ok: true, count: body.cookie.length });
+      // Mỗi user lưu vào file riêng — không ghi đè user khác
+      const targetFile = userCookiePath(sessionUser.username);
+      await fs.ensureDir(path.dirname(targetFile));
+      await fs.writeFile(targetFile, JSON.stringify(body.cookie, null, 2), "utf-8");
+      res.json({ ok: true, count: body.cookie.length, savedTo: targetFile });
     } catch (err: any) {
       res.status(500).json({ error: err?.message ?? "Lỗi lưu cookie" });
     }
   });
 
-  app.post("/admin/api/cookie/test", async (_req, res) => {
+  app.post("/admin/api/cookie/test", async (req, res) => {
     let browser: any = null;
     try {
-      const cookie = await configCookie("listing4seller");
+      const sessionUser = (req.session as any).user as SessionUser;
+      // Test cookie của user đang đăng nhập (fallback global nếu chưa upload riêng)
+      const cookie = await configCookie(sessionUser.username);
       browser = await chromium.launch({ headless: true });
       const ctx = await browser.newContext();
       await ctx.addCookies(cookie);
@@ -534,7 +1119,7 @@ export const startAdminServer = async () => {
       const finalUrl = page.url();
       const ok = !!resp && resp.status() < 400 && !finalUrl.includes("login");
       await ctx.close();
-      res.json({ ok, finalUrl, status: resp?.status() ?? null });
+      res.json({ ok, finalUrl, status: resp?.status() ?? null, source: sessionUser.username });
     } catch (err: any) {
       res.status(500).json({ ok: false, error: err?.message ?? "Lỗi test cookie" });
     } finally {

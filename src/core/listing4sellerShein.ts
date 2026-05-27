@@ -3,7 +3,8 @@ import { chromium } from "playwright-core";
 import { configCookie } from "../utils/configCookie";
 import { genTitleFromShein } from "../services/gemini/genTitleFromShein";
 import { cleanTitle } from "../utils/cleanTitle";
-import { resolveBrand, workerConfig } from "../config/appConfig";
+import { workerConfig } from "../config/appConfig";
+import { resolveBrandForUser } from "../state/userDirs";
 
 import { getProfileNameFromFolder } from "./steps/randomUtils";
 import { findCategory } from "./steps/findCategory";
@@ -22,6 +23,7 @@ import {
 import { fillShippingAndCertification } from "./steps/fillShipping";
 import { handleSizeChartUpload } from "./steps/handleSizeChart";
 import { detectPublishOutcome, checkPageErrors, captureScreenshot } from "./steps/publishAndDetect";
+import { removeUnavailableVariants } from "./steps/removeUnavailableVariants";
 
 export { findCategory, handleBrand, fillVariations, fillTableData };
 export { uploadProductImages, uploadVariantImages };
@@ -46,10 +48,17 @@ const assertNoErrors = async (page: any, after: string) => {
  */
 export const listing4sellerShein = async (
   jsonFile: string,
-  opts?: { dryRun?: boolean }
+  opts?: {
+    dryRun?: boolean;
+    cookieUser?: string;
+    headless?: boolean;
+    pricing?: { shipFee: number; multiplier: number; extraAdd: number };
+  }
 ): Promise<void> => {
-  const cookie = await configCookie("listing4seller");
-  const browser = await chromium.launch({ headless: workerConfig().headless });
+  // Cookie load theo user (owner của file). Fallback global nếu user chưa upload.
+  const cookie = await configCookie(opts?.cookieUser ?? null);
+  const headless = opts?.headless ?? workerConfig().headless;
+  const browser = await chromium.launch({ headless });
   const browserContext = await browser.newContext({
     permissions: ["clipboard-read", "clipboard-write"],
   });
@@ -63,13 +72,21 @@ export const listing4sellerShein = async (
 
   try {
     console.log(`📄 Đọc file: ${jsonFile}`);
-    // Accept cả absolute path lẫn relative path (relative tự suy ra từ Downloads — legacy)
-    const path = await import("path");
-    const absPath = path.isAbsolute(jsonFile)
-      ? jsonFile
-      : path.join("C:/Users/KBT/Downloads", jsonFile);
-    const jsonContent = await fs.promises.readFile(absPath, "utf-8");
+    const pathMod = await import("path");
+    if (!pathMod.isAbsolute(jsonFile)) {
+      throw new Error(
+        `listing4sellerShein chỉ nhận absolute path. Nhận được: "${jsonFile}"`
+      );
+    }
+    const jsonContent = await fs.promises.readFile(jsonFile, "utf-8");
     const data = JSON.parse(jsonContent);
+    const targetProfile = getProfileNameFromFolder(jsonFile);
+
+    // KICK OFF Gemini calls NGAY ĐẦU — chạy song song với toàn bộ page setup
+    // (goto, waitLoad, selectProfile ~7-10s). Đến khi cần fill title, Gemini
+    // gần như đã xong, đặc biệt khi cache hit (instant).
+    const titlePromise = genTitleFromShein(data.product_name);
+    const categoryPromise = findCategory(data.category);
 
     await page.goto("https://www.4seller.com/web/listing/tiktok/create.html?status=draft", {
       timeout: 30000,
@@ -82,21 +99,21 @@ export const listing4sellerShein = async (
       throw new Error("Cookie 4Seller hết hạn — bị redirect về login");
     }
 
-    const targetProfile = getProfileNameFromFolder(jsonFile);
     await selectProfile(page, targetProfile);
     await assertNoErrors(page, "selectProfile");
 
-    // Title (AI) + brand từ config
-    const aiTitle = await genTitleFromShein(data.product_name);
-    const brand = resolveBrand(targetProfile);
+    // Lấy kết quả Gemini (await — đã chạy song song trong lúc select profile)
+    const aiTitle = await titlePromise;
+    // Brand resolve theo user (override) → fallback global brand-profiles.json
+    const brand = await resolveBrandForUser(opts?.cookieUser, targetProfile);
     console.log({ targetProfile, brand });
     const finalTitle = cleanTitle(aiTitle, brand);
     console.log(finalTitle);
     await page.fill("#productInfo .el-input.mr_8 .el-input__inner", finalTitle);
     await page.waitForTimeout(2000);
 
-    // Category (AI mapping)
-    const categoryPath = await findCategory(data.category);
+    // Category (AI mapping) — đã promise xong
+    const categoryPath = await categoryPromise;
     await selectCategory(page, categoryPath);
     await assertNoErrors(page, "selectCategory");
 
@@ -109,8 +126,15 @@ export const listing4sellerShein = async (
     await fillVariations(page, data.listing_variations);
     await assertNoErrors(page, "fillVariations");
 
-    await fillTableData(page, data.variant_price, data.attributes.SKU, 5, data.variant_ids);
+    await fillTableData(page, data.variant_price, data.attributes.SKU, 5, data.variant_ids, opts?.pricing);
     await assertNoErrors(page, "fillTableData");
+
+    // Nếu tampermonkey gửi kèm available_matrix (mỗi màu có set size khác nhau),
+    // dọn các (color, size) rows không available do 4Seller mặc định cross-product
+    if (data.available_matrix && typeof data.available_matrix === "object") {
+      await removeUnavailableVariants(page, data.available_matrix);
+      await assertNoErrors(page, "removeUnavailableVariants");
+    }
 
     await uploadProductImages(page, mergedProductImages);
     await uploadVariantImages(page, data.variant_images);
@@ -150,15 +174,31 @@ export const listing4sellerShein = async (
     }
 
     console.log(`✅ Hoàn thành đăng sản phẩm. ${outcome.reason}`);
-  } catch (error) {
-    // Chụp screenshot final nếu chưa có
+  } catch (error: any) {
+    // Chụp screenshot final + đính path vào error message để UI hiển thị
     try {
       const sc = await captureScreenshot(page, "fatal-error");
-      if (sc) console.error(`📸 Screenshot lỗi: ${sc}`);
+      if (sc) {
+        console.error(`📸 Screenshot lỗi: ${sc}`);
+        if (error && typeof error.message === "string" && !error.message.includes("Screenshot:")) {
+          error.message = `${error.message}\nScreenshot: ${sc}`;
+        }
+      }
     } catch {
       // ignore
     }
     console.error("Error in listing4sellerShein:", error);
+
+    // Debug pause: nếu headless=false (user muốn xem browser) → giữ browser
+    // mở 30s trước khi đóng để user inspect manual.
+    if (!headless) {
+      console.log("🐛 [DEBUG] headless=false → giữ browser mở 30s để bạn xem manual...");
+      try {
+        await page.waitForTimeout(30_000);
+      } catch {
+        // page có thể đã đóng, skip
+      }
+    }
     throw error;
   } finally {
     await page.close().catch(() => {});

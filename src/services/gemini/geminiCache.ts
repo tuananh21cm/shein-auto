@@ -1,118 +1,64 @@
-import fs from "fs-extra";
-import path from "path";
 import crypto from "crypto";
-
-/**
- * Persistent cache cho Gemini calls. Lưu vào data/cache/gemini.json,
- * key bằng SHA-256 hash của input (gọn, không phình file).
- *
- * Structure:
- *   {
- *     titles:     { <hash>: <output> },
- *     categories: { <hash>: <output> }
- *   }
- */
-
-interface CacheFile {
-  titles: Record<string, string>;
-  categories: Record<string, string>;
-}
-
-const CACHE_DIR = path.resolve(process.cwd(), "data", "cache");
-const CACHE_FILE = path.join(CACHE_DIR, "gemini.json");
-
-let cache: CacheFile = { titles: {}, categories: {} };
-let loaded = false;
-let dirty = false;
-let saveTimer: NodeJS.Timeout | null = null;
+import { getDb } from "../../state/db";
 
 const hashKey = (input: string): string =>
   crypto.createHash("sha256").update(input).digest("hex").slice(0, 16);
 
-const load = async (): Promise<void> => {
-  if (loaded) return;
-  loaded = true;
-  await fs.ensureDir(CACHE_DIR);
-  if (await fs.pathExists(CACHE_FILE)) {
-    try {
-      const raw = await fs.readFile(CACHE_FILE, "utf-8");
-      const parsed = JSON.parse(raw);
-      cache = {
-        titles: parsed.titles ?? {},
-        categories: parsed.categories ?? {},
-      };
-      const tCount = Object.keys(cache.titles).length;
-      const cCount = Object.keys(cache.categories).length;
-      console.log(`💾 Gemini cache loaded: ${tCount} titles, ${cCount} categories`);
-    } catch (err) {
-      console.warn("⚠️ Không đọc được gemini.json cache, dùng cache trống:", err);
-      cache = { titles: {}, categories: {} };
-    }
-  }
-};
-
-const scheduleSave = (): void => {
-  dirty = true;
-  if (saveTimer) return;
-  // Debounce 1s: tránh write disk liên tục khi cache nhiều entry cùng lúc
-  saveTimer = setTimeout(async () => {
-    saveTimer = null;
-    if (!dirty) return;
-    dirty = false;
-    try {
-      await fs.ensureDir(CACHE_DIR);
-      await fs.writeFile(CACHE_FILE, JSON.stringify(cache, null, 2), "utf-8");
-    } catch (err) {
-      console.warn("⚠️ Không ghi được gemini.json:", err);
-    }
-  }, 1000);
-};
-
 const normalize = (s: string): string => s.trim().toLowerCase();
+
+type Kind = "title" | "category";
+
+const get = (kind: Kind, input: string): string | null => {
+  const db = getDb();
+  const row = db
+    .prepare("SELECT output FROM gemini_cache WHERE kind = ? AND cache_key = ?")
+    .get(kind, hashKey(normalize(input))) as { output: string } | undefined;
+  return row?.output ?? null;
+};
+
+const set = (kind: Kind, input: string, output: string): void => {
+  if (!output) return;
+  const db = getDb();
+  db.prepare(`
+    INSERT INTO gemini_cache (kind, cache_key, output, created_at)
+    VALUES (?, ?, ?, ?)
+    ON CONFLICT(kind, cache_key) DO UPDATE SET output = excluded.output, created_at = excluded.created_at
+  `).run(kind, hashKey(normalize(input)), output, Date.now());
+};
 
 export const geminiCache = {
   async init(): Promise<void> {
-    await load();
+    getDb(); // lazy connect
+    const stats = this.stats();
+    console.log(`💾 Gemini cache: ${stats.titles} titles, ${stats.categories} categories`);
   },
 
   async getTitle(input: string): Promise<string | null> {
-    await load();
-    return cache.titles[hashKey(normalize(input))] ?? null;
+    return get("title", input);
   },
 
   async setTitle(input: string, output: string): Promise<void> {
-    await load();
-    if (!output) return;
-    cache.titles[hashKey(normalize(input))] = output;
-    scheduleSave();
+    set("title", input, output);
   },
 
   async getCategory(input: string): Promise<string | null> {
-    await load();
-    return cache.categories[hashKey(normalize(input))] ?? null;
+    return get("category", input);
   },
 
   async setCategory(input: string, output: string): Promise<void> {
-    await load();
-    if (!output) return;
-    cache.categories[hashKey(normalize(input))] = output;
-    scheduleSave();
+    set("category", input, output);
   },
 
   stats(): { titles: number; categories: number } {
-    return {
-      titles: Object.keys(cache.titles).length,
-      categories: Object.keys(cache.categories).length,
-    };
+    const db = getDb();
+    const t = db.prepare("SELECT COUNT(*) as c FROM gemini_cache WHERE kind = 'title'").get() as { c: number };
+    const c = db.prepare("SELECT COUNT(*) as c FROM gemini_cache WHERE kind = 'category'").get() as { c: number };
+    return { titles: t.c, categories: c.c };
   },
 
-  async clear(kind?: "titles" | "categories"): Promise<void> {
-    await load();
-    if (!kind) {
-      cache = { titles: {}, categories: {} };
-    } else {
-      cache[kind] = {};
-    }
-    scheduleSave();
+  async clear(kind?: Kind): Promise<void> {
+    const db = getDb();
+    if (kind) db.prepare("DELETE FROM gemini_cache WHERE kind = ?").run(kind);
+    else db.prepare("DELETE FROM gemini_cache").run();
   },
 };

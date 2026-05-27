@@ -13,13 +13,19 @@ interface BrandProfilesFile {
   profiles: Record<string, string>;
 }
 interface PricingFile {
-  offset: number;
-  divisor: number;
+  // Formula mới: (price + shipFee) * multiplier + extraAdd
+  shipFee?: number;
+  multiplier?: number;
+  extraAdd?: number;
+  // Formula cũ (backward compat): (price + offset) / divisor
+  offset?: number;
+  divisor?: number;
   defaultQty: number;
   defaultWeight: string;
   defaultDimensions: { length: string; width: string; height: string };
 }
 interface WorkerFile {
+  autoCron: boolean;
   concurrency: number;
   headless: boolean;
   fileRouterCron: string;
@@ -63,9 +69,23 @@ export const resolveBrand = (profile: string): string => {
   return cfg.profiles[profile] ?? cfg.default;
 };
 
-/** Tính giá bán cuối cùng từ giá gốc theo công thức trong pricing.json. */
+/**
+ * Tính giá bán cuối cùng từ giá gốc.
+ *
+ * Ưu tiên formula mới: (price + shipFee) × multiplier + extraAdd
+ * Fallback formula cũ: (price + offset) / divisor (cho config legacy)
+ */
 export const computeFinalPrice = (originalPrice: number): number => {
-  const { offset, divisor } = pricing();
+  const p = pricing();
+  if (typeof p.shipFee === "number" || typeof p.multiplier === "number") {
+    const ship = typeof p.shipFee === "number" ? p.shipFee : 0;
+    const mult = typeof p.multiplier === "number" ? p.multiplier : 1;
+    const extra = typeof p.extraAdd === "number" ? p.extraAdd : 0;
+    return (originalPrice + ship) * mult + extra;
+  }
+  // Legacy fallback
+  const offset = typeof p.offset === "number" ? p.offset : 0;
+  const divisor = typeof p.divisor === "number" && p.divisor > 0 ? p.divisor : 1;
   return (originalPrice + offset) / divisor;
 };
 

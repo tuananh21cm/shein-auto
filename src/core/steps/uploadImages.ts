@@ -32,14 +32,18 @@ export const uploadProductImages = async (page: any, imageUrls: string[]): Promi
   const tempDir = path.join(__dirname, `temp_images_${uniqueId}`);
 
   if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir);
-  const localFilePaths: string[] = [];
 
   try {
-    for (let i = 0; i < imageUrls.length; i++) {
-      const filePath = path.join(tempDir, `img_${i}.jpg`);
-      await downloadToFile(imageUrls[i], filePath);
-      localFilePaths.push(filePath);
-    }
+    // Download song song — tăng tốc N lần so với for-await sequential
+    const t0 = Date.now();
+    const localFilePaths = await Promise.all(
+      imageUrls.map(async (url, i) => {
+        const filePath = path.join(tempDir, `img_${i}.jpg`);
+        await downloadToFile(url, filePath);
+        return filePath;
+      })
+    );
+    console.log(`⬇️ [${uniqueId}] Download ${imageUrls.length} ảnh song song mất ${Math.round((Date.now() - t0) / 1000)}s`);
 
     const productUploadContainer = page.locator(".file_upload__index").first();
     const fileInput = productUploadContainer.locator("input.file_upload__input");
@@ -49,23 +53,31 @@ export const uploadProductImages = async (page: any, imageUrls: string[]): Promi
     const imgsBefore = await productUploadContainer.locator("img").count();
     await fileInput.setInputFiles(localFilePaths);
 
-    console.log(`[${uniqueId}] Baseline: ${imgsBefore} ảnh. Chờ thumbnail đầu tiên (max 60s)...`);
-    try {
-      await productUploadContainer
-        .locator("img")
-        .first()
-        .waitFor({ state: "visible", timeout: 60000 });
-      console.log(`[${uniqueId}] Thumbnail đầu tiên xuất hiện!`);
-    } catch {
-      console.warn(`⚠️ [${uniqueId}] Không thấy thumbnail sau 60s — tiếp tục fixed wait...`);
+    // Smart wait thay vì fixed sleep N×7s — poll img count đến khi đạt expected
+    // hoặc stable trong stableMs liên tiếp (server xử lý xong).
+    const expectedTotal = imgsBefore + localFilePaths.length;
+    const maxWaitMs = Math.max(60_000, localFilePaths.length * workerConfig().imageUploadWaitPerImageMs);
+    const stableMs = 3_000; // count không đổi trong 3s = upload xong
+    console.log(`[${uniqueId}] Smart wait: target ${expectedTotal} ảnh, max ${maxWaitMs / 1000}s...`);
+
+    const tStart = Date.now();
+    let lastCount = imgsBefore;
+    let lastChange = Date.now();
+    let imgsAfter = imgsBefore;
+    while (Date.now() - tStart < maxWaitMs) {
+      const currentCount = await productUploadContainer.locator("img").count();
+      if (currentCount !== lastCount) {
+        lastCount = currentCount;
+        lastChange = Date.now();
+      }
+      imgsAfter = currentCount;
+      if (currentCount >= expectedTotal) break;
+      if (currentCount > imgsBefore && Date.now() - lastChange > stableMs) break;
+      await page.waitForTimeout(500);
     }
-
-    const fixedWait = localFilePaths.length * workerConfig().imageUploadWaitPerImageMs;
-    console.log(`[${uniqueId}] Fixed wait ${fixedWait / 1000}s cho ${localFilePaths.length} ảnh...`);
-    await page.waitForTimeout(fixedWait);
-
-    const imgsAfter = await productUploadContainer.locator("img").count();
-    console.log(`✅ [${uniqueId}] Upload xong. ${imgsBefore} → ${imgsAfter} ảnh trong container.`);
+    console.log(
+      `✅ [${uniqueId}] Upload xong sau ${Math.round((Date.now() - tStart) / 1000)}s. ${imgsBefore} → ${imgsAfter} ảnh.`
+    );
   } catch (error) {
     console.error(`❌ [${uniqueId}] Lỗi upload ảnh sản phẩm:`, error);
     throw error;
@@ -117,29 +129,46 @@ export const uploadVariantImages = async (
         continue;
       }
 
-      for (let i = 0; i < imageUrls.length; i++) {
-        const localPath = path.join(
-          tempDir,
-          `${searchColor.replace(/\s+/g, "_")}_${i}_${Date.now()}.jpg`
-        );
-        await downloadToFile(imageUrls[i], localPath);
-        localPaths.push(localPath);
-      }
+      // Download song song trong từng màu — vẫn upload tuần tự giữa các màu
+      // (vì mỗi màu là 1 DOM element riêng + 4Seller có thể không thích upload đồng thời)
+      const tDl = Date.now();
+      const downloaded = await Promise.all(
+        imageUrls.map(async (url, i) => {
+          const localPath = path.join(
+            tempDir,
+            `${searchColor.replace(/\s+/g, "_")}_${i}_${Date.now()}.jpg`
+          );
+          await downloadToFile(url, localPath);
+          return localPath;
+        })
+      );
+      localPaths.push(...downloaded);
+      console.log(`⬇️ Variant "${searchColor}": download ${imageUrls.length} ảnh mất ${Math.round((Date.now() - tDl) / 1000)}s`);
 
       const targetBox = variantContainer.first();
       await targetBox.scrollIntoViewIfNeeded();
 
       const fileInput = targetBox.locator("input.file_upload__input");
       await fileInput.waitFor({ state: "attached" });
+
+      // Đếm ảnh có trước, set files, rồi smart wait đạt expected
+      const imgsBefore = await targetBox.locator("img").count();
+      const expected = imgsBefore + localPaths.length;
       await fileInput.setInputFiles(localPaths);
 
-      console.log(`✅ Đã upload ${localPaths.length} ảnh cho: ${searchColor}`);
-
-      try {
-        await targetBox.locator("img").first().waitFor({ state: "visible", timeout: 15000 });
-      } catch {
-        console.warn(`⚠️ Thumbnail chưa hiện sau 15s cho: ${searchColor}`);
+      const tUp = Date.now();
+      const maxWait = 30_000;
+      const stable = 2_000;
+      let last = imgsBefore;
+      let lastChange = Date.now();
+      while (Date.now() - tUp < maxWait) {
+        const c = await targetBox.locator("img").count();
+        if (c !== last) { last = c; lastChange = Date.now(); }
+        if (c >= expected) break;
+        if (c > imgsBefore && Date.now() - lastChange > stable) break;
+        await page.waitForTimeout(400);
       }
+      console.log(`✅ "${searchColor}": ${localPaths.length} ảnh upload (${imgsBefore}→${last}) trong ${Math.round((Date.now() - tUp) / 1000)}s`);
     } catch (innerError) {
       console.error(`❌ Lỗi tại màu ${searchColor}:`, innerError);
       failedColors.push(searchColor);

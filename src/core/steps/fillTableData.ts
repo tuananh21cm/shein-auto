@@ -1,17 +1,33 @@
 import { computeFinalPrice } from "../../config/appConfig";
 import { generateRandomString } from "./randomUtils";
 
+export interface PriceOverride {
+  shipFee: number;
+  multiplier: number;
+  extraAdd: number;
+}
+
 /**
  * Điền price/SKU/qty cho từng variant trong bảng. Scroll-and-scan vì 4Seller
  * dùng virtual list nên không phải row nào cũng có sẵn trong DOM.
+ *
+ * @param priceOverride  Nếu pass, dùng công thức theo user override. Nếu null,
+ *                       fallback global pricing.json qua computeFinalPrice.
  */
 export const fillTableData = async (
   page: any,
   priceData: any[],
   skuValue: string = "TA-P5",
   qtyValue: number = 5,
-  variantIds?: Array<{ [color: string]: string }>
+  variantIds?: Array<{ [color: string]: string }>,
+  priceOverride?: PriceOverride
 ): Promise<void> => {
+  const calcPrice = (numericPrice: number): number => {
+    if (priceOverride) {
+      return (numericPrice + priceOverride.shipFee) * priceOverride.multiplier + priceOverride.extraAdd;
+    }
+    return computeFinalPrice(numericPrice);
+  };
   console.log("--- Bắt đầu điền dữ liệu bảng (Price, SKU, Qty) ---");
 
   const rawPricing: { [key: string]: string } = Object.assign({}, ...priceData);
@@ -53,7 +69,7 @@ export const fillTableData = async (
           const numericPrice = parseFloat(cleanPrice);
 
           if (!isNaN(numericPrice)) {
-            const finalPrice = computeFinalPrice(numericPrice);
+            const finalPrice = calcPrice(numericPrice);
             const priceInput = row.locator("td").nth(3).locator("input.el-input__inner");
             await priceInput.fill(finalPrice.toFixed(2));
             console.log(`✅ finalPrice: ${finalPrice.toFixed(2)}`);

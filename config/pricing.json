@@ -1,7 +1,8 @@
 {
-  "_comment": "Formula: finalPrice = (originalPrice + offset) / divisor. offset = profit buffer + shipping. divisor = profit margin factor (0.623 => ~37.7% margin).",
-  "offset": 13,
-  "divisor": 0.623,
+  "_comment": "Formula: finalPrice = (originalPrice + shipFee) * multiplier + extraAdd. shipFee mặc định 5 (phí ship). multiplier = margin (vd 1.6 = +60%).",
+  "shipFee": 5,
+  "multiplier": 1.6,
+  "extraAdd": 0,
   "defaultQty": 5,
   "defaultWeight": "0.3",
   "defaultDimensions": {

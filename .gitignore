@@ -6,11 +6,18 @@ dist/
 src/cookies/listing4sellerCookie.json
 
 # Runtime data
+data/*.db
+data/*.db-journal
+data/*.db-wal
+data/*.db-shm
 data/admin-config.json
+data/admin-config.json.migrated
 data/history.json
+data/history.json.migrated
 data/settings.json
 data/cache/
 data/screenshots/
+data/cookies/
 
 # Worker temp
 *.log

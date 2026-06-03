@@ -1,0 +1,1067 @@
+[
+  {
+    "url": "https://us.shein.com/bff-api/user-api/privacy-banner-api/query_user_latest_gpc",
+    "keys": [
+      "code",
+      "msg",
+      "info"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/api/common/i18nBatch/get?_ver=1.1.8&_lang=en&pages[]=header&pages[]=footer&pages[]=quick_view&pages[]=quick_add&pages[]=email_subscribe&pages[]=input&pages[]=fast_cart&pages[]=coupon&pages[]=promotion&pages[]=similar_products&pages[]=wishlist_group&pages[]=shipping_address&pages[]=app_exclusive_discount&pages[]=item",
+    "keys": [
+      "header",
+      "footer",
+      "quick_view",
+      "quick_add",
+      "email_subscribe",
+      "input",
+      "fast_cart",
+      "coupon",
+      "promotion",
+      "similar_products",
+      "wishlist_group",
+      "shipping_address",
+      "app_exclusive_discount",
+      "item"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/bff-api/user-api/privacy-banner-api/query_user_latest_cookie",
+    "keys": [
+      "code",
+      "msg",
+      "info"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/bff-api/user-api/common/userinfo_ugid?_ver=1.1.8&_lang=en",
+    "keys": [
+      "code",
+      "msg",
+      "info"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/bff-api/abt/merge/get_abt_by_poskey?_ver=1.1.8&_lang=en&posKeys=Movepoints&_abt=1",
+    "keys": [
+      "code",
+      "msg",
+      "info"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/bff-api/navigation-api/transfer/mapping_config?_ver=1.1.8&_lang=en",
+    "keys": [
+      "code",
+      "msg",
+      "info"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/bff-api/navigation-api/pop_batch_refactor?_ver=1.1.8&_lang=en",
+    "keys": [
+      "code",
+      "msg",
+      "info"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/bff-api/user-api/csrf/update?_ver=1.1.8&_lang=en",
+    "keys": [
+      "code",
+      "msg",
+      "info"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/bff-api/abt/merge/get_abt_by_poskey?_ver=1.1.8&_lang=en&posKeys=NewPopQueue",
+    "keys": [
+      "code",
+      "msg",
+      "info"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/api/common/userInfoManager/update?_ver=1.1.8&_lang=en",
+    "keys": [
+      "code",
+      "msg",
+      "data"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/bff-api/abt/merge/get_abt_by_poskey?_ver=1.1.8&_lang=en&posKeys=Searchfilter,CccxPublicBanner,CccAppIcon,CccKidsCategory,CccHomeCategory,CccPlussizeCategory,Aod,Similaritems,ListNoScrollDown,Aftersimilar,Reviewsubmit,Orderdetail,OrderTrack,ChangePassword,CODwithdraw,Bodysize,FastRegisterPopup,ThirtyLogin,SPcSignPrefer,newPrivacy,ProductDetailYouMayAlsoLike,ProductDetailCustomersAlsoViewedList,CookieResult,Selfsizerecommended,ACTrandom,ActDefault,ActHot,ActNew,ActElement,ActAbt,ActReview,ActFavorite,SilentloginPrivacy,SpecialOutgoingScene,Quickregclosed,LoginSwtichsite,phoneRegisterLogin,LoginMerge,SearchCard,AddShowGroup,ActAbt1,ActAbt2,ActAbt3,ActAbt4,ActAbt5,ActAbt6,ActAbt7,ActAbt8,ActAbt9,ActAbt10,sheinclubprice,FlashShowedCrowed,Movepoints,CCCxTopbanner,RecentlyViewNotlogged,GoogleOneTapSignIn,Cartshowobmtitle,Showplatformtitle,TradeQuickship,Cartnoteligibleforcoupons,Discountlistshowlimitexceededtip,AllListQuickShip,CccMenCategory,OpenFreeTrial,HomepageWhatsapp,UnderPrice,VerifyCodeSwitch,LowpriceUser,CouponTimeFormatChange,CouponbagUpdate,SearchListCoupon,SearchSceneCoupon,PhoneAreaCodePopop,recSwitch,DefaultWordTag,MeClubTrailSwitch,storewishlist,SearchDefaultNew,SearchHotGD,SearchHotNew,PcCartPrefetch,detailcountdown,PageMeNews,HomePopup,AccountManager,SignoutFlowOptimize,storeiconchange,Reviewchange,subrating,PerformanceLogNodeTestFetch,SHEINcomplianceswitch,CccAllHomepage,presearch,Cartshowcoupon,Cartentranceinfo,listdiscountLabel,DetailStarReview,detailgoodsCard,listpriceTag,detailKeyAttribute,pcwordSize,FlashSaleCountDown&_abt=1",
+    "keys": [
+      "code",
+      "msg",
+      "info"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/bff-api/abt/merge/abt_async?_ver=1.1.8&_lang=en",
+    "keys": [
+      "code",
+      "msg",
+      "info"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/bff-api/user-api/cookie_banner/remove_cookies",
+    "keys": [
+      "code",
+      "msg",
+      "info"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/risk/verify/identity/validation/token?_ver=1.1.8&_lang=en",
+    "keys": [
+      "code",
+      "msg",
+      "info",
+      "successful"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/api/zpnv/am0?_ver=1.1.8&_lang=en",
+    "keys": [
+      "code",
+      "info"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/api/zpnv/am0?_ver=1.1.8&_lang=en",
+    "keys": [
+      "code",
+      "info"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/risk/verify/identity/validation/resources?_ver=1.1.8&_lang=en",
+    "keys": [
+      "code",
+      "msg",
+      "info",
+      "successful"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/api/zpnv/am0?_ver=1.1.8&_lang=en",
+    "keys": [
+      "code",
+      "info"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/api/zpnv/report/get?_ver=1.1.8&_lang=en",
+    "keys": [
+      "code",
+      "info"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/api/zpnv/report/get?_ver=1.1.8&_lang=en",
+    "keys": [
+      "code",
+      "info"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/bff-api/abt/merge/get_abt_by_poskey?_ver=1.1.8&_lang=en&posKeys=webpushsubscribe&_abt=1",
+    "keys": [
+      "code",
+      "msg",
+      "info"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/risk/verify/identity/validation/publish/sign/rule?_ver=1.1.8&_lang=en",
+    "keys": [
+      "code",
+      "msg",
+      "info",
+      "trace_id",
+      "success"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/api/zpnv/am0?_ver=1.1.8&_lang=en",
+    "keys": [
+      "code",
+      "info"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/risk/verify/identity/validation/check?_ver=1.1.8&_lang=en",
+    "keys": [
+      "code",
+      "msg",
+      "info",
+      "successful"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/bff-api/abt/merge/get_abt_by_poskey?_ver=1.1.8&_lang=en&posKeys=GoogleAutoSign&_abt=1",
+    "keys": [
+      "code",
+      "msg",
+      "info"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/bff-api/ticket/robot_customer_chan?_ver=1.1.8&_lang=en",
+    "keys": [
+      "code",
+      "msg",
+      "info"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/bff-api/system/configs/v2/multi_language?_ver=1.1.8&_lang=en",
+    "keys": [
+      "code",
+      "msg",
+      "info"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/bff-api/user/currency/list?_ver=1.1.8&_lang=en",
+    "keys": [
+      "code",
+      "msg",
+      "info"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/bff-api/user/language/list?_ver=1.1.8&_lang=en",
+    "keys": [
+      "code",
+      "msg",
+      "info"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/bff-api/abt/merge/get_abt_by_poskey?_ver=1.1.8&_lang=en&posKeys=Cartshowcoupon,orderCouponNewUser,CartCountdownDisplay",
+    "keys": [
+      "code",
+      "msg",
+      "info"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/bff-api/navigation-api/store/customer/config?_ver=1.1.8&_lang=en",
+    "keys": [
+      "code",
+      "msg",
+      "info"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/bff-api/system/configs/multi_language?_ver=1.1.8&_lang=en",
+    "keys": [
+      "code",
+      "msg",
+      "info"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/bff-api/system/configs/multi_language?_ver=1.1.8&_lang=en",
+    "keys": [
+      "code",
+      "msg",
+      "info"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/bff-api/system/configs/page_multi_language_mapping?_ver=1.1.8&_lang=en",
+    "keys": [
+      "code",
+      "msg",
+      "info"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/bff-api/order/get_cart_goods_sum_quantity?_ver=1.1.8&_lang=en",
+    "keys": [
+      "code",
+      "msg",
+      "info"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/bff-api/product/search/v3/get_keywords?_ver=1.1.8&_lang=en&word_type=2&scene=home",
+    "keys": [
+      "code",
+      "msg",
+      "info"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/bff-api/product/search/v3/get_keywords?_ver=1.1.8&_lang=en&word_type=1&scene=home",
+    "keys": [
+      "code",
+      "msg",
+      "info"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/bff-api/ccc/nav/right?_ver=1.1.8&_lang=en&channelType=10&id=777407&leftCateName=New+In",
+    "keys": [
+      "code",
+      "msg",
+      "info"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/bff-api/system/configs/multi_language?_ver=1.1.8&_lang=en",
+    "keys": [
+      "code",
+      "msg",
+      "info"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/bff-api/order/mall/cart/index?_ver=1.1.8&_lang=en",
+    "keys": [
+      "code",
+      "msg",
+      "info"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/api/zpnv/am0?_ver=1.1.8&_lang=en",
+    "keys": [
+      "code",
+      "info"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/risk/verify/identity/validation/resources?_ver=1.1.8&_lang=en",
+    "keys": [
+      "code",
+      "msg",
+      "info",
+      "successful"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/bff-api/abt/merge/get_abt_by_poskey?_ver=1.1.8&_lang=en&posKeys=HomePageFloatingIconExp,CccAllHomepage&_abt=1",
+    "keys": [
+      "code",
+      "msg",
+      "info"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/bff-api/abt/merge/get_abt_by_poskey?_ver=1.1.8&_lang=en&posKeys=personalizedEntrance,HomepageWhatsapp,PCmessenger",
+    "keys": [
+      "code",
+      "msg",
+      "info"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/bff-api/navigation-api/float_coupon/get_info?_ver=1.1.8&_lang=en",
+    "keys": [
+      "code",
+      "msg",
+      "info"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/bff-api/ccc/resource_place?_ver=1.1.8&_lang=en&cccPageType=floatingIcon&channelId=10&tab_name=all&content_id=",
+    "keys": [
+      "code",
+      "msg",
+      "info"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/bff-api/user-api/faq/get_info?_ver=1.1.8&_lang=en",
+    "keys": [
+      "code",
+      "msg",
+      "info"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/bff-api/ccc/bottom/policy/aggregation?_ver=1.1.8&_lang=en&channel_id=23&page_type=1",
+    "keys": [
+      "code",
+      "msg",
+      "info"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/bff-api/system/configs/page_multi_language_mapping?_ver=1.1.8&_lang=en",
+    "keys": [
+      "code",
+      "msg",
+      "info"
+    ]
+  },
+  {
+    "url": "https://gum.criteo.com/sid/json?origin=onetag&domain=shein.com&sn=ChromeSyncframe&so=undefined&topUrl=us.shein.com&bundle=dAeaXF9jUkJ2UmgzRVl0aWtGNEtiSVp1JTJCb01Gd29QMyUyQkxaaHV5NXhFM1pGblRFM1F3MHRmcm14NUdIRlBnc1RCT1JyaHQzZXJyck5HNlRmQk9wRjZ6cjVqS1clMkZtMzBhSlNvZUp4cUVXbkg5bUIxVnczJTJCcUZ4ZjczeGJYNUdQUWVuS0UzUzJ2NW1IcnAxaVpEOHpqJTJGVEklMkI3UEElM0QlM0Q",
+    "keys": [
+      "sid",
+      "removeSid",
+      "bundle",
+      "info",
+      "optout"
+    ]
+  },
+  {
+    "url": "https://px.ads.linkedin.com/attribution_trigger?pid=3896148%2C3996428&time=1780284799248&url=https%3A%2F%2Fus.shein.com%2Frisk%2Fchallenge%3Fcaptcha_type%3D909%26redirection%3Dhttps%253A%252F%252Fus.shein.com%252Fproduct-p-311110882.html%26risk-id%3DE4832366597362564608&conversionId=8230236",
+    "keys": []
+  },
+  {
+    "url": "https://px.ads.linkedin.com/attribution_trigger?pid=3896148%2C3996428&time=1780284799242&url=https%3A%2F%2Fus.shein.com%2Frisk%2Fchallenge%3Fcaptcha_type%3D909%26redirection%3Dhttps%253A%252F%252Fus.shein.com%252Fproduct-p-311110882.html%26risk-id%3DE4832366597362564608&conversionId=7589060",
+    "keys": []
+  },
+  {
+    "url": "https://px.ads.linkedin.com/attribution_trigger?pid=3896148%2C3996428&time=1780284799249&url=https%3A%2F%2Fus.shein.com%2Frisk%2Fchallenge%3Fcaptcha_type%3D909%26redirection%3Dhttps%253A%252F%252Fus.shein.com%252Fproduct-p-311110882.html%26risk-id%3DE4832366597362564608",
+    "keys": []
+  },
+  {
+    "url": "https://us.shein.com/api/zpnv/am0?_ver=1.1.8&_lang=en",
+    "keys": [
+      "code",
+      "info"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/risk/verify/identity/validation/check?_ver=1.1.8&_lang=en",
+    "keys": [
+      "code",
+      "msg",
+      "info",
+      "successful"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/bff-api/user-api/privacy-banner-api/query_user_latest_cookie",
+    "keys": [
+      "code",
+      "msg",
+      "info"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/bff-api/user-api/cookie_banner/remove_cookies",
+    "keys": [
+      "code",
+      "msg",
+      "info"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/bff-api/user-api/privacy-banner-api/query_user_latest_gpc",
+    "keys": [
+      "code",
+      "msg",
+      "info"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/api/common/i18nBatch/get?_ver=1.1.8&_lang=en&pages[]=header&pages[]=footer&pages[]=quick_view&pages[]=quick_add&pages[]=email_subscribe&pages[]=input&pages[]=fast_cart&pages[]=coupon&pages[]=promotion&pages[]=similar_products&pages[]=wishlist_group&pages[]=shipping_address&pages[]=app_exclusive_discount&pages[]=item",
+    "keys": [
+      "header",
+      "footer",
+      "quick_view",
+      "quick_add",
+      "email_subscribe",
+      "input",
+      "fast_cart",
+      "coupon",
+      "promotion",
+      "similar_products",
+      "wishlist_group",
+      "shipping_address",
+      "app_exclusive_discount",
+      "item"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/bff-api/navigation-api/transfer/mapping_config?_ver=1.1.8&_lang=en",
+    "keys": [
+      "code",
+      "msg",
+      "info"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/bff-api/category-api/get_detail_rank_info?_ver=1.1.8&_lang=en&goodsId=311110882&goodsSn=si251120495954373372&sort=0&scene=detail&queryType=1",
+    "keys": [
+      "code",
+      "msg",
+      "info"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/bff-api/abt/merge/get_abt_by_poskey?_ver=1.1.8&_lang=en&posKeys=Shippingtime,CccGoodsdetail,CccGoodsDetails,Reviewlabel,SellingPoint,ViewMoreButton,shipping,FreeShipping,GoodsdetailToppicOutfitRecommend,DetailPageQuickShipShow,localwarehouse,CustomersAlsoViewedQuickAddBag,Searchfilter,CccxPublicBanner,CccAppIcon,CccKidsCategory,CccHomeCategory,CccPlussizeCategory,Aod,Similaritems,ListNoScrollDown,Aftersimilar,Reviewsubmit,Orderdetail,OrderTrack,ChangePassword,CODwithdraw,Bodysize,FastRegisterPopup,ThirtyLogin,SPcSignPrefer,newPrivacy,ProductDetailYouMayAlsoLike,ProductDetailCustomersAlsoViewedList,CookieResult,Selfsizerecommended,ACTrandom,ActDefault,ActHot,ActNew,ActElement,ActAbt,ActReview,ActFavorite,SilentloginPrivacy,SpecialOutgoingScene,Quickregclosed,LoginSwtichsite,phoneRegisterLogin,LoginMerge,SearchCard,AddShowGroup,ActAbt1,ActAbt2,ActAbt3,ActAbt4,ActAbt5,ActAbt6,ActAbt7,ActAbt8,ActAbt9,ActAbt10,sheinclubprice,FlashShowedCrowed,Movepoints,CCCxTopbanner,RecentlyViewNotlogged,GoogleOneTapSignIn,Cartshowobmtitle,Showplatformtitle,TradeQuickship,Cartnoteligibleforcoupons,Discountlistshowlimitexceededtip,AllListQuickShip,CccMenCategory,OpenFreeTrial,CccDetailVideo,soldoutsimilar,similaritemsnew,OutfitRecommendEntry,OutfitRecommendLand,recSwitch,ProductDetailBelowPolicyFloorJson,ProductDetailBelowPolicyFloor,EstimatedPrice,paydiscountshowdetail,wishsimilar,EstimatedShowType,raiseupperlimit,storeccc,NewCoupon,addbagpopup,addnewhotJson,addbagpopupcates,addbagpopupgoods,listgoodsCard,sixmore,ymalrecommend,detailgoodsCard,DetailStarReview,FrequentBoughtTogether,detailKeyAttribute,listdiscountLabel,pcwordSize,FlashSaleRecItemShop,Structureoptiz,listattributeLabels,listtagSorting,listrankingTag,detailcountdown,BuyBoxSwitch,collestrategy,listquickship,listquickshipKey,componentswitch,localMall,listwithCoupon,listpriceTimeTag,listtimetagType,listpricetagNew,ProductDetailRecommend,carddiscountLabel,promoLabel,HomepageWhatsapp,UnderPrice,VerifyCodeSwitch,LowpriceUser,CouponTimeFormatChange,CouponbagUpdate,SearchListCoupon,SearchSceneCoupon,PhoneAreaCodePopop,DefaultWordTag,MeClubTrailSwitch,storewishlist,SearchDefaultNew,SearchHotGD,SearchHotNew,PcCartPrefetch,PageMeNews,HomePopup,AccountManager,SignoutFlowOptimize,storeiconchange,Reviewchange,subrating,PerformanceLogNodeTestFetch,SHEINcomplianceswitch,CccAllHomepage,presearch,Cartshowcoupon,Cartentranceinfo,listpriceTag,FlashSaleCountDown&_abt=1",
+    "keys": [
+      "code",
+      "msg",
+      "info"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/bff-api/user-api/common/userinfo_ugid?_ver=1.1.8&_lang=en",
+    "keys": [
+      "code",
+      "msg",
+      "info"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/bff-api/user-api/csrf/update?_ver=1.1.8&_lang=en",
+    "keys": [
+      "code",
+      "msg",
+      "info"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/bff-api/abt/merge/get_abt_by_poskey?_ver=1.1.8&_lang=en&posKeys=NewPopQueue",
+    "keys": [
+      "code",
+      "msg",
+      "info"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/bff-api/product/get_goods_detail_realtime_data?_ver=1.1.8&_lang=en&goods_id=311110882&isUserSelectedMallCode=0&isQueryIsPaidMember=1&isQueryCanTrail=0&isHideEstimatePriceInfo=0&specialSceneType=0&sceneFlag=&priorityMallType=&skcPriceType=&sourceFrom=goods_detail",
+    "keys": [
+      "code",
+      "msg",
+      "info"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/bff-api/products-api/get_detail_abt_info?_ver=1.1.8&_lang=en&goodsIds=311110882",
+    "keys": [
+      "code",
+      "msg",
+      "info"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/bff-api/abt/merge/abt_async?_ver=1.1.8&_lang=en",
+    "keys": [
+      "code",
+      "msg",
+      "info"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/bff-api/navigation-api/pop_batch_refactor?_ver=1.1.8&_lang=en",
+    "keys": [
+      "code",
+      "msg",
+      "info"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/api/zpnv/am0?_ver=1.1.8&_lang=en",
+    "keys": [
+      "code",
+      "info"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/api/zpnv/report/get?_ver=1.1.8&_lang=en",
+    "keys": [
+      "code",
+      "info"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/bff-api/system/configs/v2/multi_language?_ver=1.1.8&_lang=en",
+    "keys": [
+      "code",
+      "msg",
+      "info"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/bff-api/detail/recommend/multi_store_products?_ver=1.1.8&_lang=en",
+    "keys": [
+      "code",
+      "msg",
+      "info"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/bff-api/ccc/rec/goods?_ver=1.1.8&_lang=en",
+    "keys": [
+      "code",
+      "msg",
+      "info"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/bff-api/product/detail/recommend/info?_ver=1.1.8&_lang=en",
+    "keys": [
+      "code",
+      "msg",
+      "info"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/bff-api/system/configs/multi_language?_ver=1.1.8&_lang=en",
+    "keys": [
+      "code",
+      "msg",
+      "info"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/bff-api/product/get_goods_detail_image?_ver=1.1.8&_lang=en&goods_id=311110882",
+    "keys": [
+      "code",
+      "msg",
+      "info"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/bff-api/product/comment/get_buyer_show_floor?_ver=1.1.8&_lang=en&goodsId=311110882&goodsSn=si251120495954373372&page=1&pageSize=20&spu=i2511204959543",
+    "keys": [
+      "code",
+      "msg",
+      "info"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/bff-api/system/configs/multi_language_v2?_ver=1.1.8&_lang=en",
+    "keys": [
+      "code",
+      "msg",
+      "info"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/bff-api/ccc/common_component?_ver=1.1.8&_lang=en&cccPageType=productDetailsPageNew&cateType=3&cateId=si251120495954373372",
+    "keys": [
+      "code",
+      "msg",
+      "info"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/bff-api/product/get_new_companion_module?_ver=1.1.8&_lang=en&goodsId=311110882&catId=4297&goodsSn=si251120495954373372&isPaidMember=0&isMainGoodsSoldOut=0&attribute=&isAddCart=0&isEnterDetailCall=1&relatedLocalGoodsId=&isUserSelectedMallCode=0&priorityMallType=&skcPriceType=",
+    "keys": [
+      "code",
+      "msg",
+      "info"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/bff-api/abt/merge/get_abt_by_poskey?_ver=1.1.8&_lang=en&posKeys=AdultProductAge",
+    "keys": [
+      "code",
+      "msg",
+      "info"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/bff-api/setting/get_server_time?_ver=1.1.8&_lang=en",
+    "keys": [
+      "code",
+      "msg",
+      "info"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/bff-api/products-api/get_detail_abt_info?_ver=1.1.8&_lang=en&goodsIds=404442476",
+    "keys": [
+      "code",
+      "msg",
+      "info"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/bff-api/category-api/get_detail_rank_info?_ver=1.1.8&_lang=en&goodsId=404442476&goodsSn=si251120495954303875&sort=0&scene=detail&queryType=1",
+    "keys": [
+      "code",
+      "msg",
+      "info"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/bff-api/product/get_goods_detail_static_data_v2?_ver=1.1.8&_lang=en&priorityMallType=&skcPriceType=&goods_id=404442476&mall_code=&isUserSelectedMallCode=0&sourceFrom=goods_detail",
+    "keys": [
+      "code",
+      "msg",
+      "info"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/bff-api/product/get_goods_detail_realtime_data?_ver=1.1.8&_lang=en&priorityMallType=&skcPriceType=&goods_id=404442476&mallCode=&isUserSelectedMallCode=0&isPaidMember=0&isQueryIsPaidMember=1&isQueryCanTrail=0&isHideEstimatePriceInfo=0&specialSceneType=0&sourceFrom=goods_detail",
+    "keys": [
+      "code",
+      "msg",
+      "info"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/bff-api/product/get_goods_detail_static_data_v2?_ver=1.1.8&_lang=en&priorityMallType=&skcPriceType=&goods_id=411650503&mall_code=&isUserSelectedMallCode=0&sourceFrom=goods_detail",
+    "keys": [
+      "code",
+      "msg",
+      "info"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/bff-api/product/get_goods_detail_realtime_data?_ver=1.1.8&_lang=en&priorityMallType=&skcPriceType=&goods_id=411650503&mallCode=&isUserSelectedMallCode=0&isPaidMember=0&isQueryIsPaidMember=1&isQueryCanTrail=0&isHideEstimatePriceInfo=0&specialSceneType=0&sourceFrom=goods_detail",
+    "keys": [
+      "code",
+      "msg",
+      "info"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/bff-api/product/get_new_companion_module?_ver=1.1.8&_lang=en&goodsId=404442476&catId=4297&goodsSn=si251120495954303875&isPaidMember=0&isMainGoodsSoldOut=0&attribute=&isAddCart=0&isEnterDetailCall=1&relatedLocalGoodsId=&isUserSelectedMallCode=0&priorityMallType=&skcPriceType=",
+    "keys": [
+      "code",
+      "msg",
+      "info"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/bff-api/detail/recommend/multi_store_products?_ver=1.1.8&_lang=en",
+    "keys": [
+      "code",
+      "msg",
+      "info"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/bff-api/product/get_goods_detail_image?_ver=1.1.8&_lang=en&goods_id=404442476",
+    "keys": [
+      "code",
+      "msg",
+      "info"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/bff-api/product/comment/get_buyer_show_floor?_ver=1.1.8&_lang=en&goodsId=404442476&goodsSn=si251120495954303875&page=1&pageSize=20&spu=i2511204959543",
+    "keys": [
+      "code",
+      "msg",
+      "info"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/bff-api/products-api/get_detail_abt_info?_ver=1.1.8&_lang=en&goodsIds=411650503",
+    "keys": [
+      "code",
+      "msg",
+      "info"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/bff-api/ccc/common_component?_ver=1.1.8&_lang=en&cccPageType=productDetailsPageNew&cateType=3&cateId=si251120495954303875",
+    "keys": [
+      "code",
+      "msg",
+      "info"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/bff-api/product/detail/recommend/info?_ver=1.1.8&_lang=en",
+    "keys": [
+      "code",
+      "msg",
+      "info"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/bff-api/category-api/get_detail_rank_info?_ver=1.1.8&_lang=en&goodsId=411650503&goodsSn=si251120495954335148&sort=0&scene=detail&queryType=1",
+    "keys": [
+      "code",
+      "msg",
+      "info"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/bff-api/ccc/rec/goods?_ver=1.1.8&_lang=en",
+    "keys": [
+      "code",
+      "msg",
+      "info"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/bff-api/setting/get_server_time?_ver=1.1.8&_lang=en",
+    "keys": [
+      "code",
+      "msg",
+      "info"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/bff-api/detail/recommend/multi_store_products?_ver=1.1.8&_lang=en",
+    "keys": [
+      "code",
+      "msg",
+      "info"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/bff-api/ccc/common_component?_ver=1.1.8&_lang=en&cccPageType=productDetailsPageNew&cateType=3&cateId=si251120495954335148",
+    "keys": [
+      "code",
+      "msg",
+      "info"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/bff-api/product/get_new_companion_module?_ver=1.1.8&_lang=en&goodsId=411650503&catId=4297&goodsSn=si251120495954335148&isPaidMember=0&isMainGoodsSoldOut=0&attribute=&isAddCart=0&isEnterDetailCall=1&relatedLocalGoodsId=&isUserSelectedMallCode=0&priorityMallType=&skcPriceType=",
+    "keys": [
+      "code",
+      "msg",
+      "info"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/bff-api/product/comment/get_buyer_show_floor?_ver=1.1.8&_lang=en&goodsId=411650503&goodsSn=si251120495954335148&page=1&pageSize=20&spu=i2511204959543",
+    "keys": [
+      "code",
+      "msg",
+      "info"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/bff-api/ccc/rec/goods?_ver=1.1.8&_lang=en",
+    "keys": [
+      "code",
+      "msg",
+      "info"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/bff-api/product/get_goods_detail_image?_ver=1.1.8&_lang=en&goods_id=411650503",
+    "keys": [
+      "code",
+      "msg",
+      "info"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/bff-api/product/detail/recommend/info?_ver=1.1.8&_lang=en",
+    "keys": [
+      "code",
+      "msg",
+      "info"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/bff-api/setting/get_server_time?_ver=1.1.8&_lang=en",
+    "keys": [
+      "code",
+      "msg",
+      "info"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/bff-api/products-api/get_detail_abt_info?_ver=1.1.8&_lang=en&goodsIds=424090560",
+    "keys": [
+      "code",
+      "msg",
+      "info"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/bff-api/category-api/get_detail_rank_info?_ver=1.1.8&_lang=en&goodsId=424090560&goodsSn=si251120495954371667&sort=0&scene=detail&queryType=1",
+    "keys": [
+      "code",
+      "msg",
+      "info"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/bff-api/product/get_goods_detail_static_data_v2?_ver=1.1.8&_lang=en&priorityMallType=&skcPriceType=&goods_id=424090560&mall_code=&isUserSelectedMallCode=0&sourceFrom=goods_detail",
+    "keys": [
+      "code",
+      "msg",
+      "info"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/bff-api/product/get_goods_detail_realtime_data?_ver=1.1.8&_lang=en&priorityMallType=&skcPriceType=&goods_id=424090560&mallCode=&isUserSelectedMallCode=0&isPaidMember=0&isQueryIsPaidMember=1&isQueryCanTrail=0&isHideEstimatePriceInfo=0&specialSceneType=0&sourceFrom=goods_detail",
+    "keys": [
+      "code",
+      "msg",
+      "info"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/bff-api/product/get_goods_detail_image?_ver=1.1.8&_lang=en&goods_id=424090560",
+    "keys": [
+      "code",
+      "msg",
+      "info"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/bff-api/product/get_new_companion_module?_ver=1.1.8&_lang=en&goodsId=424090560&catId=4297&goodsSn=si251120495954371667&isPaidMember=0&isMainGoodsSoldOut=0&attribute=&isAddCart=0&isEnterDetailCall=1&relatedLocalGoodsId=&isUserSelectedMallCode=0&priorityMallType=&skcPriceType=",
+    "keys": [
+      "code",
+      "msg",
+      "info"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/bff-api/ccc/rec/goods?_ver=1.1.8&_lang=en",
+    "keys": [
+      "code",
+      "msg",
+      "info"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/bff-api/detail/recommend/multi_store_products?_ver=1.1.8&_lang=en",
+    "keys": [
+      "code",
+      "msg",
+      "info"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/bff-api/products-api/get_detail_abt_info?_ver=1.1.8&_lang=en&goodsIds=442621585",
+    "keys": [
+      "code",
+      "msg",
+      "info"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/bff-api/ccc/common_component?_ver=1.1.8&_lang=en&cccPageType=productDetailsPageNew&cateType=3&cateId=si251120495954371667",
+    "keys": [
+      "code",
+      "msg",
+      "info"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/bff-api/category-api/get_detail_rank_info?_ver=1.1.8&_lang=en&goodsId=442621585&goodsSn=si251120495954380101&sort=0&scene=detail&queryType=1",
+    "keys": [
+      "code",
+      "msg",
+      "info"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/bff-api/product/get_goods_detail_static_data_v2?_ver=1.1.8&_lang=en&priorityMallType=&skcPriceType=&goods_id=442621585&mall_code=&isUserSelectedMallCode=0&sourceFrom=goods_detail",
+    "keys": [
+      "code",
+      "msg",
+      "info"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/bff-api/product/get_goods_detail_realtime_data?_ver=1.1.8&_lang=en&priorityMallType=&skcPriceType=&goods_id=442621585&mallCode=&isUserSelectedMallCode=0&isPaidMember=0&isQueryIsPaidMember=1&isQueryCanTrail=0&isHideEstimatePriceInfo=0&specialSceneType=0&sourceFrom=goods_detail",
+    "keys": [
+      "code",
+      "msg",
+      "info"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/bff-api/product/detail/recommend/info?_ver=1.1.8&_lang=en",
+    "keys": [
+      "code",
+      "msg",
+      "info"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/bff-api/detail/recommend/multi_store_products?_ver=1.1.8&_lang=en",
+    "keys": [
+      "code",
+      "msg",
+      "info"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/bff-api/ccc/rec/goods?_ver=1.1.8&_lang=en",
+    "keys": [
+      "code",
+      "msg",
+      "info"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/bff-api/product/get_goods_detail_image?_ver=1.1.8&_lang=en&goods_id=442621585",
+    "keys": [
+      "code",
+      "msg",
+      "info"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/bff-api/product/comment/get_buyer_show_floor?_ver=1.1.8&_lang=en&goodsId=442621585&goodsSn=si251120495954380101&page=1&pageSize=20&spu=i2511204959543",
+    "keys": [
+      "code",
+      "msg",
+      "info"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/bff-api/ccc/common_component?_ver=1.1.8&_lang=en&cccPageType=productDetailsPageNew&cateType=3&cateId=si251120495954380101",
+    "keys": [
+      "code",
+      "msg",
+      "info"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/bff-api/setting/get_server_time?_ver=1.1.8&_lang=en",
+    "keys": [
+      "code",
+      "msg",
+      "info"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/bff-api/product/comment/get_buyer_show_floor?_ver=1.1.8&_lang=en&goodsId=424090560&goodsSn=si251120495954371667&page=1&pageSize=20&spu=i2511204959543",
+    "keys": [
+      "code",
+      "msg",
+      "info"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/bff-api/product/detail/recommend/info?_ver=1.1.8&_lang=en",
+    "keys": [
+      "code",
+      "msg",
+      "info"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/bff-api/setting/get_server_time?_ver=1.1.8&_lang=en",
+    "keys": [
+      "code",
+      "msg",
+      "info"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/bff-api/products-api/get_detail_abt_info?_ver=1.1.8&_lang=en&goodsIds=442621585",
+    "keys": [
+      "code",
+      "msg",
+      "info"
+    ]
+  },
+  {
+    "url": "https://us.shein.com/bff-api/products-api/get_size_guide_info?_ver=1.1.8&_lang=en&goodsId=442621585",
+    "keys": [
+      "code",
+      "msg",
+      "info"
+    ]
+  }
+]

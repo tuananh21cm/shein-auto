@@ -104,7 +104,7 @@ export const listing4sellerShein = async (
 
     // Lấy kết quả Gemini (await — đã chạy song song trong lúc select profile)
     const aiTitle = await titlePromise;
-    // Brand resolve theo user (override) → fallback global brand-profiles.json
+    // Brand resolve chỉ theo user/shop (đã bỏ global). Rỗng = không brand.
     const brand = await resolveBrandForUser(opts?.cookieUser, targetProfile);
     console.log({ targetProfile, brand });
     const finalTitle = cleanTitle(aiTitle, brand);
@@ -136,8 +136,8 @@ export const listing4sellerShein = async (
       await assertNoErrors(page, "removeUnavailableVariants");
     }
 
-    await uploadProductImages(page, mergedProductImages);
-    await uploadVariantImages(page, data.variant_images);
+    await uploadProductImages(page, mergedProductImages, targetProfile);
+    await uploadVariantImages(page, data.variant_images, targetProfile);
     await assertNoErrors(page, "uploadImages");
 
     await handleBrand(page, data.brand_name);

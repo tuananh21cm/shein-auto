@@ -204,6 +204,18 @@
     <div class="nav-item" data-view="history">
       <span class="ico">📜</span><span>History</span>
     </div>
+    <div class="nav-item" data-view="stats">
+      <span class="ico">📊</span><span>4Seller Stats</span>
+    </div>
+    <div class="nav-item" data-view="winhunt">
+      <span class="ico">🔥</span><span>Săn Win SHEIN</span>
+    </div>
+    <div class="nav-item" data-view="similar">
+      <span class="ico">🏬</span><span>Shop tương tự</span>
+    </div>
+    <div class="nav-item" data-view="kiki">
+      <span class="ico">🤖</span><span>Kiki Scrape</span>
+    </div>
     <div class="nav-item" data-view="users">
       <span class="ico">👥</span><span>Users</span>
     </div>
@@ -319,6 +331,128 @@
       </div>
     </section>
 
+    <!-- ───── 4SELLER STATS ───── -->
+    <section class="view" id="view-stats">
+      <div class="page-head">
+        <div>
+          <h1>4Seller Stats</h1>
+          <div class="subtitle" id="statsSubtitle">Đếm số listing Active / Inactive / Remove / Suspended trên 4Seller theo shop</div>
+        </div>
+        <button class="btn btn-ghost" onclick="loadStats(true)">Refresh</button>
+      </div>
+
+      <div class="grid grid-stats" id="statsTotals"></div>
+
+      <div class="card" style="margin-top: 18px;">
+        <h3>Per-shop counts</h3>
+        <div id="statsShopsWrap"><div class="empty">Đang tải…</div></div>
+      </div>
+    </section>
+
+    <!-- ───── SĂN WIN SHEIN ───── -->
+    <section class="view" id="view-winhunt">
+      <div class="page-head">
+        <div>
+          <h1>🔥 Săn Win SHEIN</h1>
+          <div class="subtitle">Tìm sản phẩm hot theo ngách/keyword — xếp hạng theo winScore (review + rating + giảm giá)</div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:16px;">
+        <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+          <input id="winQuery" placeholder="Nhập keyword/ngách (vd: summer dress, y2k crop top, cargo pants)..." style="flex:1; min-width:260px; padding:10px 12px; border-radius:8px; border:1px solid var(--border); background:var(--bg-elev); color:var(--text);" onkeydown="if(event.key==='Enter')runWinHunt()" />
+          <select id="winSort" style="padding:10px; border-radius:8px; border:1px solid var(--border); background:var(--bg-elev); color:var(--text);">
+            <option value="win">Sort: Win score</option>
+            <option value="reviews">Sort: Nhiều review</option>
+            <option value="discount">Sort: Giảm giá sâu</option>
+            <option value="rating">Sort: Rating cao</option>
+          </select>
+          <select id="winTierFilter" style="padding:10px; border-radius:8px; border:1px solid var(--border); background:var(--bg-elev); color:var(--text);">
+            <option value="all">Tất cả tier</option>
+            <option value="hot">Chỉ 🔥 Hot</option>
+            <option value="good">Hot + Good</option>
+          </select>
+          <button class="btn" onclick="runWinHunt()">Săn</button>
+        </div>
+        <div id="winShopNiches" style="margin-top:10px; display:flex; gap:6px; flex-wrap:wrap;"></div>
+      </div>
+
+      <div id="winResultMeta" style="color:var(--text-mute); margin-bottom:10px; font-size:0.88rem;"></div>
+      <div id="winGrid" class="grid" style="grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:14px;">
+        <div class="empty">Nhập keyword hoặc chọn ngách từ shop để bắt đầu.</div>
+      </div>
+      <div id="winFooter" style="text-align:center; margin-top:18px;"></div>
+    </section>
+
+    <!-- ───── SHOP TƯƠNG TỰ ───── -->
+    <section class="view" id="view-similar">
+      <div class="page-head">
+        <div>
+          <h1>🏬 Tìm shop SHEIN tương tự</h1>
+          <div class="subtitle">Nhập store SHEIN (store_code hoặc URL store) → tìm các shop bán cùng ngách (đối thủ/tham khảo)</div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:16px;">
+        <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+          <input id="simInput" placeholder="store_code (vd 7144383899) hoặc dán URL store SHEIN..." style="flex:1; min-width:280px; padding:10px 12px; border-radius:8px; border:1px solid var(--border); background:var(--bg-elev); color:var(--text);" onkeydown="if(event.key==='Enter')runSimilar()" />
+          <button class="btn" onclick="runSimilar()">Tìm</button>
+        </div>
+        <div style="margin-top:8px; color:var(--text-mute); font-size:0.8rem;">💡 Lấy store_code từ trang sản phẩm SHEIN bất kỳ (modal detail ở tab Săn Win có hiện <code>store</code>), hoặc URL dạng <code>?store_code=...</code></div>
+      </div>
+
+      <div id="simInputInfo"></div>
+      <div id="simResult"><div class="empty">Nhập store_code để bắt đầu.</div></div>
+    </section>
+
+    <!-- ───── KIKI SCRAPE ───── -->
+    <section class="view" id="view-kiki">
+      <div class="page-head">
+        <div>
+          <h1>🤖 Kiki Scrape SHEIN</h1>
+          <div class="subtitle">Cào sản phẩm SHEIN bằng trình duyệt thật (Kiki profile) để tránh captcha — đẩy thẳng vào queue 4Seller</div>
+        </div>
+        <span id="kikiStatus" class="badge badge-warn">Kiki: ?</span>
+      </div>
+
+      <div class="card" style="margin-bottom:14px;">
+        <div style="display:flex; gap:14px; flex-wrap:wrap; align-items:flex-end;">
+          <div style="flex:1; min-width:220px;">
+            <label style="display:block; font-size:0.82rem; color:var(--text-mute); margin-bottom:4px;">Kiki profile</label>
+            <select id="kikiProfile" style="width:100%; padding:9px; border-radius:8px; border:1px solid var(--border); background:var(--bg-elev); color:var(--text);"></select>
+          </div>
+          <div>
+            <label style="display:block; font-size:0.82rem; color:var(--text-mute); margin-bottom:4px;">Tùy chọn</label>
+            <label class="tm-acc-item" style="font-size:0.85rem;"><input type="checkbox" id="kikiDivide4"> Chia giá /4</label>
+          </div>
+          <button class="btn btn-ghost" onclick="kikiManageProfiles()" style="padding:9px 14px;">⚙ Quản lý profile</button>
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:14px;">
+        <label style="display:block; font-size:0.82rem; color:var(--text-mute); margin-bottom:4px;">URL sản phẩm SHEIN (mỗi dòng 1 URL, tối đa 20)</label>
+        <textarea id="kikiUrls" rows="4" placeholder="https://www.shein.com/...-p-12345678.html&#10;https://us.shein.com/...-p-87654321.html" style="width:100%; padding:10px; border-radius:8px; border:1px solid var(--border); background:var(--bg-elev); color:var(--text); font-family:monospace; font-size:0.82rem; box-sizing:border-box;"></textarea>
+        <label style="display:block; font-size:0.82rem; color:var(--text-mute); margin:10px 0 6px;">Chọn shop đích</label>
+        <div id="kikiShops" style="display:flex; gap:8px; flex-wrap:wrap; max-height:140px; overflow-y:auto;"><span class="empty">Đang tải shop…</span></div>
+        <button class="btn" onclick="runKikiScrape()" style="margin-top:14px;">🚀 Cào & Đẩy vào queue</button>
+      </div>
+
+      <div id="kikiResults"></div>
+
+      <!-- Cào nguyên store -->
+      <div class="card" style="margin-top:20px; border:1px dashed var(--accent);">
+        <h3 style="margin:0 0 4px;">🏪 Cào nguyên 1 store SHEIN</h3>
+        <div style="color:var(--text-mute); font-size:0.82rem; margin-bottom:10px;">Mở store bằng Kiki, cuộn thu toàn bộ sản phẩm (list mới + cũ) kèm rating/review/giá để thống kê listing nào ngon → tick chọn → cào hàng loạt.</div>
+        <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+          <input id="crawlStoreInput" placeholder="store_code hoặc URL store SHEIN..." style="flex:1; min-width:260px; padding:9px 12px; border-radius:8px; border:1px solid var(--border); background:var(--bg-elev); color:var(--text);" />
+          <label style="font-size:0.82rem; color:var(--text-mute);">Max sp <input id="crawlStoreMax" type="number" value="300" min="20" max="2000" style="width:80px; padding:8px; border-radius:8px; border:1px solid var(--border); background:var(--bg-elev); color:var(--text);" /></label>
+          <button class="btn" onclick="runCrawlStore()">🏪 Cào store</button>
+        </div>
+        <div id="crawlStoreMeta" style="margin-top:10px; color:var(--text-mute); font-size:0.85rem;"></div>
+        <div id="crawlStoreResult"></div>
+      </div>
+    </section>
+
     <!-- ───── USERS ───── -->
     <section class="view" id="view-users">
       <div class="page-head">
@@ -412,25 +546,6 @@
           </label>
         </div>
         <div id="pricingPreview" style="margin-top: 10px; padding: 10px 14px; background: var(--bg-elev); border-radius: 8px; font-family: 'JetBrains Mono', monospace; font-size: 0.88rem; color: var(--text);"></div>
-      </div>
-
-      <div class="card" style="margin-top:18px;">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
-          <h3 style="margin:0;">🏷️ Brand mapping theo shop profile</h3>
-          <div style="display:flex; gap:8px;">
-            <button class="btn btn-ghost" onclick="addBrandRow()">+ Thêm dòng</button>
-            <button class="btn btn-primary" onclick="saveBrands()">Lưu brands</button>
-          </div>
-        </div>
-        <div style="display: grid; grid-template-columns: 1fr 2fr; gap: 12px; margin-bottom: 16px;">
-          <label class="field"><span>Default brand <span style="color:var(--text-mute);">(dùng cho profile chưa có trong list)</span></span>
-            <input id="brandDefault" placeholder="LUSHLACE" />
-          </label>
-        </div>
-        <div id="brandsTableWrap"><div class="empty">Đang tải…</div></div>
-        <p style="color: var(--text-mute); font-size: 0.82rem; margin-top: 10px;">
-          Profile name = tên folder + suffix thị trường. Vd: folder <code>P5-014</code> → profile <code>P5-014_US</code>, folder <code>P5-014_DE</code> → profile <code>P5-014_DE</code>.
-        </p>
       </div>
 
       <div class="card" style="margin-top:18px;">
@@ -555,8 +670,12 @@ document.querySelectorAll(".nav-item").forEach((item) => {
     $(`#view-${view}`).classList.add("active");
     if (view === "history") loadHistory();
     if (view === "listings") loadShopsOrListings();
+    if (view === "stats") loadStats();
+    if (view === "winhunt") initWinHunt();
+    if (view === "similar") { /* chờ user nhập */ }
+    if (view === "kiki") initKiki();
     if (view === "users") renderUsers();
-    if (view === "settings") { loadSettings(); loadBrands(); loadPricing(); }
+    if (view === "settings") { loadSettings(); loadPricing(); }
     if (view === "cookie") loadCookieStatus();
   };
 });
@@ -1036,6 +1155,1021 @@ async function viewListing(idEnc) {
   }
 }
 
+// ─── 4Seller Stats ────────────────────────────────────
+state.stats = { shops: [], totals: null };
+
+async function loadStats(forceRefresh) {
+  $("#statsShopsWrap").innerHTML = '<div class="empty">⏳ Đang query 4Seller (mất ~5-10s lần đầu)...</div>';
+  $("#statsTotals").innerHTML = '';
+  try {
+    const url = forceRefresh ? "/admin/api/stats/4seller?nocache=" + Date.now() : "/admin/api/stats/4seller";
+    const res = await fetch(url);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+    state.stats = data;
+    renderStatsTotals();
+    renderStatsShops();
+  } catch (err) {
+    toast("Không tải được stats: " + err.message, "error");
+    $("#statsShopsWrap").innerHTML = `<div class="empty" style="color: var(--danger);">${escapeHtml(err.message)}</div>`;
+  }
+}
+
+function renderStatsTotals() {
+  const t = state.stats.totals;
+  if (!t) return;
+  const sub = `Tổng ${state.stats.shops.length} shop · cập nhật ${relTime(state.stats.fetchedAt)} ${state.stats.cached ? '(cached 60s)' : ''}`;
+  $("#statsSubtitle").innerHTML = sub;
+  $("#statsTotals").innerHTML = `
+    <div class="card"><div class="label">✓ Active</div><div class="stat-num" style="color:var(--success);">${t.activeCount.toLocaleString()}</div></div>
+    <div class="card"><div class="label">⏸️ Inactive</div><div class="stat-num" style="color:var(--warn);">${t.inactiveCount.toLocaleString()}</div></div>
+    <div class="card"><div class="label">🗑 Removed</div><div class="stat-num" style="color:var(--text-mute);">${t.removedCount.toLocaleString()}</div></div>
+    <div class="card"><div class="label">⛔ Suspended</div><div class="stat-num" style="color:var(--danger);">${t.suspendedCount.toLocaleString()}</div></div>
+  `;
+}
+
+function renderStatsShops() {
+  const shops = state.stats.shops || [];
+  if (shops.length === 0) {
+    $("#statsShopsWrap").innerHTML = '<div class="empty">Không có shop nào</div>';
+    return;
+  }
+  $("#statsShopsWrap").innerHTML = `
+    <table>
+      <thead><tr><th>Shop</th><th>Market</th><th style="text-align:right;">Active</th><th style="text-align:right;">Inactive</th><th style="text-align:right;">Removed</th><th style="text-align:right;">Suspended</th><th></th></tr></thead>
+      <tbody>
+        ${shops.map((s) => {
+          const c = s.counts || {};
+          const num = (n) => (n === undefined ? '—' : n.toLocaleString());
+          return `
+            <tr>
+              <td><code>${escapeHtml(s.shopName)}</code><br><span style="color:var(--text-mute); font-size:0.78rem;">${escapeHtml(s.platformShopName || '')}</span></td>
+              <td><span class="badge badge-info">${escapeHtml(s.marketplaceId || '?')}</span></td>
+              <td style="text-align:right; color:var(--success); font-weight:600;">${num(c.activeCount)}</td>
+              <td style="text-align:right; color:var(--warn);">${num(c.inactiveCount)}</td>
+              <td style="text-align:right; color:var(--text-mute);">${num(c.removedCount)}</td>
+              <td style="text-align:right; color:var(--danger);">${num(c.suspendedCount)}</td>
+              <td style="text-align:right; display:flex; gap:4px; justify-content:flex-end;">
+                ${c.activeCount > 0 ? `<button class="btn btn-ghost btn-icon" title="Xem listings" onclick="viewShopListings('${s.id}', '${escapeHtml(s.shopName)}')">👁</button>` : ''}
+                ${c.activeCount > 0 ? `<button class="btn btn-ghost btn-icon" title="Category analytics" onclick="loadCategoryAnalytics('${s.id}', '${escapeHtml(s.shopName)}', '${escapeHtml(s.marketplaceId || 'US')}')">📊</button>` : ''}
+                ${c.activeCount > 0 ? `<button class="btn btn-ghost btn-icon" title="Chấm điểm shop (AI)" onclick="loadShopScore('${s.id}', '${escapeHtml(s.shopName)}', '${escapeHtml(s.marketplaceId || 'US')}')">🏆</button>` : ''}
+              </td>
+            </tr>
+          `;
+        }).join('')}
+      </tbody>
+    </table>
+  `;
+}
+
+function _listingRow(r) {
+  const img = r.mainImage || '';
+  const title = r.productName || r.title || '(no title)';
+  const price = r.lowPrice && r.highPrice && r.lowPrice !== r.highPrice
+    ? `${r.currency || ''}${r.lowPrice} - ${r.highPrice}`
+    : `${r.currency || ''}${r.lowPrice || r.originalPrice || '?'}`;
+  const status = r.publishStatus || r.erpStatus || '?';
+  const badgeClass = status === 'normal' || status === 'active' ? 'badge-success' : status.includes('fail') ? 'badge-danger' : 'badge-warn';
+  const tr = document.createElement('tr');
+  tr.style.cursor = 'pointer';
+  tr.onclick = () => viewListingDetail(r.id);
+  tr.innerHTML = `
+    <td>${img ? `<img src="${escapeHtml(img)}" style="width:48px; height:48px; object-fit:cover; border-radius:6px;" />` : '<div style="width:48px; height:48px; background:var(--bg-elev); border-radius:6px;"></div>'}</td>
+    <td><span class="truncate" style="max-width: 360px;" title="${escapeHtml(title)}">${escapeHtml(title.slice(0, 90))}</span><br><span class="mono" style="font-size:0.72rem; color:var(--text-mute);">${escapeHtml(String(r.productId || r.id))}</span></td>
+    <td style="font-weight:600; color:var(--accent);">${escapeHtml(price)}</td>
+    <td style="text-align:right;">${r.availableStock ?? '—'}</td>
+    <td style="text-align:right;">${r.variationCount ?? 0}</td>
+    <td><span class="badge ${badgeClass}">${escapeHtml(status)}</span></td>
+  `;
+  return tr;
+}
+
+async function viewShopListings(shopId, shopName) {
+  // Disconnect any previous observer
+  if (state.statsView?._observer) {
+    state.statsView._observer.disconnect();
+  }
+  state.statsView = { shopId, shopName, page: 1, total: null, loading: false, done: false, _observer: null };
+  $("#modalTitle").textContent = `Listings: ${shopName}`;
+  $("#modalBg").classList.add("show");
+
+  // Build skeleton
+  $("#modalBody").innerHTML = `
+    <div id="listingsCountBar" style="color:var(--text-mute); margin-bottom: 10px;">⏳ Đang tải...</div>
+    <table id="listingsTable">
+      <thead><tr><th style="width:60px;"></th><th>Title</th><th>Price</th><th>Stock</th><th>Variants</th><th>Status</th></tr></thead>
+      <tbody id="listingsTbody"></tbody>
+    </table>
+    <div id="listingsSentinel" style="height:1px;"></div>
+  `;
+
+  // IntersectionObserver triggers loadMoreListings when sentinel enters viewport
+  const sentinel = $("#listingsSentinel");
+  const observer = new IntersectionObserver((entries) => {
+    if (entries[0].isIntersecting) _loadMoreListings();
+  }, { root: $("#modalBody"), rootMargin: "200px" });
+  observer.observe(sentinel);
+  state.statsView._observer = observer;
+
+  await _loadMoreListings();
+}
+
+async function _loadMoreListings() {
+  const sv = state.statsView;
+  if (!sv || sv.loading || sv.done) return;
+  sv.loading = true;
+  const sentinel = $("#listingsSentinel");
+  if (sentinel) sentinel.textContent = '⏳';
+
+  try {
+    const res = await fetch(`/admin/api/stats/4seller/listings?shopId=${encodeURIComponent(sv.shopId)}&status=active&pageSize=50&pageCurrent=${sv.page}`);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+
+    if (sv.total === null) sv.total = data.total || 0;
+
+    const records = data.records || [];
+    const tbody = $("#listingsTbody");
+    if (tbody) records.forEach((r) => tbody.appendChild(_listingRow(r)));
+
+    const loaded = (sv.page - 1) * 50 + records.length;
+    const countBar = $("#listingsCountBar");
+    if (countBar) countBar.innerHTML = `Tổng <strong>${sv.total}</strong> listing active. Đã tải <strong>${loaded}</strong>. <span style="margin-left:8px;">Click vào row để xem detail.</span>`;
+
+    if (records.length < 50 || loaded >= sv.total) {
+      sv.done = true;
+      if (sentinel) sentinel.textContent = '';
+      if (sv._observer) sv._observer.disconnect();
+    } else {
+      sv.page++;
+      if (sentinel) sentinel.textContent = '';
+    }
+  } catch (err) {
+    const sentinel = $("#listingsSentinel");
+    if (sentinel) sentinel.innerHTML = `<div style="color:var(--danger); padding:8px;">${escapeHtml(err.message)}</div>`;
+  } finally {
+    if (state.statsView) state.statsView.loading = false;
+  }
+}
+
+async function loadCategoryAnalytics(shopId, shopName, site) {
+  if (state.statsView?._observer) state.statsView._observer.disconnect();
+  state.statsView = { shopId, shopName };
+  $("#modalTitle").textContent = `📊 Category Analytics: ${shopName}`;
+  $("#modalBody").innerHTML = '<div class="empty">⏳ Đang load toàn bộ listings để phân tích... (có thể mất vài giây)</div>';
+  $("#modalBg").classList.add("show");
+
+  try {
+    const res = await fetch(`/admin/api/stats/4seller/category-analytics?shopId=${encodeURIComponent(shopId)}&site=${encodeURIComponent(site)}`);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+
+    const { total, categories } = data;
+    const maxCount = categories[0]?.count || 1;
+
+    const COLORS = [
+      '#6c8dff','#4ade80','#fbbf24','#f87171','#a78bfa',
+      '#34d399','#fb923c','#60a5fa','#f472b6','#2dd4bf',
+    ];
+
+    const rows = categories.map((cat, i) => {
+      const color = COLORS[i % COLORS.length];
+      const barWidth = Math.round((cat.count / maxCount) * 100);
+      const pathParts = cat.nodePath ? cat.nodePath.split('/') : [];
+      const topLevel = pathParts[0] || cat.categoryName;
+      const subPath = pathParts.slice(1).join(' › ');
+      return `
+        <tr>
+          <td style="padding: 8px 12px; white-space:nowrap;">
+            <div style="font-weight:600; font-size:0.88rem;">${escapeHtml(cat.categoryName)}</div>
+            ${subPath ? `<div style="font-size:0.75rem; color:var(--text-mute);">${escapeHtml(topLevel)} › ${escapeHtml(subPath)}</div>` : `<div style="font-size:0.75rem; color:var(--text-mute);">${escapeHtml(topLevel)}</div>`}
+          </td>
+          <td style="padding: 8px 12px; text-align:right; font-weight:700; color:${color}; white-space:nowrap;">${cat.count.toLocaleString()}</td>
+          <td style="padding: 8px 12px; text-align:right; white-space:nowrap; color:var(--text-mute);">${cat.percent}%</td>
+          <td style="padding: 8px 16px; width: 220px;">
+            <div style="background:var(--bg-elev); border-radius:4px; height:10px; overflow:hidden;">
+              <div style="width:${barWidth}%; height:100%; background:${color}; border-radius:4px; transition:width 0.4s;"></div>
+            </div>
+          </td>
+        </tr>
+      `;
+    }).join('');
+
+    $("#modalBody").innerHTML = `
+      <div style="color:var(--text-mute); margin-bottom: 16px; font-size:0.9rem;">
+        Tổng <strong style="color:var(--text);">${total.toLocaleString()}</strong> listings active &nbsp;·&nbsp;
+        <strong style="color:var(--text);">${categories.length}</strong> categories
+      </div>
+      <table style="width:100%; border-collapse:collapse;">
+        <thead>
+          <tr style="border-bottom:1px solid var(--border);">
+            <th style="text-align:left; padding:6px 12px; color:var(--text-mute); font-weight:500;">Category</th>
+            <th style="text-align:right; padding:6px 12px; color:var(--text-mute); font-weight:500;">Count</th>
+            <th style="text-align:right; padding:6px 12px; color:var(--text-mute); font-weight:500;">%</th>
+            <th style="padding:6px 16px; color:var(--text-mute); font-weight:500;">Distribution</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    `;
+  } catch (err) {
+    $("#modalBody").innerHTML = `<div class="empty" style="color:var(--danger);">${escapeHtml(err.message)}</div>`;
+  }
+}
+
+// ─── Shop Scoring (chấm điểm + AI) ────────────────────
+function _gradeColor(grade) {
+  return { A: '#4ade80', B: '#34d399', C: '#fbbf24', D: '#fb923c', F: '#f87171' }[grade] || '#6c8dff';
+}
+function _scoreBarColor(v) {
+  if (v >= 80) return '#4ade80';
+  if (v >= 60) return '#fbbf24';
+  if (v >= 40) return '#fb923c';
+  return '#f87171';
+}
+function _scoreCard(label, v) {
+  const color = _scoreBarColor(v);
+  return `
+    <div style="background:var(--bg-elev); border-radius:8px; padding:10px 12px;">
+      <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:6px;">
+        <span style="font-size:0.82rem; color:var(--text-mute);">${label}</span>
+        <span style="font-weight:700; color:${color};">${v}</span>
+      </div>
+      <div style="background:var(--bg); border-radius:4px; height:6px; overflow:hidden;">
+        <div style="width:${Math.max(0, Math.min(100, v))}%; height:100%; background:${color}; border-radius:4px;"></div>
+      </div>
+    </div>`;
+}
+function _issueRow(label, bucket) {
+  if (!bucket || bucket.count === 0) return '';
+  const samples = (bucket.samples || []).map((s) =>
+    `<div style="font-size:0.76rem; color:var(--text-mute); padding:2px 0; border-top:1px solid var(--border);">
+       <span style="color:var(--text);">${escapeHtml((s.productName || '(no title)').slice(0, 70))}</span>
+       <span style="color:var(--warn);"> — ${escapeHtml(s.detail)}</span>
+     </div>`).join('');
+  return `
+    <details style="background:var(--bg-elev); border-radius:8px; padding:8px 12px; margin-bottom:8px;">
+      <summary style="cursor:pointer; display:flex; justify-content:space-between;">
+        <span>${label}</span>
+        <span style="color:var(--danger); font-weight:600;">${bucket.count} (${bucket.pct}%)</span>
+      </summary>
+      <div style="margin-top:6px;">${samples}</div>
+    </details>`;
+}
+function _aiList(title, icon, items) {
+  if (!items || items.length === 0) return '';
+  const lis = items.map((x) => `<li style="margin-bottom:4px;">${escapeHtml(x)}</li>`).join('');
+  return `
+    <div style="background:var(--bg-elev); border-radius:8px; padding:12px 14px; margin-bottom:10px;">
+      <div style="font-weight:600; margin-bottom:8px;">${icon} ${title}</div>
+      <ul style="margin:0; padding-left:20px; font-size:0.88rem; line-height:1.5;">${lis}</ul>
+    </div>`;
+}
+
+async function loadShopScore(shopId, shopName, site, forceRefresh) {
+  if (state.statsView?._observer) state.statsView._observer.disconnect();
+  state.statsView = { shopId, shopName, site };
+  $("#modalTitle").textContent = `🏆 Chấm điểm: ${shopName}`;
+  $("#modalBody").innerHTML = '<div class="empty">⏳ Đang load toàn bộ listings + chấm điểm + AI phân tích... (có thể mất 10-30s)</div>';
+  $("#modalBg").classList.add("show");
+
+  try {
+    let url = `/admin/api/stats/4seller/shop-score?shopId=${encodeURIComponent(shopId)}&shopName=${encodeURIComponent(shopName)}&site=${encodeURIComponent(site)}`;
+    if (forceRefresh) url += '&nocache=' + Date.now();
+    const res = await fetch(url);
+    const d = await res.json();
+    if (!res.ok) throw new Error(d.error);
+
+    if (d.empty) {
+      $("#modalBody").innerHTML = '<div class="empty">Shop không có listing active nào.</div>';
+      return;
+    }
+    renderShopScore(d);
+  } catch (err) {
+    $("#modalBody").innerHTML = `<div class="empty" style="color:var(--danger);">${escapeHtml(err.message)}</div>`;
+  }
+}
+
+function renderShopScore(d) {
+  const sc = d.scores;
+  const gColor = _gradeColor(sc.grade);
+  const n = d.niche;
+  const ps = d.priceStats || {};
+  const cur = ps.currency || '';
+
+  const subScores = [
+    _scoreCard('Title', sc.title),
+    _scoreCard('Ảnh', sc.image),
+    _scoreCard('Ngách', sc.niche),
+    _scoreCard('Giá', sc.price),
+    _scoreCard('Tồn kho', sc.stock),
+  ].join('');
+
+  const issues = [
+    _issueRow('Title quá ngắn', d.issues.titleShort),
+    _issueRow('Title quá dài', d.issues.titleLong),
+    _issueRow(`Thiếu ảnh (< ${d.thresholds.minImages})`, d.issues.fewImages),
+    _issueRow('Không có giá hợp lệ', d.issues.noPrice),
+    _issueRow('Hết hàng', d.issues.outOfStock),
+    _issueRow('Listing lỗi', d.issues.hasError),
+  ].join('') || '<div style="color:var(--success); font-size:0.88rem;">✓ Không phát hiện vấn đề rule-based nào.</div>';
+
+  const topCats = (n.categories || []).slice(0, 8).map((c, i) => {
+    const w = n.categories[0] ? Math.round((c.count / n.categories[0].count) * 100) : 0;
+    return `
+      <tr>
+        <td style="padding:4px 10px; font-size:0.84rem;">${escapeHtml(c.categoryName)}</td>
+        <td style="padding:4px 10px; text-align:right; font-weight:600;">${c.count}</td>
+        <td style="padding:4px 10px; text-align:right; color:var(--text-mute);">${c.percent}%</td>
+        <td style="padding:4px 10px; width:140px;"><div style="background:var(--bg-elev); height:8px; border-radius:4px; overflow:hidden;"><div style="width:${w}%; height:100%; background:#6c8dff;"></div></div></td>
+      </tr>`;
+  }).join('');
+
+  const ai = d.ai;
+  let aiHtml;
+  if (!d.aiAvailable) {
+    aiHtml = '<div style="color:var(--text-mute); font-size:0.86rem;">AI analysis đã tắt cho lần chấm này.</div>';
+  } else if (!ai) {
+    aiHtml = '<div style="color:var(--warn); font-size:0.86rem;">⚠️ AI không trả về kết quả (kiểm tra GEMINI_API_KEY / quota).</div>';
+  } else {
+    aiHtml = `
+      ${ai.tom_tat ? `<div style="background:var(--bg-elev); border-left:3px solid ${gColor}; border-radius:6px; padding:12px 14px; margin-bottom:10px; font-size:0.9rem; line-height:1.5;">${escapeHtml(ai.tom_tat)}</div>` : ''}
+      ${_aiList('Ưu điểm', '✅', ai.uu_diem)}
+      ${_aiList('Nhược điểm', '⚠️', ai.nhuoc_diem)}
+      ${_aiList('Cần tối ưu', '🔧', ai.can_toi_uu)}
+      ${_aiList('Nên list thêm sản phẩm', '🛍️', ai.goi_y_san_pham)}
+      ${_aiList('Gợi ý ngách', '🎯', ai.goi_y_ngach)}
+    `;
+  }
+
+  $("#modalBody").innerHTML = `
+    <div style="display:flex; gap:18px; align-items:center; margin-bottom:18px; flex-wrap:wrap;">
+      <div style="width:96px; height:96px; border-radius:50%; border:5px solid ${gColor}; display:flex; flex-direction:column; align-items:center; justify-content:center;">
+        <div style="font-size:1.7rem; font-weight:800; color:${gColor}; line-height:1;">${sc.overall}</div>
+        <div style="font-size:0.72rem; color:var(--text-mute);">/100</div>
+      </div>
+      <div>
+        <div style="font-size:2rem; font-weight:800; color:${gColor};">Hạng ${sc.grade}</div>
+        <div style="color:var(--text-mute); font-size:0.86rem;">${d.total} listing active · ${n.categoryCount} ngách · ${cur}${ps.min ?? '?'}–${cur}${ps.max ?? '?'} (TB ${cur}${ps.avg ?? '?'})</div>
+        ${n.chaotic ? '<div style="color:var(--warn); font-size:0.84rem; margin-top:4px;">⚠️ Ngách bị phân tán (loạn) — top 3 chỉ chiếm ' + n.top3Share + '%</div>' : '<div style="color:var(--success); font-size:0.84rem; margin-top:4px;">✓ Ngách tập trung — top 3 chiếm ' + n.top3Share + '%</div>'}
+      </div>
+      <button class="btn btn-ghost" style="margin-left:auto;" onclick="loadShopScore('${d.shopId}', ${JSON.stringify(d.shopName)}, '${d.site}', true)">↻ Refresh</button>
+    </div>
+
+    <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(130px,1fr)); gap:10px; margin-bottom:20px;">${subScores}</div>
+
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:20px; align-items:start;">
+      <div>
+        <h3 style="margin:0 0 10px; font-size:1rem;">🤖 Phân tích AI</h3>
+        ${aiHtml}
+      </div>
+      <div>
+        <h3 style="margin:0 0 10px; font-size:1rem;">🔎 Vấn đề phát hiện</h3>
+        ${issues}
+        <h3 style="margin:18px 0 10px; font-size:1rem;">📊 Phân bố ngách (top 8)</h3>
+        <table style="width:100%; border-collapse:collapse;"><tbody>${topCats}</tbody></table>
+      </div>
+    </div>
+  `;
+}
+
+// ─── Săn Win SHEIN ────────────────────────────────────
+state.winHunt = { products: [], query: "" };
+
+async function initWinHunt() {
+  // Chip ngách từ shop của user (lazy — chỉ load 1 lần)
+  const wrap = $("#winShopNiches");
+  if (wrap.dataset.loaded) return;
+  wrap.dataset.loaded = "1";
+  wrap.innerHTML = '<span style="color:var(--text-mute); font-size:0.82rem;">⏳ Đang lấy danh sách shop…</span>';
+  try {
+    let shops = state.stats?.shops;
+    if (!shops || !shops.length) {
+      const res = await fetch("/admin/api/stats/4seller");
+      const data = await res.json();
+      shops = data.shops || [];
+    }
+    const chips = shops
+      .filter((s) => (s.counts?.activeCount || 0) > 0)
+      .map((s) => `<button class="btn btn-ghost" style="padding:4px 10px; font-size:0.8rem;" onclick="huntShopNiche('${s.id}','${escapeHtml(s.marketplaceId || 'US')}', this)">📦 ${escapeHtml(s.shopName)}</button>`)
+      .join('');
+    wrap.innerHTML = `<span style="color:var(--text-mute); font-size:0.82rem; align-self:center;">Ngách top của shop:</span> ${chips || '<span style="color:var(--text-mute);">Chưa có shop</span>'}`;
+  } catch (err) {
+    wrap.innerHTML = `<span style="color:var(--danger); font-size:0.82rem;">${escapeHtml(err.message)}</span>`;
+  }
+}
+
+// Lấy ngách top của 1 shop rồi săn win theo ngách đó
+async function huntShopNiche(shopId, site, btn) {
+  const orig = btn.textContent;
+  btn.disabled = true; btn.textContent = '⏳ ' + orig;
+  try {
+    const res = await fetch(`/admin/api/stats/4seller/category-analytics?shopId=${encodeURIComponent(shopId)}&site=${encodeURIComponent(site)}`);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+    const top = (data.categories || [])[0];
+    if (!top) throw new Error("Shop không có category");
+    $("#winQuery").value = top.categoryName;
+    await runWinHunt();
+  } catch (err) {
+    toast("Lỗi lấy ngách: " + err.message, "error");
+  } finally {
+    btn.disabled = false; btn.textContent = orig;
+  }
+}
+
+async function runWinHunt() {
+  const query = $("#winQuery").value.trim();
+  if (!query) { toast("Nhập keyword/ngách trước", "error"); return; }
+  const grid = $("#winGrid");
+  grid.innerHTML = '<div class="empty">⏳ Đang săn trên SHEIN…</div>';
+  $("#winResultMeta").textContent = '';
+  state.winHunt = { products: [], query, page: 0, total: 0, hasNext: true, loading: false };
+  await loadMoreWin();
+}
+
+async function loadMoreWin() {
+  const wh = state.winHunt;
+  if (!wh || wh.loading || !wh.hasNext) return;
+  wh.loading = true;
+  const moreBtn = $("#winLoadMore");
+  if (moreBtn) { moreBtn.disabled = true; moreBtn.textContent = '⏳ Đang tải…'; }
+  try {
+    const nextPage = wh.page + 1;
+    const res = await fetch(`/admin/api/shein/search?query=${encodeURIComponent(wh.query)}&perPage=40&page=${nextPage}`);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+    // Dedupe theo goodsId khi nối trang
+    const seen = new Set(wh.products.map((p) => p.goodsId));
+    const fresh = (data.products || []).filter((p) => !seen.has(p.goodsId));
+    wh.products.push(...fresh);
+    wh.page = nextPage;
+    wh.total = data.total || wh.total;
+    wh.hasNext = Boolean(data.hasNext) && (data.products || []).length > 0;
+    const degraded = data.source === "shein-online-data"
+      ? ' · <span style="color:var(--warn);">⚠️ data-api lỗi → nguồn dự phòng (thiếu review/rating)</span>'
+      : '';
+    $("#winResultMeta").innerHTML = `Tìm thấy ~<strong>${(wh.total||0).toLocaleString()}</strong> sp cho "<strong>${escapeHtml(wh.query)}</strong>" · đã tải <strong>${wh.products.length}</strong> (trang ${wh.page}, đã chấm winScore)${degraded}`;
+    applyWinView();
+  } catch (err) {
+    if (wh.products.length === 0) $("#winGrid").innerHTML = `<div class="empty" style="color:var(--danger);">${escapeHtml(err.message)}</div>`;
+    else toast("Lỗi tải thêm: " + err.message, "error");
+  } finally {
+    wh.loading = false;
+  }
+}
+
+function applyWinView() {
+  const sort = $("#winSort").value;
+  const tierF = $("#winTierFilter").value;
+  let list = [...state.winHunt.products];
+  if (tierF === "hot") list = list.filter((p) => p.winTier === "hot");
+  else if (tierF === "good") list = list.filter((p) => p.winTier === "hot" || p.winTier === "good");
+  const cmp = {
+    win: (a, b) => b.winScore - a.winScore,
+    reviews: (a, b) => b.commentNum - a.commentNum,
+    discount: (a, b) => (b.discountPct || 0) - (a.discountPct || 0),
+    rating: (a, b) => (b.rating || 0) - (a.rating || 0),
+  }[sort];
+  list.sort(cmp);
+  const grid = $("#winGrid");
+  if (!list.length) { grid.innerHTML = '<div class="empty">Không có sp khớp filter.</div>'; }
+  else grid.innerHTML = list.map(winCard).join('');
+
+  // Footer: nút xem thêm + thông tin filter
+  const wh = state.winHunt || {};
+  const footer = $("#winFooter");
+  const shownNote = (tierF !== 'all') ? `<div style="color:var(--text-mute); font-size:0.8rem; margin-bottom:8px;">Hiển thị ${list.length}/${wh.products?.length||0} (đã lọc tier)</div>` : '';
+  footer.innerHTML = shownNote + (wh.hasNext
+    ? `<button id="winLoadMore" class="btn btn-ghost" onclick="loadMoreWin()" style="padding:10px 28px;">⬇ Xem thêm 40 sp (đã tải ${wh.products?.length||0})</button>`
+    : (wh.products?.length ? `<div style="color:var(--text-mute); font-size:0.82rem;">— Đã hết kết quả (${wh.products.length} sp) —</div>` : ''));
+}
+$("#winSort") && ($("#winSort").onchange = applyWinView);
+document.addEventListener('change', (e) => { if (e.target && (e.target.id === 'winSort' || e.target.id === 'winTierFilter')) applyWinView(); });
+
+function winCard(p) {
+  const tierBadge = {
+    hot: '<span class="badge badge-danger">🔥 HOT</span>',
+    good: '<span class="badge badge-success">⭐ Good</span>',
+    normal: '<span class="badge badge-info">Normal</span>',
+    weak: '<span class="badge badge-warn">Weak</span>',
+  }[p.winTier] || '';
+  const price = p.price !== null ? `$${p.price}` : '?';
+  const disc = p.discountPct ? `<span style="color:var(--danger); font-size:0.78rem;"> -${p.discountPct}%</span>` : '';
+  const rating = p.rating !== null ? `⭐${p.rating}` : '';
+  return `
+    <div class="card" style="padding:0; overflow:hidden; cursor:pointer;" onclick="viewSheinDetail('${p.goodsId}','${escapeHtml(p.goodsSn||'')}', '${escapeHtml(p.url||'')}')">
+      <div style="position:relative; aspect-ratio:3/4; background:var(--bg-elev);">
+        ${p.image ? `<img src="${escapeHtml(p.image)}" loading="lazy" style="width:100%; height:100%; object-fit:cover;" />` : ''}
+        <div style="position:absolute; top:6px; left:6px;">${tierBadge}</div>
+        <div style="position:absolute; top:6px; right:6px; background:rgba(0,0,0,.7); color:#fff; border-radius:6px; padding:2px 7px; font-weight:700; font-size:0.82rem;">${p.winScore}</div>
+      </div>
+      <div style="padding:8px 10px;">
+        <div class="truncate" style="font-size:0.8rem; line-height:1.3; height:2.1em; overflow:hidden;" title="${escapeHtml(p.name)}">${escapeHtml((p.name||'').slice(0,80))}</div>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-top:6px;">
+          <span style="font-weight:700; color:var(--accent);">${price}${disc}</span>
+          <span style="font-size:0.74rem; color:var(--text-mute);">${rating} · ${p.commentNum.toLocaleString()}💬</span>
+        </div>
+      </div>
+    </div>`;
+}
+
+// Dựng URL sản phẩm SHEIN chuẩn. Format đúng là <slug>-p-<goodsId>.html
+// (KHÔNG phải pdp-<id>). Ưu tiên productUrl thật từ API nếu có.
+function sheinUrlFor(goodsId, realUrl) {
+  if (realUrl) {
+    if (/^https?:\/\//i.test(realUrl)) return realUrl;
+    if (realUrl.startsWith('/')) return 'https://www.shein.com' + realUrl;
+  }
+  return `https://www.shein.com/product-p-${goodsId}.html`;
+}
+
+async function viewSheinDetail(goodsId, goodsSn, realUrl) {
+  $("#modalTitle").textContent = `SHEIN: ${goodsId}`;
+  $("#modalBody").innerHTML = '<div class="empty">⏳ Đang tải detail SHEIN…</div>';
+  $("#modalBg").classList.add("show");
+  try {
+    const res = await fetch(`/admin/api/shein/detail?goodsId=${encodeURIComponent(goodsId)}&goodsSn=${encodeURIComponent(goodsSn||'')}`);
+    const d = await res.json();
+    if (!res.ok) throw new Error(d.error);
+    const imgs = (d.images||[]).slice(0,8).map((u) => `<img src="${escapeHtml(u)}" style="width:90px; height:120px; object-fit:cover; border-radius:6px;" />`).join('');
+    const attrs = (d.attributes||[]).concat(d.material||[]).map((a) => `<tr><td style="padding:3px 8px; color:var(--text-mute); font-size:0.82rem;">${escapeHtml(a.name)}</td><td style="padding:3px 8px; font-size:0.82rem;">${escapeHtml(a.value)}</td></tr>`).join('');
+    const sheinUrl = sheinUrlFor(goodsId, realUrl);
+    $("#modalBody").innerHTML = `
+      <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px;">${imgs || '<span style="color:var(--text-mute);">Không có ảnh</span>'}</div>
+      <h3 style="margin:0 0 6px; font-size:1rem;">${escapeHtml(d.name||'')}</h3>
+      <div style="color:var(--text-mute); font-size:0.85rem; margin-bottom:10px;">
+        ${d.price!==null?`<strong style="color:var(--accent);">$${d.price}</strong>`:''}
+        ${d.catName?` · ${escapeHtml(d.catName)}`:''} · goods_sn: <code>${escapeHtml(d.goodsSn||'')}</code> · nguồn: ${d.source}
+        ${d.storeCode?` · store: <code>${escapeHtml(d.storeCode)}</code>`:''}
+      </div>
+      ${attrs ? `<table style="width:100%; border-collapse:collapse; margin-bottom:10px;"><tbody>${attrs}</tbody></table>` : ''}
+      <div style="display:flex; gap:8px; flex-wrap:wrap;">
+        <a href="${sheinUrl}" target="_blank" class="btn btn-ghost" style="padding:6px 12px;">🔗 Mở trên SHEIN</a>
+        ${d.storeCode ? `<button class="btn btn-ghost" style="padding:6px 12px;" onclick="gotoSimilar('${escapeHtml(d.storeCode)}')">🏬 Shop tương tự</button>` : ''}
+        <button class="btn btn-ghost" style="padding:6px 12px;" onclick="kikiScrapeUrl('${sheinUrl}')">🤖 Cào bằng Kiki</button>
+      </div>
+    `;
+  } catch (err) {
+    $("#modalBody").innerHTML = `<div class="empty" style="color:var(--danger);">${escapeHtml(err.message)}</div>`;
+  }
+}
+
+// ─── Shop tương tự ────────────────────────────────────
+function gotoSimilar(storeCode) {
+  document.querySelector('.nav-item[data-view="similar"]')?.click();
+  $("#simInput").value = storeCode;
+  $("#modalBg").classList.remove("show");
+  runSimilar();
+}
+
+async function runSimilar() {
+  const raw = $("#simInput").value.trim();
+  if (!raw) { toast("Nhập store_code hoặc URL store", "error"); return; }
+  $("#simInputInfo").innerHTML = '';
+  $("#simResult").innerHTML = '<div class="empty">⏳ Đang phân tích ngách của store + quét đối thủ trên SHEIN… (~15-25s, có throttle tránh rate-limit)</div>';
+  try {
+    const res = await fetch(`/admin/api/shein/similar-stores?store=${encodeURIComponent(raw)}`);
+    const d = await res.json();
+    if (!res.ok) throw new Error(d.error);
+    renderSimilar(d);
+  } catch (err) {
+    $("#simResult").innerHTML = `<div class="empty" style="color:var(--danger);">${escapeHtml(err.message)}</div>`;
+  }
+}
+
+function renderSimilar(d) {
+  const inp = d.input;
+  $("#simInputInfo").innerHTML = `
+    <div class="card" style="margin-bottom:14px;">
+      <div style="display:flex; justify-content:space-between; flex-wrap:wrap; gap:8px;">
+        <div>
+          <strong>Store gốc:</strong> <code>${escapeHtml(inp.storeCode)}</code>
+          ${inp.catalogSize != null ? ` · ${inp.catalogSize.toLocaleString()} sp` : ''}
+          ${inp.storeUrl ? ` · <a href="${escapeHtml(inp.storeUrl)}" target="_blank">mở store ↗</a>` : ''}
+        </div>
+        <div style="color:var(--text-mute); font-size:0.84rem;">Quét theo ${inp.keywords.length} ngách · ${d.totalCandidates} shop đối thủ tìm thấy</div>
+      </div>
+      <div style="margin-top:8px; display:flex; gap:6px; flex-wrap:wrap;">
+        ${inp.keywords.map(k => `<span class="badge badge-info">${escapeHtml(k)}</span>`).join('')}
+      </div>
+    </div>`;
+
+  if (!d.stores.length) {
+    $("#simResult").innerHTML = '<div class="empty">Không tìm thấy shop đối thủ (store rỗng hoặc ngách quá hẹp).</div>';
+    return;
+  }
+
+  $("#simResult").innerHTML = `
+    <table style="width:100%; border-collapse:collapse;">
+      <thead>
+        <tr style="border-bottom:1px solid var(--border); text-align:left;">
+          <th style="padding:8px 10px; color:var(--text-mute); font-weight:500;">#</th>
+          <th style="padding:8px 10px; color:var(--text-mute); font-weight:500;">Shop</th>
+          <th style="padding:8px 10px; color:var(--text-mute); font-weight:500; text-align:center;">Similarity</th>
+          <th style="padding:8px 10px; color:var(--text-mute); font-weight:500; text-align:center;">Trùng ngách</th>
+          <th style="padding:8px 10px; color:var(--text-mute); font-weight:500; text-align:right;">Catalog</th>
+          <th style="padding:8px 10px; color:var(--text-mute); font-weight:500; text-align:center;">avgWin</th>
+          <th style="padding:8px 10px; color:var(--text-mute); font-weight:500;">Ngách chung</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        ${d.stores.map((s, i) => `
+          <tr style="border-bottom:1px solid var(--border);">
+            <td style="padding:8px 10px; color:var(--text-mute);">${i + 1}</td>
+            <td style="padding:8px 10px;">
+              <div style="display:flex; align-items:center; gap:8px;">
+                ${s.sample?.image ? `<img src="${escapeHtml(s.sample.image)}" style="width:40px; height:52px; object-fit:cover; border-radius:5px;" />` : ''}
+                <div>
+                  <code style="font-size:0.82rem;">${escapeHtml(s.storeCode)}</code>
+                  ${s.sample ? `<div class="truncate" style="max-width:200px; font-size:0.74rem; color:var(--text-mute);" title="${escapeHtml(s.sample.name)}">${escapeHtml((s.sample.name||'').slice(0,40))}</div>` : ''}
+                </div>
+              </div>
+            </td>
+            <td style="padding:8px 10px; text-align:center; font-weight:700; color:var(--accent);">${s.similarity}</td>
+            <td style="padding:8px 10px; text-align:center;">${s.nicheOverlap}/${inp.keywords.length}</td>
+            <td style="padding:8px 10px; text-align:right;">${s.catalogSize != null ? s.catalogSize.toLocaleString() : '—'}</td>
+            <td style="padding:8px 10px; text-align:center;">${s.avgWin}</td>
+            <td style="padding:8px 10px; font-size:0.74rem; color:var(--text-mute);">${s.niches.map(n => escapeHtml(n)).join(', ')}</td>
+            <td style="padding:8px 10px; text-align:right; white-space:nowrap;">
+              ${s.storeUrl ? `<a href="${escapeHtml(s.storeUrl)}" target="_blank" class="btn btn-ghost btn-icon" title="Mở store SHEIN">↗</a>` : ''}
+              <button class="btn btn-ghost btn-icon" title="Tìm shop tương tự shop này" onclick="gotoSimilar('${escapeHtml(s.storeCode)}')">🏬</button>
+              <button class="btn btn-ghost btn-icon" title="Cào nguyên store này bằng Kiki" onclick="gotoCrawlStore('${escapeHtml(s.storeCode)}')">🤖</button>
+            </td>
+          </tr>`).join('')}
+      </tbody>
+    </table>`;
+}
+
+// ─── Kiki Scrape ──────────────────────────────────────
+state.kiki = { profiles: [], shops: [], loaded: false };
+
+async function initKiki() {
+  if (state.kiki.loaded) return;
+  state.kiki.loaded = true;
+  // Load profiles + Kiki status
+  try {
+    const res = await fetch("/admin/api/kiki/profiles");
+    const d = await res.json();
+    state.kiki.profiles = d.profiles || [];
+    const badge = $("#kikiStatus");
+    badge.textContent = d.kikiAlive ? "Kiki: 🟢 online" : "Kiki: 🔴 offline";
+    badge.className = "badge " + (d.kikiAlive ? "badge-success" : "badge-danger");
+    renderKikiProfiles();
+  } catch (err) {
+    $("#kikiStatus").textContent = "Kiki: lỗi";
+  }
+  // Load shops (folder)
+  try {
+    const res = await fetch("/admin/api/listings/shops");
+    const d = await res.json();
+    state.kiki.shops = (d.shops || []).map((s) => s.folder);
+    renderKikiShops();
+  } catch {
+    $("#kikiShops").innerHTML = '<span class="empty" style="color:var(--danger);">Lỗi tải shop</span>';
+  }
+}
+
+function renderKikiProfiles() {
+  const sel = $("#kikiProfile");
+  if (!state.kiki.profiles.length) {
+    sel.innerHTML = '<option value="">(chưa có profile — bấm Quản lý profile)</option>';
+    return;
+  }
+  sel.innerHTML = state.kiki.profiles.map((p) => `<option value="${escapeHtml(p.id)}">${escapeHtml(p.name)} (${escapeHtml(p.id)})</option>`).join('');
+}
+
+function renderKikiShops(selected) {
+  const sel = new Set(selected || []);
+  const wrap = $("#kikiShops");
+  if (!state.kiki.shops.length) { wrap.innerHTML = '<span class="empty">Không có shop</span>'; return; }
+  wrap.innerHTML = state.kiki.shops.map((f) =>
+    `<label class="tm-acc-item" style="font-size:0.82rem; border:1px solid var(--border); padding:4px 10px; border-radius:6px;">
+       <input type="checkbox" class="kiki-shop-cb" value="${escapeHtml(f)}" ${sel.has(f) ? 'checked' : ''}> ${escapeHtml(f)}
+     </label>`).join('');
+}
+
+async function kikiManageProfiles() {
+  const current = state.kiki.profiles.map((p) => `${p.id}|${p.name}`).join('\n');
+  const input = prompt("Mỗi dòng 1 profile dạng:  profileId|Tên hiển thị\n(lấy profileId từ app Kiki)", current);
+  if (input === null) return;
+  const profiles = input.split('\n').map((l) => l.trim()).filter(Boolean).map((l) => {
+    const [id, ...rest] = l.split('|');
+    return { id: id.trim(), name: (rest.join('|') || id).trim() };
+  }).filter((p) => p.id);
+  try {
+    const res = await fetch("/admin/api/kiki/profiles", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ profiles }),
+    });
+    const d = await res.json();
+    if (!res.ok) throw new Error(d.error);
+    state.kiki.profiles = d.profiles;
+    renderKikiProfiles();
+    toast("Đã lưu " + d.profiles.length + " profile", "success");
+  } catch (err) { toast("Lỗi lưu: " + err.message, "error"); }
+}
+
+async function runKikiScrape() {
+  const profileId = $("#kikiProfile").value;
+  if (!profileId) { toast("Chọn Kiki profile (thêm ở Quản lý profile)", "error"); return; }
+  const urls = $("#kikiUrls").value.split('\n').map((u) => u.trim()).filter(Boolean);
+  if (!urls.length) { toast("Dán ít nhất 1 URL SHEIN", "error"); return; }
+  const shops = Array.from(document.querySelectorAll('.kiki-shop-cb:checked')).map((cb) => cb.value);
+  if (!shops.length) { toast("Chọn ít nhất 1 shop", "error"); return; }
+  const divide4 = $("#kikiDivide4").checked;
+
+  const box = $("#kikiResults");
+  box.innerHTML = `<div class="card"><div class="empty">⏳ Đang cào ${urls.length} URL bằng Kiki (mỗi URL ~30-60s, chạy tuần tự)… Không đóng tab.</div></div>`;
+  try {
+    const res = await fetch("/admin/api/kiki/scrape", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ urls, shops, profileId, options: { divide4 } }),
+    });
+    const d = await res.json();
+    if (!res.ok) throw new Error(d.error);
+    renderKikiResults(d.results || []);
+  } catch (err) {
+    box.innerHTML = `<div class="card"><div class="empty" style="color:var(--danger);">${escapeHtml(err.message)}</div></div>`;
+  }
+}
+
+function renderKikiResults(results) {
+  const ok = results.filter((r) => r.ok).length;
+  $("#kikiResults").innerHTML = `
+    <div class="card">
+      <h3 style="margin:0 0 10px;">Kết quả: ${ok}/${results.length} thành công</h3>
+      ${results.map((r) => `
+        <div style="border-top:1px solid var(--border); padding:10px 0;">
+          <div style="display:flex; justify-content:space-between; gap:8px;">
+            <span class="truncate" style="max-width:60%; font-size:0.82rem;" title="${escapeHtml(r.url)}">${escapeHtml(r.url)}</span>
+            <span class="badge ${r.ok ? 'badge-success' : 'badge-danger'}">${r.ok ? '✓ OK' : '✗ Lỗi'}</span>
+          </div>
+          ${r.ok ? `
+            <div style="font-size:0.84rem; margin-top:4px;">
+              <strong>${escapeHtml((r.product_name || '').slice(0, 80))}</strong>
+              <div style="color:var(--text-mute); font-size:0.78rem;">${r.colors} màu · ${r.images} ảnh ${r.sold ? '· 🔥 sold ' + escapeHtml(r.sold) : ''} ${r.reviewCount != null ? '· ' + r.reviewCount + ' review' : ''} ${r.rating != null ? '· ⭐' + r.rating : ''} ${r.oosColors?.length ? '· OOS: ' + r.oosColors.join(', ') : ''} · queued ${r.queued?.length} shop</div>
+            </div>` : `
+            <div style="color:var(--danger); font-size:0.8rem; margin-top:4px;">${escapeHtml(r.error || '')}</div>`}
+          ${(r.logs && r.logs.length) ? `<details style="margin-top:4px;"><summary style="cursor:pointer; font-size:0.74rem; color:var(--text-mute);">log</summary><pre style="font-size:0.72rem; white-space:pre-wrap; color:var(--text-mute);">${escapeHtml(r.logs.join('\n'))}</pre></details>` : ''}
+        </div>`).join('')}
+    </div>`;
+}
+
+// Từ Săn Win / detail → mở tab Kiki với URL điền sẵn
+function kikiScrapeUrl(url) {
+  document.querySelector('.nav-item[data-view="kiki"]')?.click();
+  $("#modalBg")?.classList.remove("show");
+  setTimeout(() => { const t = $("#kikiUrls"); if (t) { t.value = url; t.focus(); } }, 300);
+}
+
+// ─── Cào nguyên store ─────────────────────────────────
+state.crawlStore = { products: [], sort: "win" };
+
+function gotoCrawlStore(storeCode) {
+  document.querySelector('.nav-item[data-view="kiki"]')?.click();
+  $("#modalBg")?.classList.remove("show");
+  setTimeout(() => { const t = $("#crawlStoreInput"); if (t) { t.value = storeCode; t.scrollIntoView({behavior:'smooth'}); } }, 300);
+}
+
+async function runCrawlStore() {
+  const store = $("#crawlStoreInput").value.trim();
+  if (!store) { toast("Nhập store_code hoặc URL store", "error"); return; }
+  const profileId = $("#kikiProfile").value;
+  if (!profileId) { toast("Chọn Kiki profile ở trên trước", "error"); return; }
+  const maxProducts = Math.min(2000, Number($("#crawlStoreMax").value) || 300);
+  $("#crawlStoreMeta").innerHTML = '⏳ Kiki đang mở store + cuộn thu sản phẩm… (vài phút tùy số sp; nếu hiện captcha hãy GIẢI trong cửa sổ Kiki).';
+  $("#crawlStoreResult").innerHTML = '';
+  try {
+    const res = await fetch("/admin/api/kiki/crawl-store", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ store, profileId, maxProducts }),
+    });
+    const d = await res.json();
+    if (!res.ok) throw new Error(d.error);
+    state.crawlStore = { products: d.products || [], storeCode: d.storeCode, storeUrl: d.storeUrl, sort: "win" };
+    $("#crawlStoreMeta").innerHTML = `Store <code>${escapeHtml(d.storeCode)}</code> · tổng catalog ${d.quantity ?? '?'} · thu được <strong>${d.count}</strong> sp ${d.storeUrl ? `· <a href="${escapeHtml(d.storeUrl)}" target="_blank">mở store ↗</a>` : ''}`;
+    renderCrawlStore();
+  } catch (err) {
+    $("#crawlStoreMeta").innerHTML = `<span style="color:var(--danger);">${escapeHtml(err.message)}</span>`;
+  }
+}
+
+function renderCrawlStore() {
+  const cs = state.crawlStore;
+  let list = [...cs.products];
+  const cmp = {
+    win: (a, b) => b.winScore - a.winScore,
+    reviews: (a, b) => b.reviewCount - a.reviewCount,
+    rating: (a, b) => (b.rating || 0) - (a.rating || 0),
+    discount: (a, b) => (b.discountPct || 0) - (a.discountPct || 0),
+    price: (a, b) => (a.price || 1e9) - (b.price || 1e9),
+  }[cs.sort];
+  list.sort(cmp);
+  const tier = (t) => ({ hot: '🔥', good: '⭐', normal: '·', weak: '▽' }[t] || '');
+  $("#crawlStoreResult").innerHTML = `
+    <div style="display:flex; gap:10px; align-items:center; margin:12px 0; flex-wrap:wrap;">
+      <select id="crawlSort" onchange="state.crawlStore.sort=this.value; renderCrawlStore();" style="padding:7px; border-radius:7px; border:1px solid var(--border); background:var(--bg-elev); color:var(--text);">
+        <option value="win" ${cs.sort==='win'?'selected':''}>Sort: Win score</option>
+        <option value="reviews" ${cs.sort==='reviews'?'selected':''}>Sort: Review (≈sold)</option>
+        <option value="rating" ${cs.sort==='rating'?'selected':''}>Sort: Rating</option>
+        <option value="discount" ${cs.sort==='discount'?'selected':''}>Sort: Giảm giá</option>
+        <option value="price" ${cs.sort==='price'?'selected':''}>Sort: Giá thấp→cao</option>
+      </select>
+      <button class="btn btn-ghost" onclick="crawlSelectTop(20)">Tick top 20</button>
+      <button class="btn btn-ghost" onclick="document.querySelectorAll('.crawl-cb').forEach(c=>c.checked=false)">Bỏ chọn</button>
+      <button class="btn" onclick="scrapeSelectedFromStore()">🚀 Cào sp đã tick vào shop (đã chọn ở trên)</button>
+    </div>
+    <div style="overflow-x:auto;">
+    <table style="width:100%; border-collapse:collapse; font-size:0.83rem;">
+      <thead><tr style="border-bottom:1px solid var(--border); text-align:left;">
+        <th style="padding:6px;"></th><th style="padding:6px;">Ảnh</th><th style="padding:6px;">Sản phẩm</th>
+        <th style="padding:6px; text-align:center;">Win</th><th style="padding:6px; text-align:center;">Rating</th>
+        <th style="padding:6px; text-align:right;">Review</th><th style="padding:6px; text-align:right;">Giá</th>
+        <th style="padding:6px; text-align:right;">Giảm</th><th style="padding:6px;"></th>
+      </tr></thead>
+      <tbody>
+        ${list.map((p) => `
+          <tr style="border-bottom:1px solid var(--border);">
+            <td style="padding:6px;"><input type="checkbox" class="crawl-cb" value="${escapeHtml(p.url||'')}"></td>
+            <td style="padding:6px;">${p.image ? `<img src="${escapeHtml(p.image)}" style="width:38px;height:50px;object-fit:cover;border-radius:5px;">` : ''}</td>
+            <td style="padding:6px;"><div class="truncate" style="max-width:280px;" title="${escapeHtml(p.name||'')}">${escapeHtml((p.name||'(no name)').slice(0,60))}</div><span style="font-size:0.7rem;color:var(--text-mute);">gid=${escapeHtml(p.goodsId)}</span></td>
+            <td style="padding:6px; text-align:center; font-weight:700; color:var(--accent);">${tier(p.winTier)}${p.winScore}</td>
+            <td style="padding:6px; text-align:center;">${p.rating!=null?'⭐'+p.rating:'—'}</td>
+            <td style="padding:6px; text-align:right;">${(p.reviewCount||0).toLocaleString()}</td>
+            <td style="padding:6px; text-align:right;">${p.price!=null?'$'+p.price:'—'}</td>
+            <td style="padding:6px; text-align:right; color:var(--danger);">${p.discountPct?'-'+p.discountPct+'%':''}</td>
+            <td style="padding:6px;">${p.url?`<a href="${escapeHtml(p.url)}" target="_blank">↗</a>`:''}</td>
+          </tr>`).join('')}
+      </tbody>
+    </table></div>`;
+}
+
+function crawlSelectTop(n) {
+  const cbs = document.querySelectorAll('.crawl-cb');
+  cbs.forEach((c, i) => { c.checked = i < n; });
+}
+
+async function scrapeSelectedFromStore() {
+  const urls = Array.from(document.querySelectorAll('.crawl-cb:checked')).map((c) => c.value).filter(Boolean);
+  if (!urls.length) { toast("Tick ít nhất 1 sản phẩm", "error"); return; }
+  if (urls.length > 20) { toast("Tối đa 20 sp/lần — bớt tick lại", "error"); return; }
+  const profileId = $("#kikiProfile").value;
+  const shops = Array.from(document.querySelectorAll('.kiki-shop-cb:checked')).map((cb) => cb.value);
+  if (!profileId) { toast("Chọn profile ở trên", "error"); return; }
+  if (!shops.length) { toast("Chọn shop đích ở card phía trên", "error"); return; }
+  const divide4 = $("#kikiDivide4").checked;
+  $("#kikiResults").innerHTML = `<div class="card"><div class="empty">⏳ Đang cào ${urls.length} sp đã chọn từ store…</div></div>`;
+  try {
+    const res = await fetch("/admin/api/kiki/scrape", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ urls, shops, profileId, options: { divide4 } }),
+    });
+    const d = await res.json();
+    if (!res.ok) throw new Error(d.error);
+    renderKikiResults(d.results || []);
+    $("#kikiResults").scrollIntoView({ behavior: 'smooth' });
+  } catch (err) {
+    $("#kikiResults").innerHTML = `<div class="card"><div class="empty" style="color:var(--danger);">${escapeHtml(err.message)}</div></div>`;
+  }
+}
+
+async function viewListingDetail(listingId) {
+  $("#modalTitle").textContent = `Detail: ${listingId}`;
+  $("#modalBody").innerHTML = '<div class="empty">⏳ Đang tải detail từ 4Seller...</div>';
+  try {
+    const res = await fetch(`/admin/api/stats/4seller/detail/${encodeURIComponent(listingId)}`);
+    const d = await res.json();
+    if (!res.ok) throw new Error(d.error);
+
+    // Parse JSON-stringified fields (4Seller trả về string trong JSON)
+    const parseJson = (v) => {
+      if (!v) return null;
+      if (typeof v === "object") return v;
+      try { return JSON.parse(v); } catch { return null; }
+    };
+    const brandInfo = parseJson(d.brandInfo) || {};
+    const option1Values = parseJson(d.option1Value) || [];
+    const option2Values = parseJson(d.option2Value) || [];
+    const option3Values = parseJson(d.option3Value) || [];
+    const attrs = parseJson(d.productAttributes) || [];
+    const images = Array.isArray(d.allImageList) ? d.allImageList : [];
+    const variants = Array.isArray(d.variation) ? d.variation : (parseJson(d.variation) || []);
+
+    const flatOptionNames = (arr) => arr.map((o) => Object.values(o)[0]).filter(Boolean);
+    const colors = flatOptionNames(option1Values);
+    const sizes = flatOptionNames(option2Values);
+    const widths = flatOptionNames(option3Values);
+
+    const backBtn = state.statsView
+      ? `<button class="btn btn-ghost" onclick="viewShopListings('${state.statsView.shopId}', ${JSON.stringify(state.statsView.shopName)})">← Back to listings</button>`
+      : '';
+
+    const errMsg = d.errMsg || d.failedMessage || '';
+    const statusBadge = d.publishStatus === 'normal'
+      ? '<span class="badge badge-success">✓ active</span>'
+      : `<span class="badge badge-warn">${escapeHtml(d.publishStatus || d.erpStatus || '?')}</span>`;
+
+    $("#modalBody").innerHTML = `
+      <div style="display:flex; align-items:center; gap: 10px; margin-bottom: 14px;">
+        ${backBtn}
+        ${statusBadge}
+        ${d.listingUrl ? `<a href="${escapeHtml(d.listingUrl)}" target="_blank" class="btn btn-ghost" style="padding: 6px 12px;">🔗 4Seller</a>` : ''}
+        ${d.sourceUrl ? `<a href="${escapeHtml(d.sourceUrl)}" target="_blank" class="btn btn-ghost" style="padding: 6px 12px;">🔗 SHEIN source</a>` : ''}
+        ${d.listingPreviewUrl ? `<a href="${escapeHtml(d.listingPreviewUrl)}" target="_blank" class="btn btn-ghost" style="padding: 6px 12px;">🔗 TikTok preview</a>` : ''}
+      </div>
+
+      <h2 style="margin: 0 0 8px;">${escapeHtml(d.productName || '(no title)')}</h2>
+      <div style="color:var(--text-mute); margin-bottom: 16px;">
+        Shop: <code>${escapeHtml(d.shopName)}</code> ·
+        Market: ${escapeHtml(d.site || d.region || '?')} ·
+        Brand: ${escapeHtml(brandInfo.name || '?')} ·
+        Stock: ${d.availableStock ?? '?'}
+      </div>
+
+      ${errMsg ? `<div style="background:var(--danger-soft); border:1px solid var(--danger); padding:10px 14px; border-radius:8px; margin-bottom:14px; color:var(--danger);"><strong>⚠ Error:</strong> ${escapeHtml(errMsg)}</div>` : ''}
+
+      <!-- IMAGE GALLERY -->
+      ${images.length > 0 ? `
+        <h3 style="margin: 18px 0 8px;">📸 Images (${images.length})</h3>
+        <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap:8px;">
+          ${images.slice(0, 12).map((img) => `
+            <a href="${escapeHtml(img)}" target="_blank"><img src="${escapeHtml(img)}" style="width:100%; aspect-ratio:1; object-fit:cover; border-radius:8px;" loading="lazy" /></a>
+          `).join('')}
+        </div>
+      ` : ''}
+
+      <!-- CATEGORY -->
+      <h3 style="margin: 18px 0 8px;">📂 Category</h3>
+      <div style="font-family: 'JetBrains Mono', monospace; font-size: 0.88rem; color: var(--text-dim);">
+        ${escapeHtml(d.categoryPath || d.categoryName || '?')}
+      </div>
+
+      <!-- VARIANTS -->
+      ${colors.length > 0 || sizes.length > 0 ? `
+        <h3 style="margin: 18px 0 8px;">🎨 Variants (${variants.length || 0} SKUs)</h3>
+        <div style="display:flex; gap:14px; flex-wrap:wrap; margin-bottom: 10px;">
+          ${colors.length > 0 ? `<div><strong>${d.option1 || 'Color'}:</strong> ${colors.map((c) => `<span class="badge badge-info" style="margin:2px;">${escapeHtml(c)}</span>`).join('')}</div>` : ''}
+          ${sizes.length > 0 ? `<div><strong>${d.option2 || 'Size'}:</strong> ${sizes.map((s) => `<span class="badge badge-info" style="margin:2px;">${escapeHtml(s)}</span>`).join('')}</div>` : ''}
+          ${widths.length > 0 ? `<div><strong>${d.option3 || 'Width'}:</strong> ${widths.map((s) => `<span class="badge badge-info" style="margin:2px;">${escapeHtml(s)}</span>`).join('')}</div>` : ''}
+        </div>
+      ` : ''}
+
+      ${variants.length > 0 ? `
+        <details style="margin-top:10px;">
+          <summary style="cursor:pointer; color:var(--text-mute);">Xem chi tiết SKU table (${variants.length} variants)</summary>
+          <table style="margin-top: 10px;">
+            <thead><tr><th>SKU</th><th>Variant</th><th>Price</th><th>Stock</th></tr></thead>
+            <tbody>
+              ${variants.slice(0, 50).map((v) => `
+                <tr>
+                  <td class="mono" style="font-size:0.78rem;">${escapeHtml(v.skuId || v.sellerSku || v.skuName || '?')}</td>
+                  <td>${escapeHtml([v.option1, v.option2, v.option3].filter(Boolean).join(' / ') || '?')}</td>
+                  <td style="color:var(--accent); font-weight:600;">${escapeHtml(d.shopCurrency || '')}${escapeHtml(String(v.price ?? v.salePrice ?? '?'))}</td>
+                  <td>${v.stock ?? v.availableStock ?? '—'}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </details>
+      ` : ''}
+
+      <!-- ATTRIBUTES -->
+      ${attrs.length > 0 ? `
+        <h3 style="margin: 18px 0 8px;">🏷 Attributes</h3>
+        <table>
+          <tbody>
+            ${attrs.map((a) => `
+              <tr>
+                <td style="color: var(--text-mute); width: 280px;">${escapeHtml(a.attributeName || '?')}</td>
+                <td>${(a.values || []).map((v) => escapeHtml(v.valueName || '')).join(', ')}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      ` : ''}
+
+      <!-- PACKAGE -->
+      <h3 style="margin: 18px 0 8px;">📦 Package</h3>
+      <div style="font-size: 0.88rem;">
+        Weight: ${escapeHtml(String(d.packageWeight || '?'))} ${escapeHtml(d.weightUnit || '')} ·
+        Dim: ${escapeHtml(String(d.packageLength || '?'))} × ${escapeHtml(String(d.packageWidth || '?'))} × ${escapeHtml(String(d.packageHeight || '?'))} ${escapeHtml(d.dimensionUnit || '')}
+      </div>
+
+      <!-- DESCRIPTION -->
+      ${d.description ? `
+        <h3 style="margin: 18px 0 8px;">📝 Description</h3>
+        <details>
+          <summary style="cursor:pointer; color:var(--text-mute);">Click để xem HTML description</summary>
+          <div style="margin-top: 10px; padding: 12px; background: var(--bg-elev); border-radius: 8px; max-height: 400px; overflow-y: auto;">${d.description}</div>
+        </details>
+      ` : ''}
+    `;
+  } catch (err) {
+    $("#modalBody").innerHTML = `<div class="empty" style="color: var(--danger);">${escapeHtml(err.message)}</div>`;
+  }
+}
+
 // ─── Bulk select cho pending listings ────────────────
 function toggleListingSelect(idEnc, checked) {
   const id = decodeURIComponent(idEnc);
@@ -1315,11 +2449,11 @@ function renderUsers() {
       </div>
       <div style="margin-top: 8px; padding: 12px; background: var(--bg-elev); border: 1px dashed var(--accent); border-radius: 8px;">
         <div style="font-size: 0.82rem; color: var(--text-dim); margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
-          <span>🏪 <strong>Shops + Brand mapping</strong> &nbsp;<span style="color:var(--text-mute);">(rỗng = scan tất cả shop trong base dir, dùng brand global)</span></span>
+          <span>🏪 <strong>Shops + Brand mapping</strong> &nbsp;<span style="color:var(--text-mute);">(rỗng = scan tất cả shop trong base dir)</span></span>
           ${canEdit ? `<button class="btn btn-ghost" style="padding:4px 10px; font-size:0.78rem;" onclick="addUserShopRow(${i})">+ Thêm shop</button>` : ''}
         </div>
-        <label class="field" style="margin: 0 0 10px;"><span style="font-size: 0.78rem;">Default brand <span style="color:var(--text-mute);">(dùng cho shop không có brand riêng — rỗng = inherit global)</span></span>
-          <input type="text" placeholder="(rỗng = theo system)" value="${escapeHtml(u.brandProfilesOverride?.default || '')}" data-i="${i}" data-field="brandDefault" ${canEdit?'':'disabled'} />
+        <label class="field" style="margin: 0 0 10px;"><span style="font-size: 0.78rem;">Default brand <span style="color:var(--text-mute);">(dùng cho shop không có brand riêng — rỗng = không brand)</span></span>
+          <input type="text" placeholder="(rỗng = không brand)" value="${escapeHtml(u.brandProfilesOverride?.default || '')}" data-i="${i}" data-field="brandDefault" ${canEdit?'':'disabled'} />
         </label>
         <div id="shopsRows-${i}">
           ${(() => {
@@ -1699,89 +2833,6 @@ async function savePricing() {
     if (!res.ok) throw new Error(data.error);
     state.pricing = data;
     toast(`✓ Đã lưu pricing: ship=${data.shipFee} mult=${data.multiplier} extra=${data.extraAdd}`);
-  } catch (err) {
-    toast(err.message, "error");
-  }
-}
-
-// ─── Brand mapping ────────────────────────────────────
-state.brands = { default: "LUSHLACE", profiles: {} };
-
-async function loadBrands() {
-  try {
-    const res = await fetch("/admin/api/brands");
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error);
-    state.brands = { default: data.default, profiles: data.profiles || {} };
-    $("#brandDefault").value = state.brands.default;
-    renderBrands();
-  } catch (err) {
-    toast("Không tải được brands: " + err.message, "error");
-  }
-}
-
-function renderBrands() {
-  const entries = Object.entries(state.brands.profiles);
-  if (entries.length === 0) {
-    $("#brandsTableWrap").innerHTML = '<div class="empty">Chưa có mapping nào</div>';
-    return;
-  }
-  const isAdmin = state.user.role === "admin";
-  $("#brandsTableWrap").innerHTML = `
-    <table>
-      <thead><tr><th>Profile</th><th>Brand</th>${isAdmin?'<th></th>':''}</tr></thead>
-      <tbody>
-        ${entries.map(([profile, brand], i) => `
-          <tr>
-            <td><input value="${escapeHtml(profile)}" data-brand-i="${i}" data-brand-key="profile" placeholder="P5-014_US" ${isAdmin?'':'disabled'} /></td>
-            <td><input value="${escapeHtml(brand)}" data-brand-i="${i}" data-brand-key="brand" placeholder="LUSHLACE" ${isAdmin?'':'disabled'} /></td>
-            ${isAdmin?`<td style="width:60px;"><button class="btn btn-danger btn-icon" onclick="removeBrandRow(${i})">🗑</button></td>`:''}
-          </tr>
-        `).join('')}
-      </tbody>
-    </table>
-  `;
-  document.querySelectorAll("[data-brand-i]").forEach((el) => {
-    el.oninput = () => {
-      // Rebuild brands object từ DOM hiện tại để tránh stale state
-      const rows = $("#brandsTableWrap").querySelectorAll("tbody tr");
-      const next = {};
-      rows.forEach((row) => {
-        const p = row.querySelector('[data-brand-key="profile"]').value.trim();
-        const b = row.querySelector('[data-brand-key="brand"]').value.trim();
-        if (p) next[p] = b;
-      });
-      state.brands.profiles = next;
-    };
-  });
-}
-
-function addBrandRow() {
-  state.brands.profiles[""] = "";
-  renderBrands();
-  // Focus dòng vừa thêm
-  const lastRow = $("#brandsTableWrap").querySelector("tbody tr:last-child input");
-  if (lastRow) lastRow.focus();
-}
-
-function removeBrandRow(i) {
-  const keys = Object.keys(state.brands.profiles);
-  delete state.brands.profiles[keys[i]];
-  renderBrands();
-}
-
-async function saveBrands() {
-  if (state.user.role !== "admin") return toast("Chỉ admin", "error");
-  try {
-    state.brands.default = $("#brandDefault").value.trim() || "LUSHLACE";
-    const res = await fetch("/admin/api/brands", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(state.brands),
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error);
-    toast(`Đã lưu ${Object.keys(state.brands.profiles).length} mapping + default ${data.default}`);
   } catch (err) {
     toast(err.message, "error");
   }

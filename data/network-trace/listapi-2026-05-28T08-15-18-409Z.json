@@ -1,0 +1,137 @@
+[
+  {
+    "ts": "2026-05-28T08:14:52.496Z",
+    "method": "GET",
+    "url": "https://www.4seller.com/api/user/is-login",
+    "reqBody": null,
+    "resStatus": 200,
+    "resContentType": "application/json; charset=utf-8",
+    "resBodyPreview": "{\"code\":0,\"msg\":\"success\",\"data\":true}"
+  },
+  {
+    "ts": "2026-05-28T08:14:52.830Z",
+    "method": "GET",
+    "url": "https://www.4seller.com/api/user/user-info",
+    "reqBody": null,
+    "resStatus": 200,
+    "resContentType": "application/json; charset=utf-8",
+    "resBodyPreview": "{\"code\":0,\"msg\":\"success\",\"data\":{\"email\":\"ducbes98.pod@gmail.com\",\"pic\":null,\"firstName\":\"Thu\",\"lastName\":\"Trang\",\"phoneAreaCode\":\"+84\",\"phoneAreaName\":\"Viet Nam\",\"telephone\":\"817190703\",\"company\":null,\"userName\":\"Thu Trang\",\"nickname\":\"Thu Trang\",\"country\":\"United States\",\"ipCountry\":null,\"currency\":\"USD\",\"timeZone\":\"GMT-8:00 Los Angeles Time\",\"zone\":\"America/Los_Angeles\",\"exchangeValue\":\"-8:00\",\"type\":0,\"isDemo\":0,\"quickShip\":0,\"version\":\"v2\",\"logisticRuleNotify\":0,\"showPrintLabelTips\":1,\"autoMarkPrintLabel\":0,\"checkTemuOrderAddress\":1,\"orderTutorial\":0,\"isEnableMcfApp\":null,\"mcfAppTutorial\":1,\"shipLaterLimitTime\":null,\"user30DayNotMarkOrder\":1,\"enable4SellerLogistics\":1,\"rechargePlatform\":\"STRIPE\",\"openLogisticsTracking\":0,\"shopifyShippingNotify\":0,\"trackingAutoMarkShip\":0,\"printLabelAutoMarkShip\":0,\"autoPrintLabelStatus\":0,\"enableExtractHouseNumber\":0,\"autoCreateTemuUspsScanform\":0,\"countryCode\":\"US\",\"tkOrderOffLineToOnLine\":0,\"perms\":[],\"shopIds\":[],\"userDefaultUnitDto\":{\"defaultWeightUnit\":\"oz\",\"defaultDimensionUnit\":\"in\"},\"facebookMessenger\":null,\"whatsApp\":null,\"shopNum\":25,\"tiktokL7Warn\":false,\"priceLinkage\":null,\"priceLinkageData\":null,\"privacyUpdated\":false,\"currentPrivacyVersion\":null,\"userPrivacyVersion\":\"20260327\",\"userPrivacyAgreed\":true,\"privacyChangeDescEn\":null,\"privacyChangeDescCn\":null,\"privacyUrl\":null,\"createTime\":\"2025-11-17 08:41:15\"}}"
+  },
+  {
+    "ts": "2026-05-28T08:14:53.282Z",
+    "method": "GET",
+    "url": "https://www.4seller.com/api/third-party-warehouse/list-third-party-warehouse-tab",
+    "reqBody": null,
+    "resStatus": 200,
+    "resContentType": "application/json; charset=utf-8",
+    "resBodyPreview": "{\"code\":0,\"messages\":\"SUCCESS\",\"data\":[],\"traceId\":null,\"success\":true}"
+  },
+  {
+    "ts": "2026-05-28T08:14:53.282Z",
+    "method": "GET",
+    "url": "https://www.4seller.com/api/common/statistics-dau",
+    "reqBody": null,
+    "resStatus": 200,
+    "resContentType": "application/json; charset=utf-8",
+    "resBodyPreview": "{\"code\":0,\"messages\":\"SUCCESS\",\"data\":true,\"traceId\":null,\"success\":true}"
+  },
+  {
+    "ts": "2026-05-28T08:14:54.112Z",
+    "method": "POST",
+    "url": "https://www.4seller.com/api/sync-listing/get-sync-listing-job",
+    "reqBody": "platform=tiktok",
+    "resStatus": 200,
+    "resContentType": "application/json; charset=utf-8",
+    "resBodyPreview": "{\"code\":0,\"messages\":\"SUCCESS\",\"data\":false,\"traceId\":null,\"success\":true}"
+  },
+  {
+    "ts": "2026-05-28T08:14:54.114Z",
+    "method": "GET",
+    "url": "https://www.4seller.com/api/mcf-setting/check-enable-mcf-app",
+    "reqBody": null,
+    "resStatus": 200,
+    "resContentType": "application/json; charset=utf-8",
+    "resBodyPreview": "{\"code\":0,\"msg\":\"success\",\"data\":true}"
+  },
+  {
+    "ts": "2026-05-28T08:14:54.140Z",
+    "method": "POST",
+    "url": "https://www.4seller.com/api/shop/get-tidy-list",
+    "reqBody": "{\"pageCurrent\":1,\"pageSize\":999}",
+    "resStatus": 200,
+    "resContentType": "application/json; charset=utf-8",
+    "resBodyPreview": "{\"code\":0,\"messages\":\"SUCCESS\",\"data\":{\"records\":[{\"id\":214243,\"platform\":\"TIKTOK\",\"shopName\":\"tiktok_DSAN SAJ STORE\",\"platformShopName\":\"DSAN SAJ STORE\",\"region\":\"LOCAL TO LOCAL\",\"marketplaceId\":\"US\",\"site\":\"LOCAL TO LOCAL\",\"sellingPartnerId\":\"7494534427267925562\",\"status\":1,\"statusDesc\":\"Connected\",\"deleted\":null,\"openPolicy\":1,\"refreshExpiresDate\":\"2038-01-07 03:01:59\",\"refreshExpiresIn\":2146446119,\"currency\":\"USD\",\"isDefault\":0,\"mainShop\":0,\"relatedShopCode\":null,\"relatedShopRegion\":null,\"isMultiWarehouse\":0,\"isNewChain\":null,\"platformName\":\"TikTok\",\"bindingPayList\":null,\"relatedAmazonShopId\":null,\"createTime\":\"2026-05-18 09:00:44\"},{\"id\":212205,\"platform\":\"TIKTOK\",\"shopName\":\"tiktok_ELERENZO LAFEECE JOHNKHAEL STORE\",\"platformShopName\":\"ELERENZO LAFEECE JOHNKHAEL STO\",\"region\":\"LOCAL TO LOCAL\",\"marketplaceId\":\"US\",\"site\":\"LOCAL TO LOCAL\",\"sellingPartnerId\":\"7494518952671544693\",\"status\":1,\"statusDesc\":\"Connected\",\"deleted\":null,\"openPolicy\":1,\"refreshExpiresDate\":\"2038-01-07 03:01:59\",\"refreshExpiresIn\":2146446119,\"currency\":\"USD\",\"isDefault\":0,\"mainShop\":0,\"relatedShopCode\":null,\"relatedShopRegion\":null,\"isMultiWarehouse\":0,\"isNewChain\":null,\"platformName\":\"TikTok\",\"bindingPayList\":null,\"relatedAmazonShopId\":null,\"createTime\":\"2026-05-06 08:20:06\"},{\"id\":207638,\"platform\":\"TIKTOK\",\"shopName\":\"tiktok_Lunis Esuau Artenaga Shop\",\"platformShopName\":\"Lunis Esuau Artenaga Shop\",\"region\":\"LOCAL TO LOCAL\",\"marketplaceId\":\"US\",\"site\":\"LOCAL TO LOCAL\",\"sellingPartnerId\":\"7496196107887348213\",\"status\":1,\"statusDesc\":\"Connected\",\"deleted\":null,\"openPolicy\":1,\"refreshExpiresDate\":\"2038-01-07 03:01:59\",\"refreshExpiresIn\":2146446119,\"currency\":\"USD\",\"isDefault\":0,\"mainShop\":0,\"relatedShopCode\":null,\"relatedShopRegion\":null,\"isMultiWarehouse\":0,\"isNewChain\":null,\"platformName\":\"TikTok\",\"bindingPayList\":null,\"relatedAmazonShopId\":null,\"createTime\":\"2026-04-11 07:05:39\"},{\"id\":206998,\"platform\":\"TIKTOK\",\"shopName\":\"tiktok_ENGINEERED WOOD LIMITED\",\"platformShopName\":\"ENGINEERED W"
+  },
+  {
+    "ts": "2026-05-28T08:14:54.141Z",
+    "method": "GET",
+    "url": "https://www.4seller.com/api/listing/get-listing-count-without-draft?platform=tiktok",
+    "reqBody": null,
+    "resStatus": 200,
+    "resContentType": "application/json; charset=utf-8",
+    "resBodyPreview": "{\"code\":0,\"msg\":\"success\",\"data\":false}"
+  },
+  {
+    "ts": "2026-05-28T08:14:54.161Z",
+    "method": "POST",
+    "url": "https://www.4seller.com/api/index/platform-list",
+    "reqBody": "{}",
+    "resStatus": 200,
+    "resContentType": "application/json; charset=utf-8",
+    "resBodyPreview": "{\"code\":0,\"msg\":\"success\",\"data\":{\"logisticsPlatforms\":[],\"isShipOrder\":false,\"isPublish\":true,\"wareHouses\":[\"local\"],\"platforms\":[\"TIKTOK\"],\"orderSetupGuide\":{\"inventoryLinkageComplete\":true,\"inventoryProductCriteriaMet\":false,\"hasMcfWarehouse\":false,\"addShippingAddress\":false,\"packageTemplateConfigured\":false,\"hasThirdPartyWarehouseLogistics\":false,\"logisticsRuleComplete\":false,\"defaultWarehouseComplete\":false,\"hasLogisticsAuth\":false,\"quickShip\":false,\"carrierConnected\":true,\"hasShippingAddress\":false,\"isShipOrder\":false,\"justHasShopifyAddress\":false,\"hasPlatformLogistics\":true}}}"
+  },
+  {
+    "ts": "2026-05-28T08:14:54.169Z",
+    "method": "POST",
+    "url": "https://www.4seller.com/api/listing/get-status-count",
+    "reqBody": "{\"shopId\":null,\"queryStatus\":\"\",\"sitePublishStatus\":\"\",\"searchType\":\"msku\",\"searchValue\":[],\"searchMethod\":\"exact\",\"groupId\":\"\",\"migrationPageType\":\"q-all\",\"listingIdList\":[],\"isGlobal\":null,\"erpStatus\":\"\",\"platform\":\"tiktok\",\"hasVariation\":\"\",\"stockAlertType\":\"\",\"stockAlertNum\":0,\"categoryId\":\"\",\"site\":\"\",\"categoryMap\":[\"\"],\"lowPrice\":\"\",\"highPrice\":\"\",\"createTime\":[],\"createTimeStart\":\"\",\"createTimeEnd\":\"\",\"platformCreateTime\":[],\"platformCreateTimeStart\":\"\",\"platformCreateTimeEnd\":\"\",\"updateTime\":[],\"updateTimeStart\":\"\",\"updateTimeEnd\":\"\",\"mapped\":\"\"}",
+    "resStatus": 200,
+    "resContentType": "application/json; charset=utf-8",
+    "resBodyPreview": "{\"code\":0,\"msg\":\"success\",\"data\":{\"activeCount\":2028,\"inactiveCount\":634,\"removedCount\":17787,\"incompleteCount\":0,\"suspendedCount\":415,\"privateCount\":0,\"pendingCount\":0,\"rejectCount\":0,\"unsaleableCount\":0}}"
+  },
+  {
+    "ts": "2026-05-28T08:14:55.545Z",
+    "method": "POST",
+    "url": "https://www.4seller.com/api/listing/tiktok/page",
+    "reqBody": "{\"pageCurrent\":1,\"pageSize\":100,\"isGlobal\":null,\"suspendedStatus\":\"\",\"status\":\"active\",\"orderBy\":\"update_time\",\"desc\":\"desc\",\"shopId\":\"\",\"queryStatus\":\"\",\"sitePublishStatus\":\"\",\"searchType\":\"msku\",\"searchValue\":[],\"searchMethod\":\"exact\",\"groupId\":\"\",\"migrationPageType\":\"q-all\",\"listingIdList\":[],\"hasVariation\":\"\",\"stockAlertType\":\"\",\"stockAlertNum\":0,\"categoryId\":\"\",\"site\":\"\",\"categoryMap\":[\"\"],\"lowPrice\":\"\",\"highPrice\":\"\",\"createTime\":[],\"createTimeStart\":\"\",\"createTimeEnd\":\"\",\"platformCreateTime\":[],\"platformCreateTimeStart\":\"\",\"platformCreateTimeEnd\":\"\",\"updateTime\":[],\"updateTimeStart\":\"\",\"updateTimeEnd\":\"\",\"mapped\":\"\",\"hasMove\":\"\"}",
+    "resStatus": 200,
+    "resContentType": "application/json; charset=utf-8",
+    "resBodyPreview": "{\"code\":0,\"msg\":\"success\",\"data\":{\"records\":[{\"createTime\":\"2026-05-28 07:57\",\"updateTime\":\"2026-05-28 07:57:52\",\"id\":813220860528,\"erpSkuId\":null,\"skuId\":null,\"skuType\":\"\",\"productId\":\"1732416631671722263\",\"isMultiWarehouse\":0,\"erpStatus\":\"active\",\"productStatus\":4,\"publishStatus\":\"normal\",\"displayStatus\":null,\"mainImage\":\"https://p19-oec-general-useast5.ttcdn-us.com/tos-useast5-i-omjb5zjo8w-tx/2d8d09a06a9c47bba93fb37491be7e8e~tplv-fhlh96nyum-origin-jpeg.jpeg?dr=12178&from=520841845&idc=useast5&ps=933b5bde&shcp=2c1af732&shp=1f0b6a75&t=555f072d|https://p16-oec-general-useast5.ttcdn-us.com/tos-useast5-i-omjb5zjo8w-tx/fcae38bcf777498bba54fa4110dbd7ca~tplv-fhlh96nyum-origin-jpeg.jpeg?dr=12178&from=520841845&idc=useast5&ps=933b5bde&shcp=2c1af732&shp=1f0b6a75&t=555f072d|https://p19-oec-general-useast5.ttcdn-us.com/tos-useast5-i-omjb5zjo8w-tx/36ab3b1666624fbc9d894910fb7fd365~tplv-fhlh96nyum-origin-jpeg.jpeg?dr=12178&from=520841845&idc=useast5&ps=933b5bde&shcp=2c1af732&shp=1f0b6a75&t=555f072d|https://p16-oec-general-useast5.ttcdn-us.com/tos-useast5-i-omjb5zjo8w-tx/dc51ce568f024b5c9553a3390eef8a5e~tplv-fhlh96nyum-origin-jpeg.jpeg?dr=12178&from=520841845&idc=useast5&ps=933b5bde&shcp=2c1af732&shp=1f0b6a75&t=555f072d|https://p16-oec-general-useast5.ttcdn-us.com/tos-useast5-i-omjb5zjo8w-tx/43a2b19a30674b35bb164e0a58320fbd~tplv-fhlh96nyum-origin-jpeg.jpeg?dr=12178&from=520841845&idc=useast5&ps=933b5bde&shcp=2c1af732&shp=1f0b6a75&t=555f072d|https://p19-oec-general-useast5.ttcdn-us.com/tos-useast5-i-omjb5zjo8w-tx/9431c3d211fc4ecb9abf8d3537baa824~tplv-fhlh96nyum-origin-jpeg.jpeg?dr=12178&from=520841845&idc=useast5&ps=933b5bde&shcp=2c1af732&shp=1f0b6a75&t=555f072d\",\"shopId\":204133,\"shopName\":\"P5-005_US\",\"productName\":\"[  100% Cotton] USA Red White Feral Raccoon Graphic Tee Vintage Hot dog Party America Patriotic Racoon Tshirt Trucker Hat Hot Dog Eating Redneck Shirt Unisex Casual Womens Top raccoon July 4th Memorial Day\",\"erpSku\":null,\"site\":\"US\",\"currency\":\"USD\",\"categoryId\":\"60130"
+  },
+  {
+    "ts": "2026-05-28T08:15:07.229Z",
+    "method": "POST",
+    "url": "https://www.4seller.com/api/listing/get-status-count",
+    "reqBody": "{\"shopId\":null,\"queryStatus\":\"\",\"sitePublishStatus\":\"\",\"searchType\":\"msku\",\"searchValue\":[],\"searchMethod\":\"exact\",\"groupId\":\"\",\"migrationPageType\":\"q-all\",\"listingIdList\":[],\"isGlobal\":null,\"erpStatus\":\"\",\"platform\":\"tiktok\",\"hasVariation\":\"\",\"stockAlertType\":\"\",\"stockAlertNum\":0,\"categoryId\":\"\",\"site\":\"\",\"categoryMap\":[\"\"],\"lowPrice\":\"\",\"highPrice\":\"\",\"createTime\":[],\"createTimeStart\":\"\",\"createTimeEnd\":\"\",\"platformCreateTime\":[],\"platformCreateTimeStart\":\"\",\"platformCreateTimeEnd\":\"\",\"updateTime\":[],\"updateTimeStart\":\"\",\"updateTimeEnd\":\"\",\"mapped\":\"\"}",
+    "resStatus": 200,
+    "resContentType": "application/json; charset=utf-8",
+    "resBodyPreview": "{\"code\":0,\"msg\":\"success\",\"data\":{\"activeCount\":2028,\"inactiveCount\":634,\"removedCount\":17787,\"incompleteCount\":0,\"suspendedCount\":415,\"privateCount\":0,\"pendingCount\":0,\"rejectCount\":0,\"unsaleableCount\":0}}"
+  },
+  {
+    "ts": "2026-05-28T08:15:08.016Z",
+    "method": "POST",
+    "url": "https://www.4seller.com/api/listing/tiktok/page",
+    "reqBody": "{\"pageCurrent\":1,\"pageSize\":100,\"isGlobal\":null,\"suspendedStatus\":\"\",\"status\":\"inActive\",\"orderBy\":\"update_time\",\"desc\":\"desc\",\"shopId\":\"\",\"queryStatus\":\"\",\"sitePublishStatus\":\"\",\"searchType\":\"msku\",\"searchValue\":[],\"searchMethod\":\"exact\",\"groupId\":\"\",\"migrationPageType\":\"q-all\",\"listingIdList\":[],\"hasVariation\":\"\",\"stockAlertType\":\"\",\"stockAlertNum\":0,\"categoryId\":\"\",\"site\":\"\",\"categoryMap\":[\"\"],\"lowPrice\":\"\",\"highPrice\":\"\",\"createTime\":[],\"createTimeStart\":\"\",\"createTimeEnd\":\"\",\"platformCreateTime\":[],\"platformCreateTimeStart\":\"\",\"platformCreateTimeEnd\":\"\",\"updateTime\":[],\"updateTimeStart\":\"\",\"updateTimeEnd\":\"\",\"mapped\":\"\",\"hasMove\":\"\"}",
+    "resStatus": 200,
+    "resContentType": "application/json; charset=utf-8",
+    "resBodyPreview": "{\"code\":0,\"msg\":\"success\",\"data\":{\"records\":[{\"createTime\":\"2026-03-24 05:37\",\"updateTime\":\"2026-04-25 00:36:36\",\"id\":785056690324,\"erpSkuId\":null,\"skuId\":null,\"skuType\":\"\",\"productId\":\"1732303244297540455\",\"isMultiWarehouse\":0,\"erpStatus\":\"inactive\",\"productStatus\":5,\"publishStatus\":\"normal\",\"displayStatus\":null,\"mainImage\":\"https://p16-oec-general-useast5.ttcdn-us.com/tos-useast5-i-omjb5zjo8w-tx/78bbb7bbdff8497384606c1ecf7402f0~tplv-fhlh96nyum-origin-jpeg.jpeg?dr=12178&from=520841845&idc=useast5&ps=933b5bde&shcp=2c1af732&shp=1f0b6a75&t=555f072d|https://p16-oec-general-useast5.ttcdn-us.com/tos-useast5-i-omjb5zjo8w-tx/cf3ebbf37575499e9fb1ad9822de1903~tplv-fhlh96nyum-origin-jpeg.jpeg?dr=12178&from=520841845&idc=useast5&ps=933b5bde&shcp=2c1af732&shp=1f0b6a75&t=555f072d|https://p16-oec-general-useast5.ttcdn-us.com/tos-useast5-i-omjb5zjo8w-tx/e1aa71b3cd2344939a9edbee20522aa5~tplv-fhlh96nyum-origin-jpeg.jpeg?dr=12178&from=520841845&idc=useast5&ps=933b5bde&shcp=2c1af732&shp=1f0b6a75&t=555f072d|https://p16-oec-general-useast5.ttcdn-us.com/tos-useast5-i-omjb5zjo8w-tx/1fac82bbc9b64f638b41354ea5559f8c~tplv-fhlh96nyum-origin-jpeg.jpeg?dr=12178&from=520841845&idc=useast5&ps=933b5bde&shcp=2c1af732&shp=1f0b6a75&t=555f072d|https://p16-oec-general-useast5.ttcdn-us.com/tos-useast5-i-omjb5zjo8w-tx/8d13ce9809d2409f9ec515b958ae0c6b~tplv-fhlh96nyum-origin-jpeg.jpeg?dr=12178&from=520841845&idc=useast5&ps=933b5bde&shcp=2c1af732&shp=1f0b6a75&t=555f072d\",\"shopId\":172578,\"shopName\":\"P5-008_US\",\"productName\":\"LUSHLACE Floral Lace Underwire Lingerie Set\",\"erpSku\":null,\"site\":\"US\",\"currency\":\"USD\",\"categoryId\":\"898832\",\"categoryPath\":null,\"originalPrice\":null,\"lowPrice\":24.16,\"highPrice\":29.36,\"country\":null,\"location\":null,\"variationCount\":60,\"availableStock\":300,\"sellerSku\":null,\"variationList\":[{\"id\":6234137630549,\"mainImage\":\"https://p16-oec-general-useast5.ttcdn-us.com/tos-useast5-i-omjb5zjo8w-tx/9466e2ec54b1476ba0f3137b0ec2a62b~tplv-fhlh96nyum-origin-jpeg.jpeg?dr=12178&from=520841845&idc="
+  },
+  {
+    "ts": "2026-05-28T08:15:10.772Z",
+    "method": "POST",
+    "url": "https://www.4seller.com/api/listing/get-status-count",
+    "reqBody": "{\"shopId\":null,\"queryStatus\":\"\",\"sitePublishStatus\":\"\",\"searchType\":\"msku\",\"searchValue\":[],\"searchMethod\":\"exact\",\"groupId\":\"\",\"migrationPageType\":\"q-all\",\"listingIdList\":[],\"isGlobal\":null,\"erpStatus\":\"\",\"platform\":\"tiktok\",\"hasVariation\":\"\",\"stockAlertType\":\"\",\"stockAlertNum\":0,\"categoryId\":\"\",\"site\":\"\",\"categoryMap\":[\"\"],\"lowPrice\":\"\",\"highPrice\":\"\",\"createTime\":[],\"createTimeStart\":\"\",\"createTimeEnd\":\"\",\"platformCreateTime\":[],\"platformCreateTimeStart\":\"\",\"platformCreateTimeEnd\":\"\",\"updateTime\":[],\"updateTimeStart\":\"\",\"updateTimeEnd\":\"\",\"mapped\":\"\"}",
+    "resStatus": 200,
+    "resContentType": "application/json; charset=utf-8",
+    "resBodyPreview": "{\"code\":0,\"msg\":\"success\",\"data\":{\"activeCount\":2028,\"inactiveCount\":634,\"removedCount\":17787,\"incompleteCount\":0,\"suspendedCount\":415,\"privateCount\":0,\"pendingCount\":0,\"rejectCount\":0,\"unsaleableCount\":0}}"
+  },
+  {
+    "ts": "2026-05-28T08:15:12.243Z",
+    "method": "POST",
+    "url": "https://www.4seller.com/api/listing/tiktok/page",
+    "reqBody": "{\"pageCurrent\":1,\"pageSize\":100,\"isGlobal\":null,\"suspendedStatus\":\"\",\"status\":\"active\",\"orderBy\":\"update_time\",\"desc\":\"desc\",\"shopId\":\"\",\"queryStatus\":\"\",\"sitePublishStatus\":\"\",\"searchType\":\"msku\",\"searchValue\":[],\"searchMethod\":\"exact\",\"groupId\":\"\",\"migrationPageType\":\"q-all\",\"listingIdList\":[],\"hasVariation\":\"\",\"stockAlertType\":\"\",\"stockAlertNum\":0,\"categoryId\":\"\",\"site\":\"\",\"categoryMap\":[\"\"],\"lowPrice\":\"\",\"highPrice\":\"\",\"createTime\":[],\"createTimeStart\":\"\",\"createTimeEnd\":\"\",\"platformCreateTime\":[],\"platformCreateTimeStart\":\"\",\"platformCreateTimeEnd\":\"\",\"updateTime\":[],\"updateTimeStart\":\"\",\"updateTimeEnd\":\"\",\"mapped\":\"\",\"hasMove\":\"\"}",
+    "resStatus": 200,
+    "resContentType": "application/json; charset=utf-8",
+    "resBodyPreview": "{\"code\":0,\"msg\":\"success\",\"data\":{\"records\":[{\"createTime\":\"2026-05-28 07:57\",\"updateTime\":\"2026-05-28 07:57:52\",\"id\":813220860528,\"erpSkuId\":null,\"skuId\":null,\"skuType\":\"\",\"productId\":\"1732416631671722263\",\"isMultiWarehouse\":0,\"erpStatus\":\"active\",\"productStatus\":4,\"publishStatus\":\"normal\",\"displayStatus\":null,\"mainImage\":\"https://p19-oec-general-useast5.ttcdn-us.com/tos-useast5-i-omjb5zjo8w-tx/2d8d09a06a9c47bba93fb37491be7e8e~tplv-fhlh96nyum-origin-jpeg.jpeg?dr=12178&from=520841845&idc=useast5&ps=933b5bde&shcp=2c1af732&shp=1f0b6a75&t=555f072d|https://p16-oec-general-useast5.ttcdn-us.com/tos-useast5-i-omjb5zjo8w-tx/fcae38bcf777498bba54fa4110dbd7ca~tplv-fhlh96nyum-origin-jpeg.jpeg?dr=12178&from=520841845&idc=useast5&ps=933b5bde&shcp=2c1af732&shp=1f0b6a75&t=555f072d|https://p19-oec-general-useast5.ttcdn-us.com/tos-useast5-i-omjb5zjo8w-tx/36ab3b1666624fbc9d894910fb7fd365~tplv-fhlh96nyum-origin-jpeg.jpeg?dr=12178&from=520841845&idc=useast5&ps=933b5bde&shcp=2c1af732&shp=1f0b6a75&t=555f072d|https://p16-oec-general-useast5.ttcdn-us.com/tos-useast5-i-omjb5zjo8w-tx/dc51ce568f024b5c9553a3390eef8a5e~tplv-fhlh96nyum-origin-jpeg.jpeg?dr=12178&from=520841845&idc=useast5&ps=933b5bde&shcp=2c1af732&shp=1f0b6a75&t=555f072d|https://p16-oec-general-useast5.ttcdn-us.com/tos-useast5-i-omjb5zjo8w-tx/43a2b19a30674b35bb164e0a58320fbd~tplv-fhlh96nyum-origin-jpeg.jpeg?dr=12178&from=520841845&idc=useast5&ps=933b5bde&shcp=2c1af732&shp=1f0b6a75&t=555f072d|https://p19-oec-general-useast5.ttcdn-us.com/tos-useast5-i-omjb5zjo8w-tx/9431c3d211fc4ecb9abf8d3537baa824~tplv-fhlh96nyum-origin-jpeg.jpeg?dr=12178&from=520841845&idc=useast5&ps=933b5bde&shcp=2c1af732&shp=1f0b6a75&t=555f072d\",\"shopId\":204133,\"shopName\":\"P5-005_US\",\"productName\":\"[  100% Cotton] USA Red White Feral Raccoon Graphic Tee Vintage Hot dog Party America Patriotic Racoon Tshirt Trucker Hat Hot Dog Eating Redneck Shirt Unisex Casual Womens Top raccoon July 4th Memorial Day\",\"erpSku\":null,\"site\":\"US\",\"currency\":\"USD\",\"categoryId\":\"60130"
+  }
+]

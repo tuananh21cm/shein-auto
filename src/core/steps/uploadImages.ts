@@ -4,6 +4,7 @@ import axios from "axios";
 import crypto from "crypto";
 import { safeCleanupDir } from "./cleanupTemp";
 import { workerConfig } from "../../config/appConfig";
+import { remakeImage } from "../../utils/remakeImage";
 
 interface VariantImageParam {
   [color: string]: string | string[];
@@ -25,7 +26,32 @@ const downloadToFile = async (url: string, filePath: string): Promise<void> => {
   });
 };
 
-export const uploadProductImages = async (page: any, imageUrls: string[]): Promise<void> => {
+/**
+ * Remake 1 file ảnh đã tải (chống trùng ảnh giữa các shop). Trả về path ảnh
+ * mới; nếu tắt config hoặc lỗi → trả lại path gốc để upload vẫn chạy.
+ */
+const applyRemake = async (localPath: string, seedKey: string): Promise<string> => {
+  const cfg = workerConfig().imageRemake;
+  if (!cfg?.enabled) return localPath;
+  const outPath = localPath.replace(/\.jpg$/i, "_rmk.jpg");
+  try {
+    await remakeImage(localPath, outPath, {
+      preset: cfg.preset,
+      flip: cfg.flip,
+      seed: cfg.perShopSeed ? seedKey : undefined,
+    });
+    return outPath;
+  } catch (e) {
+    console.warn(`⚠️ Remake ảnh fail (${seedKey}) — dùng ảnh gốc:`, (e as Error).message);
+    return localPath;
+  }
+};
+
+export const uploadProductImages = async (
+  page: any,
+  imageUrls: string[],
+  remakeSeed?: string
+): Promise<void> => {
   console.log("--- Bắt đầu quy trình Upload Ảnh (Bản an toàn đa luồng) ---");
 
   const uniqueId = crypto.randomBytes(8).toString("hex");
@@ -34,16 +60,17 @@ export const uploadProductImages = async (page: any, imageUrls: string[]): Promi
   if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir);
 
   try {
-    // Download song song — tăng tốc N lần so với for-await sequential
+    // Download song song — tăng tốc N lần so với for-await sequential.
+    // Sau khi tải xong remake từng ảnh (seed theo shop) để chống trùng.
     const t0 = Date.now();
     const localFilePaths = await Promise.all(
       imageUrls.map(async (url, i) => {
         const filePath = path.join(tempDir, `img_${i}.jpg`);
         await downloadToFile(url, filePath);
-        return filePath;
+        return applyRemake(filePath, `${remakeSeed ?? "rnd"}:p:${i}`);
       })
     );
-    console.log(`⬇️ [${uniqueId}] Download ${imageUrls.length} ảnh song song mất ${Math.round((Date.now() - t0) / 1000)}s`);
+    console.log(`⬇️ [${uniqueId}] Download${workerConfig().imageRemake?.enabled ? "+remake" : ""} ${imageUrls.length} ảnh mất ${Math.round((Date.now() - t0) / 1000)}s`);
 
     const productUploadContainer = page.locator(".file_upload__index").first();
     const fileInput = productUploadContainer.locator("input.file_upload__input");
@@ -88,7 +115,8 @@ export const uploadProductImages = async (page: any, imageUrls: string[]): Promi
 
 export const uploadVariantImages = async (
   page: any,
-  variantImages: VariantImageParam[]
+  variantImages: VariantImageParam[],
+  remakeSeed?: string
 ): Promise<void> => {
   console.log("--- Bắt đầu Upload ảnh Variant (Bản Multi-Image US/DE/FR) ---");
 
@@ -139,7 +167,7 @@ export const uploadVariantImages = async (
             `${searchColor.replace(/\s+/g, "_")}_${i}_${Date.now()}.jpg`
           );
           await downloadToFile(url, localPath);
-          return localPath;
+          return applyRemake(localPath, `${remakeSeed ?? "rnd"}:${searchColor}:${i}`);
         })
       );
       localPaths.push(...downloaded);

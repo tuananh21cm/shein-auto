@@ -25,6 +25,31 @@ import { processFile } from "./queue/queueManager";
 import { eventBus } from "./state/eventBus";
 import { workerConfig, reloadAppConfig } from "./config/appConfig";
 import { configCookie, userCookiePath } from "./utils/configCookie";
+import {
+  getShopList as fsGetShopList,
+  getStatusCount as fsGetStatusCount,
+  getListingPage as fsGetListingPage,
+  getListingDetail as fsGetListingDetail,
+  getCategoryById as fsGetCategoryById,
+} from "./services/fourseller/client";
+import {
+  computeShopScore,
+  type ScoreListing,
+  type CategoryName,
+} from "./core/shopScore";
+import { analyzeShop, type ShopAnalysisResult } from "./services/gemini/analyzeShop";
+import {
+  searchProducts as sheinSearch,
+  bestSellersByCategory as sheinBestByCategory,
+  getProductDetail as sheinGetDetail,
+} from "./services/shein/client";
+import { rankByWin } from "./core/winScore";
+import { findSimilarStores } from "./services/shein/similarStores";
+import { scrapeViaKiki, dispatchScrapedData } from "./core/scrapeViaKiki";
+import { crawlStoreViaKiki } from "./core/crawlStoreViaKiki";
+import { kiki } from "./services/kiki/client";
+import { readKikiConfig, saveKikiProfiles } from "./services/kiki/config";
+import { scoreWin } from "./core/winScore";
 
 const adminSessionSecret = process.env.ADMIN_SESSION_SECRET || "shein-auto-secret";
 
@@ -1010,46 +1035,549 @@ export const startAdminServer = async () => {
     }
   });
 
-  // ── Brand mapping per shop profile ───────────────────────
-  const BRAND_FILE = path.resolve(process.cwd(), "config", "brand-profiles.json");
+  // (Đã bỏ global brand mapping — brand giờ chỉ theo từng user/shop ở mục Users.)
 
-  app.get("/admin/api/brands", async (req, res) => {
+  // ── 4Seller stats — đọc trực tiếp từ 4Seller API ──────
+  // Cache nhỏ in-memory để giảm round-trip (TTL 60s)
+  const statsCache = new Map<string, { ts: number; data: any }>();
+  const STATS_TTL = 60_000;
+
+  app.get("/admin/api/stats/4seller", async (req, res) => {
     try {
       const sessionUser = (req.session as any).user as SessionUser;
-      if (sessionUser.role !== "admin") return res.status(403).json({ error: "Chỉ admin" });
-      const raw = await fs.readFile(BRAND_FILE, "utf-8");
-      const cfg = JSON.parse(raw);
-      res.json({
-        default: cfg.default ?? "LUSHLACE",
-        profiles: cfg.profiles ?? {},
-      });
+      const cacheKey = `shops:${sessionUser.username}`;
+      const cached = statsCache.get(cacheKey);
+      if (cached && Date.now() - cached.ts < STATS_TTL) {
+        return res.json({ ...cached.data, cached: true });
+      }
+
+      const shopList = await fsGetShopList(sessionUser.username);
+      let shops = shopList.records;
+
+      // Filter theo accessibleFolders nếu non-admin
+      const accessible = await accessibleFolders(req);
+      if (accessible !== undefined) {
+        const allowedSet = new Set(accessible.map((s) => s.toLowerCase()));
+        shops = shops.filter((s) => {
+          const candidates = [
+            s.shopName,
+            s.platformShopName,
+            s.shopName.replace(/^tiktok_/i, ""),
+            s.shopName.replace(/_US$|_DE$|_UK$|_FR$|_IT$|_ES$/i, ""),
+          ];
+          return candidates.some((c) => allowedSet.has(c.toLowerCase()));
+        });
+      }
+
+      // Lấy count song song
+      const withCounts = await Promise.all(
+        shops.map(async (s) => {
+          try {
+            const c = await fsGetStatusCount(sessionUser.username, { shopId: s.id });
+            return { ...s, counts: c };
+          } catch (err: any) {
+            return { ...s, counts: null, error: err?.message ?? "unknown" };
+          }
+        })
+      );
+
+      // Tổng cộng tất cả shop của user
+      const totals = withCounts.reduce(
+        (acc, s) => {
+          const c = s.counts;
+          if (c) {
+            acc.activeCount += c.activeCount;
+            acc.inactiveCount += c.inactiveCount;
+            acc.removedCount += c.removedCount;
+            acc.suspendedCount += c.suspendedCount;
+          }
+          return acc;
+        },
+        { activeCount: 0, inactiveCount: 0, removedCount: 0, suspendedCount: 0 }
+      );
+
+      const payload = { shops: withCounts, totals, fetchedAt: Date.now() };
+      statsCache.set(cacheKey, { ts: Date.now(), data: payload });
+      res.json(payload);
     } catch (err: any) {
-      res.status(500).json({ error: err?.message ?? "Lỗi đọc brands" });
+      res.status(500).json({ error: err?.message ?? "Lỗi lấy 4Seller stats" });
     }
   });
 
-  app.post("/admin/api/brands", async (req, res) => {
+  app.get("/admin/api/stats/4seller/detail/:listingId", async (req, res) => {
+    try {
+      const sessionUser = (req.session as any).user as SessionUser;
+      const listingId = req.params.listingId;
+      if (!/^\d+$/.test(listingId)) {
+        return res.status(400).json({ error: "listingId phải là số" });
+      }
+      const detail = await fsGetListingDetail(sessionUser.username, listingId);
+      res.json(detail);
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? "Lỗi lấy detail listing" });
+    }
+  });
+
+  app.get("/admin/api/stats/4seller/listings", async (req, res) => {
+    try {
+      const sessionUser = (req.session as any).user as SessionUser;
+      const shopId = (req.query.shopId as string) || "";
+      const status = (req.query.status as any) || "active";
+      const pageCurrent = Number(req.query.pageCurrent ?? 1);
+      const pageSize = Math.min(100, Number(req.query.pageSize ?? 50));
+
+      const data = await fsGetListingPage(sessionUser.username, {
+        shopId: shopId || undefined,
+        status,
+        pageCurrent,
+        pageSize,
+      });
+      res.json(data);
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? "Lỗi lấy listings 4Seller" });
+    }
+  });
+
+  // ── 4Seller category analytics ─────────────────────
+  // Load tất cả active listings của 1 shop, group by categoryId, resolve tên
+  app.get("/admin/api/stats/4seller/category-analytics", async (req, res) => {
+    try {
+      const sessionUser = (req.session as any).user as SessionUser;
+      const shopId = (req.query.shopId as string) || "";
+      const site = (req.query.site as string) || "US";
+      if (!shopId) return res.status(400).json({ error: "shopId required" });
+
+      // Load all pages
+      const PAGE_SIZE = 100;
+      let pageCurrent = 1;
+      let total = 0;
+      const catCount: Record<string, number> = {};
+
+      do {
+        const data = await fsGetListingPage(sessionUser.username, {
+          shopId,
+          status: "active",
+          pageCurrent,
+          pageSize: PAGE_SIZE,
+        });
+        total = data.total;
+        for (const r of data.records) {
+          const cid = String(r.categoryId || "unknown");
+          catCount[cid] = (catCount[cid] || 0) + 1;
+        }
+        if (data.records.length < PAGE_SIZE) break;
+        pageCurrent++;
+      } while ((pageCurrent - 1) * PAGE_SIZE < total);
+
+      // Resolve category names — batch with concurrency 5
+      const categoryIds = Object.keys(catCount).filter((id) => id !== "unknown");
+      const catNames: Record<string, { name: string; nodePath: string }> = {};
+
+      const BATCH = 5;
+      for (let i = 0; i < categoryIds.length; i += BATCH) {
+        const batch = categoryIds.slice(i, i + BATCH);
+        await Promise.all(
+          batch.map(async (cid) => {
+            try {
+              const info = await fsGetCategoryById(sessionUser.username, cid, site, shopId);
+              catNames[cid] = { name: info.categoryName, nodePath: info.nodePath };
+            } catch {
+              catNames[cid] = { name: cid, nodePath: "" };
+            }
+          })
+        );
+      }
+
+      // Build result sorted by count desc
+      const result = Object.entries(catCount)
+        .map(([cid, count]) => ({
+          categoryId: cid,
+          categoryName: catNames[cid]?.name ?? cid,
+          nodePath: catNames[cid]?.nodePath ?? "",
+          count,
+          percent: total > 0 ? Math.round((count / total) * 1000) / 10 : 0,
+        }))
+        .sort((a, b) => b.count - a.count);
+
+      res.json({ shopId, site, total, categories: result });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? "Lỗi category analytics" });
+    }
+  });
+
+  // ── 4Seller shop scoring — chấm điểm sức khỏe shop + AI analysis ──
+  // Chỉ dùng list API (title/ảnh/ngách/giá/stock). Cache 10 phút.
+  const scoreCache = new Map<string, { ts: number; data: any }>();
+  const SCORE_TTL = 10 * 60_000;
+
+  app.get("/admin/api/stats/4seller/shop-score", async (req, res) => {
+    try {
+      const sessionUser = (req.session as any).user as SessionUser;
+      const shopId = (req.query.shopId as string) || "";
+      const shopName = (req.query.shopName as string) || shopId;
+      const site = (req.query.site as string) || "US";
+      const useAi = req.query.ai !== "0";
+      const noCache = req.query.nocache !== undefined;
+      if (!shopId) return res.status(400).json({ error: "shopId required" });
+
+      const cacheKey = `score:${sessionUser.username}:${shopId}:${useAi ? "ai" : "noai"}`;
+      if (!noCache) {
+        const cached = scoreCache.get(cacheKey);
+        if (cached && Date.now() - cached.ts < SCORE_TTL) {
+          return res.json({ ...cached.data, cached: true });
+        }
+      }
+
+      // 1. Load toàn bộ active listings (chỉ giữ field cần cho chấm điểm)
+      const PAGE_SIZE = 100;
+      let pageCurrent = 1;
+      let total = 0;
+      let currency = "";
+      const listings: ScoreListing[] = [];
+
+      do {
+        const data = await fsGetListingPage(sessionUser.username, {
+          shopId,
+          status: "active",
+          pageCurrent,
+          pageSize: PAGE_SIZE,
+        });
+        total = data.total;
+        for (const r of data.records as any[]) {
+          if (!currency && r.currency) currency = r.currency;
+          listings.push({
+            id: r.id,
+            productName: r.productName,
+            mainImage: r.mainImage,
+            categoryId: r.categoryId,
+            lowPrice: r.lowPrice,
+            highPrice: r.highPrice,
+            originalPrice: r.originalPrice,
+            availableStock: r.availableStock,
+            variationCount: r.variationCount,
+            errMsg: r.errMsg,
+            failedMessage: r.failedMessage,
+          });
+        }
+        if (data.records.length < PAGE_SIZE) break;
+        pageCurrent++;
+      } while ((pageCurrent - 1) * PAGE_SIZE < total);
+
+      if (listings.length === 0) {
+        return res.json({ shopId, shopName, site, total: 0, empty: true });
+      }
+
+      // 2. Resolve tên category (batch concurrency 5)
+      const categoryIds = [
+        ...new Set(listings.map((l) => String(l.categoryId || "unknown"))),
+      ].filter((id) => id !== "unknown");
+      const categoryNames: Record<string, CategoryName> = {};
+      const BATCH = 5;
+      for (let i = 0; i < categoryIds.length; i += BATCH) {
+        const batch = categoryIds.slice(i, i + BATCH);
+        await Promise.all(
+          batch.map(async (cid) => {
+            try {
+              const info = await fsGetCategoryById(sessionUser.username, cid, site, shopId);
+              categoryNames[cid] = { name: info.categoryName, nodePath: info.nodePath };
+            } catch {
+              categoryNames[cid] = { name: cid, nodePath: "" };
+            }
+          })
+        );
+      }
+
+      // 3. Chấm điểm (rule-based)
+      const score = computeShopScore(listings, categoryNames);
+      score.priceStats.currency = currency;
+
+      // 4. AI analysis (optional)
+      let ai: ShopAnalysisResult | null = null;
+      if (useAi) {
+        ai = await analyzeShop({
+          shopName,
+          site,
+          total: score.total,
+          scores: score.scores,
+          issueSummary: {
+            titleShortPct: score.issues.titleShort.pct,
+            titleLongPct: score.issues.titleLong.pct,
+            fewImagesPct: score.issues.fewImages.pct,
+            noPricePct: score.issues.noPrice.pct,
+            outOfStockPct: score.issues.outOfStock.pct,
+            hasErrorPct: score.issues.hasError.pct,
+          },
+          niche: {
+            categoryCount: score.niche.categoryCount,
+            topShare: score.niche.topShare,
+            top3Share: score.niche.top3Share,
+            chaotic: score.niche.chaotic,
+            topCategories: score.niche.categories.slice(0, 10).map((c) => ({
+              name: c.categoryName,
+              nodePath: c.nodePath,
+              count: c.count,
+              percent: c.percent,
+            })),
+          },
+          priceStats: score.priceStats,
+        });
+      }
+
+      const payload = {
+        shopId,
+        shopName,
+        site,
+        fetchedAt: Date.now(),
+        ...score,
+        ai,
+        aiAvailable: useAi,
+      };
+      scoreCache.set(cacheKey, { ts: Date.now(), data: payload });
+      res.json(payload);
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? "Lỗi chấm điểm shop" });
+    }
+  });
+
+  // ── SHEIN product hunt (RapidAPI) — săn sản phẩm win ──
+  // Search theo keyword/ngách → chấm winScore → trả grid đã rank.
+  const sheinCache = new Map<string, { ts: number; data: any }>();
+  const SHEIN_TTL = 5 * 60_000;
+
+  app.get("/admin/api/shein/search", async (req, res) => {
+    try {
+      const query = ((req.query.query as string) || "").trim();
+      if (!query) return res.status(400).json({ error: "query required" });
+      const page = Number(req.query.page ?? 1);
+      const perPage = Math.min(60, Number(req.query.perPage ?? 40));
+      const country = (req.query.country as string) || "us";
+
+      const cacheKey = `search:${country}:${query}:${page}:${perPage}`;
+      const cached = sheinCache.get(cacheKey);
+      if (cached && Date.now() - cached.ts < SHEIN_TTL) {
+        return res.json({ ...cached.data, cached: true });
+      }
+
+      const result = await sheinSearch(query, { page, perPage, country });
+      const ranked = rankByWin(result.products);
+      const payload = { query, total: result.total, page, hasNext: result.hasNext, products: ranked, source: result.source };
+      sheinCache.set(cacheKey, { ts: Date.now(), data: payload });
+      res.json(payload);
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? "Lỗi search SHEIN" });
+    }
+  });
+
+  app.get("/admin/api/shein/best", async (req, res) => {
+    try {
+      const categoryId = ((req.query.categoryId as string) || "").trim();
+      if (!categoryId) return res.status(400).json({ error: "categoryId required" });
+      const page = Number(req.query.page ?? 1);
+      const perPage = Math.min(40, Number(req.query.perPage ?? 20));
+      const country = (req.query.country as string) || "us";
+
+      const result = await sheinBestByCategory(categoryId, { page, perPage, country });
+      const ranked = rankByWin(result.products);
+      res.json({ categoryId, page, products: ranked });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? "Lỗi best-seller SHEIN" });
+    }
+  });
+
+  app.get("/admin/api/shein/detail", async (req, res) => {
+    try {
+      const goodsId = ((req.query.goodsId as string) || "").trim();
+      if (!goodsId) return res.status(400).json({ error: "goodsId required" });
+      const goodsSn = (req.query.goodsSn as string) || undefined;
+      const country = (req.query.country as string) || "US";
+      const detail = await sheinGetDetail(goodsId, { goodsSn, country });
+      res.json(detail);
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? "Lỗi detail SHEIN" });
+    }
+  });
+
+  // Tìm shop SHEIN tương tự / đối thủ cùng ngách
+  app.get("/admin/api/shein/similar-stores", async (req, res) => {
+    try {
+      const raw = ((req.query.store as string) || "").trim();
+      if (!raw) return res.status(400).json({ error: "store (storeCode hoặc URL) required" });
+      // Parse store_code: hoặc query param trong URL, hoặc chuỗi số
+      let storeCode = raw;
+      const m = raw.match(/store_code=(\d+)/) || raw.match(/(\d{6,})/);
+      if (m) storeCode = m[1];
+      if (!/^\d+$/.test(storeCode)) {
+        return res.status(400).json({ error: "Không nhận diện được storeCode từ input" });
+      }
+      const country = (req.query.country as string) || "us";
+
+      const cacheKey = `similar:${country}:${storeCode}`;
+      const cached = sheinCache.get(cacheKey);
+      if (cached && Date.now() - cached.ts < SHEIN_TTL) {
+        return res.json({ ...cached.data, cached: true });
+      }
+
+      const result = await findSimilarStores(storeCode, { country });
+      sheinCache.set(cacheKey, { ts: Date.now(), data: result });
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? "Lỗi tìm shop tương tự" });
+    }
+  });
+
+  // ── Kiki scraper (trình duyệt thật, tránh captcha) ──────
+  // GET profiles + trạng thái Kiki API
+  app.get("/admin/api/kiki/profiles", async (_req, res) => {
+    try {
+      const cfg = readKikiConfig();
+      const alive = await kiki.ping();
+      res.json({ apiBase: cfg.apiBase, profiles: cfg.profiles, kikiAlive: alive });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? "Lỗi đọc Kiki profiles" });
+    }
+  });
+
+  // POST: lưu danh sách profiles (admin)
+  app.post("/admin/api/kiki/profiles", async (req, res) => {
     try {
       const sessionUser = (req.session as any).user as SessionUser;
       if (sessionUser.role !== "admin") return res.status(403).json({ error: "Chỉ admin" });
+      const profiles = (req.body?.profiles ?? []) as { id: string; name: string }[];
+      if (!Array.isArray(profiles)) return res.status(400).json({ error: "profiles phải là array" });
+      const clean = profiles
+        .filter((p) => p && typeof p.id === "string" && p.id.trim())
+        .map((p) => ({ id: p.id.trim(), name: (p.name || p.id).trim() }));
+      await saveKikiProfiles(clean);
+      res.json({ ok: true, profiles: clean });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? "Lỗi lưu profiles" });
+    }
+  });
 
-      const body = req.body as { default?: string; profiles?: Record<string, string> };
-      const cfg = {
-        default: typeof body.default === "string" && body.default ? body.default : "LUSHLACE",
-        profiles: {} as Record<string, string>,
+  // POST scrape: cào 1..N url SHEIN bằng 1 Kiki profile → đẩy vào shops
+  app.post("/admin/api/kiki/scrape", async (req, res) => {
+    try {
+      const sessionUser = (req.session as any).user as SessionUser;
+      if (sessionUser.role === "viewer") return res.status(403).json({ error: "Viewer không được cào" });
+
+      const body = req.body as {
+        urls?: string[];
+        shops?: string[];
+        profileId?: string;
+        options?: { divide4?: boolean; maxColors?: number };
       };
-      if (body.profiles && typeof body.profiles === "object") {
-        for (const [k, v] of Object.entries(body.profiles)) {
-          const key = String(k).trim();
-          const val = String(v).trim();
-          if (key && val) cfg.profiles[key] = val;
+      const urls = (body.urls ?? []).map((u) => String(u).trim()).filter(Boolean);
+      const shops = (body.shops ?? []).filter(Boolean);
+      const profileId = (body.profileId ?? "").trim();
+      if (!profileId) return res.status(400).json({ error: "Thiếu profileId" });
+      if (urls.length === 0) return res.status(400).json({ error: "Thiếu urls" });
+      if (shops.length === 0) return res.status(400).json({ error: "Phải chọn ít nhất 1 shop" });
+      if (urls.length > 20) return res.status(400).json({ error: "Tối đa 20 URL / lần" });
+
+      const { getUserDirsByName } = await import("./state/userDirs");
+      const dirs = await getUserDirsByName(sessionUser.username);
+      if (!dirs?.baseSheinAutoDir) {
+        return res.status(400).json({ error: "User chưa cấu hình baseSheinAutoDir" });
+      }
+      // Validate shops thuộc quyền user
+      const adminCfg = await loadAdminConfig();
+      const fullUser = adminCfg.users.find((u) => u.username === sessionUser.username);
+      if ((fullUser?.profiles ?? []).length > 0) {
+        const allowed = new Set(fullUser!.profiles);
+        const invalid = shops.filter((s) => !allowed.has(s));
+        if (invalid.length > 0) return res.status(403).json({ error: `Không có quyền shops: ${invalid.join(", ")}` });
+      }
+
+      // Xử lý tuần tự (1 profile không chạy song song được)
+      const results: any[] = [];
+      for (const url of urls) {
+        const logs: string[] = [];
+        try {
+          const data = await scrapeViaKiki({
+            url,
+            profileId,
+            options: body.options,
+            onLog: (m) => logs.push(m),
+          });
+          const written = await dispatchScrapedData(dirs.baseSheinAutoDir, data, shops);
+          results.push({
+            url,
+            ok: true,
+            product_name: data.product_name,
+            colors: data.listing_variations.colors.length,
+            images: data.product_images.length,
+            oosColors: data._meta?.oosColors ?? [],
+            sold: data.stats?.soldText ?? null,
+            reviewCount: data.stats?.reviewCount ?? null,
+            rating: data.stats?.rating ?? null,
+            queued: written,
+            logs,
+          });
+        } catch (err: any) {
+          results.push({ url, ok: false, error: err?.message ?? "lỗi", logs });
         }
       }
-      await fs.writeFile(BRAND_FILE, JSON.stringify(cfg, null, 2), "utf-8");
-      reloadAppConfig();
-      res.json({ ok: true, ...cfg });
+      refreshQueueSnapshot().catch(() => {});
+      res.json({ ok: true, results });
     } catch (err: any) {
-      res.status(500).json({ error: err?.message ?? "Lỗi lưu brands" });
+      res.status(500).json({ error: err?.message ?? "Lỗi Kiki scrape" });
+    }
+  });
+
+  // POST crawl-store: cào danh sách sản phẩm của nguyên 1 store SHEIN bằng Kiki
+  app.post("/admin/api/kiki/crawl-store", async (req, res) => {
+    try {
+      const sessionUser = (req.session as any).user as SessionUser;
+      if (sessionUser.role === "viewer") return res.status(403).json({ error: "Viewer không được cào" });
+
+      const body = req.body as { store?: string; profileId?: string; maxProducts?: number; country?: string };
+      const store = (body.store ?? "").trim();
+      const profileId = (body.profileId ?? "").trim();
+      if (!store) return res.status(400).json({ error: "Thiếu store (code hoặc URL)" });
+      if (!profileId) return res.status(400).json({ error: "Thiếu profileId" });
+      const maxProducts = Math.min(2000, Number(body.maxProducts ?? 300));
+
+      const logs: string[] = [];
+      const result = await crawlStoreViaKiki({
+        store,
+        profileId,
+        maxProducts,
+        country: body.country || "us",
+        onLog: (m) => logs.push(m),
+      });
+
+      // Chấm winScore để thống kê listing nào "ok" (rating + review + giảm giá)
+      const products = result.products
+        .map((p) => {
+          const w = scoreWin({
+            goodsId: p.goodsId,
+            goodsSn: p.goodsSn ?? "",
+            name: p.name ?? "",
+            image: p.image ?? "",
+            url: p.url,
+            price: p.price,
+            retailPrice: p.retailPrice,
+            discountPct: p.discountPct,
+            commentNum: p.reviewCount,
+            rating: p.rating,
+            labels: [],
+            source: "shein-data-api",
+          });
+          return { ...p, winScore: w.winScore, winTier: w.winTier };
+        })
+        .sort((a, b) => b.winScore - a.winScore);
+
+      res.json({
+        ok: true,
+        storeCode: result.storeCode,
+        storeUrl: result.storeUrl,
+        quantity: result.quantity,
+        count: products.length,
+        products,
+        logs,
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? "Lỗi crawl store" });
     }
   });
 

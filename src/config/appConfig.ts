@@ -8,10 +8,6 @@ const readJson = <T>(file: string): T => {
   return JSON.parse(raw) as T;
 };
 
-interface BrandProfilesFile {
-  default: string;
-  profiles: Record<string, string>;
-}
 interface PricingFile {
   // Formula mới: (price + shipFee) * multiplier + extraAdd
   shipFee?: number;
@@ -34,6 +30,12 @@ interface WorkerFile {
   imageUploadMaxImages: number;
   descriptionImagesCount: number;
   descriptionMaxAttributes: number;
+  imageRemake?: {
+    enabled: boolean;
+    preset: "light" | "standard" | "aggressive";
+    flip: boolean;
+    perShopSeed: boolean;
+  };
 }
 interface SizeMapFile {
   map: Record<string, string>;
@@ -42,14 +44,10 @@ interface CategoriesFile {
   categories: string[];
 }
 
-let _brandProfiles: BrandProfilesFile | null = null;
 let _pricing: PricingFile | null = null;
 let _worker: WorkerFile | null = null;
 let _sizeMap: SizeMapFile | null = null;
 let _categories: CategoriesFile | null = null;
-
-export const brandProfiles = (): BrandProfilesFile =>
-  (_brandProfiles ??= readJson<BrandProfilesFile>("brand-profiles.json"));
 
 export const pricing = (): PricingFile =>
   (_pricing ??= readJson<PricingFile>("pricing.json"));
@@ -62,12 +60,6 @@ export const sizeMap = (): Record<string, string> =>
 
 export const tiktokCategories = (): string[] =>
   (_categories ??= readJson<CategoriesFile>("tiktok-categories.json")).categories;
-
-/** Resolve brand cho 1 profile shop. Fallback về default nếu chưa định nghĩa. */
-export const resolveBrand = (profile: string): string => {
-  const cfg = brandProfiles();
-  return cfg.profiles[profile] ?? cfg.default;
-};
 
 /**
  * Tính giá bán cuối cùng từ giá gốc.
@@ -91,7 +83,6 @@ export const computeFinalPrice = (originalPrice: number): number => {
 
 /** Force reload config từ disk (dùng cho Settings UI sau này). */
 export const reloadAppConfig = (): void => {
-  _brandProfiles = null;
   _pricing = null;
   _worker = null;
   _sizeMap = null;

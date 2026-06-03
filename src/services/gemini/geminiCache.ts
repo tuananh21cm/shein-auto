@@ -6,7 +6,7 @@ const hashKey = (input: string): string =>
 
 const normalize = (s: string): string => s.trim().toLowerCase();
 
-type Kind = "title" | "category";
+type Kind = "title" | "category" | "analysis";
 
 const get = (kind: Kind, input: string): string | null => {
   const db = getDb();
@@ -47,6 +47,14 @@ export const geminiCache = {
 
   async setCategory(input: string, output: string): Promise<void> {
     set("category", input, output);
+  },
+
+  async getAnalysis(input: string): Promise<string | null> {
+    return get("analysis", input);
+  },
+
+  async setAnalysis(input: string, output: string): Promise<void> {
+    set("analysis", input, output);
   },
 
   stats(): { titles: number; categories: number } {

@@ -8,5 +8,11 @@
   "imageUploadWaitPerImageMs": 7000,
   "imageUploadMaxImages": 9,
   "descriptionImagesCount": 8,
-  "descriptionMaxAttributes": 8
+  "descriptionMaxAttributes": 8,
+  "imageRemake": {
+    "enabled": true,
+    "preset": "standard",
+    "flip": false,
+    "perShopSeed": true
+  }
 }

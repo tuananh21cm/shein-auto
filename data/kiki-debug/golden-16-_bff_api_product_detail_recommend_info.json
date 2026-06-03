@@ -1,0 +1,21 @@
+{
+  "code": "0",
+  "msg": "ok",
+  "info": {
+    "productOutfitLabelInfo": null,
+    "similarItemRecProducts": null,
+    "fbtRecProducts": null,
+    "hasNextPage": null,
+    "recType": null,
+    "storeSalesCategories": null,
+    "countdownToTheStore": null,
+    "whetherEligibleForTheStore": null,
+    "shopRecProducts": null,
+    "listStyle": null,
+    "useProductCard": null,
+    "machingStyleProducts": null,
+    "getTheLookProducts": null,
+    "getTheLookRelatedIdSeries": null,
+    "multiPropertyProducts": null
+  }
+}

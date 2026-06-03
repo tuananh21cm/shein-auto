@@ -1,0 +1,161 @@
+[
+  {
+    "ts": "2026-05-27T08:51:44.360Z",
+    "method": "POST",
+    "url": "https://www.google-analytics.com/g/collect?v=2&tid=G-6WYSEGGBMD&gtm=45je65m1v9122971598za200zd9122971598&_p=1779871902552&gcd=13l3l3l3l1l1&npa=0&dma=0&ecid=1268002692&_eu=AAAAAAQ&are=1&cid=720499828.1778139492&ec_mode=a&frm=0&pscdl=noapi&rcb=1&sr=1280x720&uaa=x86&uab=64&uafvl=Not%252FA)Brand%3B99.0.0.0%7CChromium%3B148.0.7778.96&uam=&uamb=0&uap=Windows&uapv=10.0.0&uaw=0&ul=en-us&_s=1&tag_exp=0~115938466~115938469~118689382~119168154&sid=1779871903&sct=11&seg=0&dl=https%3A%2F%2Fwww.4seller.com%2Fweb%2Flisting%2Ftiktok%2Fcreate.html%3Fstatus%3Ddraft&dt=Multi-Channel%20Selling%20Tool%20for%20Amazon%2C%20eBay%2C%20TikTok%20%26%20More%20%7C%204Seller&en=page_view&_ss=1&_ee=1&tfd=1167",
+    "reqHeaders": {
+      "sec-ch-ua-platform": "\"Windows\"",
+      "referer": "https://www.4seller.com/",
+      "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36",
+      "sec-ch-ua": "\"Not/A)Brand\";v=\"99\", \"Chromium\";v=\"148\"",
+      "sec-ch-ua-mobile": "?0"
+    },
+    "reqBody": null,
+    "resStatus": 204,
+    "resHeaders": {
+      "cache-control": "no-cache, no-store, must-revalidate",
+      "pragma": "no-cache",
+      "cross-origin-resource-policy": "cross-origin",
+      "access-control-allow-credentials": "true",
+      "content-security-policy-report-only": "script-src 'none'; form-action 'none'; frame-src 'none'; report-uri https://csp.withgoogle.com/csp/scaffolding/ascnsrsggc:138:0",
+      "report-to": "{\"group\":\"ascnsrsggc:138:0\",\"max_age\":2592000,\"endpoints\":[{\"url\":\"https://csp.withgoogle.com/csp/report-to/scaffolding/ascnsrsggc:138:0\"}],}",
+      "expires": "Fri, 01 Jan 1990 00:00:00 GMT",
+      "access-control-allow-origin": "https://www.4seller.com",
+      "cross-origin-opener-policy-report-only": "same-origin; report-to=ascnsrsggc:138:0",
+      "content-length": "0",
+      "alt-svc": "h3=\":443\"; ma=2592000,h3-29=\":443\"; ma=2592000",
+      "date": "Wed, 27 May 2026 08:51:43 GMT",
+      "content-type": "text/plain",
+      "server": "Golfe2"
+    },
+    "resBody": "",
+    "durationMs": 1141
+  },
+  {
+    "ts": "2026-05-27T08:51:44.523Z",
+    "method": "POST",
+    "url": "https://www.4seller.com/api/shop/get-tidy-list",
+    "reqHeaders": {
+      "sec-ch-ua-platform": "\"Windows\"",
+      "referer": "https://www.4seller.com/web/listing/tiktok/create.html?status=draft",
+      "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36",
+      "accept": "application/json, text/plain, */*",
+      "sec-ch-ua": "\"Not/A)Brand\";v=\"99\", \"Chromium\";v=\"148\"",
+      "content-type": "application/json",
+      "sec-ch-ua-mobile": "?0"
+    },
+    "reqBody": "{\"pageCurrent\":1,\"pageSize\":999}",
+    "resStatus": 200,
+    "resHeaders": {
+      "eo-cache-status": "MISS",
+      "cache-control": "no-store",
+      "content-encoding": "gzip",
+      "x-trace-no": "9f967c0441114d28862aee1e59e4371e",
+      "age": "0",
+      "eo-log-uuid": "17660575027538002213",
+      "date": "Wed, 27 May 2026 08:51:44 GMT",
+      "content-type": "application/json; charset=utf-8",
+      "vary": "Accept-Encoding, Origin, Access-Control-Request-Method, Access-Control-Request-Headers",
+      "server": "nginx",
+      "x-frame-options": "SAMEORIGIN"
+    },
+    "resBody": "{\"code\":0,\"messages\":\"SUCCESS\",\"data\":{\"records\":[{\"id\":214243,\"platform\":\"TIKTOK\",\"shopName\":\"tiktok_DSAN SAJ STORE\",\"platformShopName\":\"DSAN SAJ STORE\",\"region\":\"LOCAL TO LOCAL\",\"marketplaceId\":\"US\",\"site\":\"LOCAL TO LOCAL\",\"sellingPartnerId\":\"7494534427267925562\",\"status\":1,\"statusDesc\":\"Connected\",\"deleted\":null,\"openPolicy\":1,\"refreshExpiresDate\":\"2038-01-07 03:01:59\",\"refreshExpiresIn\":2146446119,\"currency\":\"USD\",\"isDefault\":0,\"mainShop\":0,\"relatedShopCode\":null,\"relatedShopRegion\":null,\"isMultiWarehouse\":0,\"isNewChain\":null,\"platformName\":\"TikTok\",\"bindingPayList\":null,\"relatedAmazonShopId\":null,\"createTime\":\"2026-05-18 09:00:44\"},{\"id\":212205,\"platform\":\"TIKTOK\",\"shopName\":\"tiktok_ELERENZO LAFEECE JOHNKHAEL STORE\",\"platformShopName\":\"ELERENZO LAFEECE JOHNKHAEL STO\",\"region\":\"LOCAL TO LOCAL\",\"marketplaceId\":\"US\",\"site\":\"LOCAL TO LOCAL\",\"sellingPartnerId\":\"7494518952671544693\",\"status\":1,\"statusDesc\":\"Connected\",\"deleted\":null,\"openPolicy\":1,\"refreshExpiresDate\":\"2038-01-07 03:01:59\",\"refreshExpiresIn\":2146446119,\"currency\":\"USD\",\"isDefault\":0,\"mainShop\":0,\"relatedShopCode\":null,\"relatedShopRegion\":null,\"isMultiWarehouse\":0,\"isNewChain\":null,\"platformName\":\"TikTok\",\"bindingPayList\":null,\"relatedAmazonShopId\":null,\"createTime\":\"2026-05-06 08:20:06\"},{\"id\":207638,\"platform\":\"TIKTOK\",\"shopName\":\"tiktok_Lunis Esuau Artenaga Shop\",\"platformShopName\":\"Lunis Esuau Artenaga Shop\",\"region\":\"LOCAL TO LOCAL\",\"marketplaceId\":\"US\",\"site\":\"LOCAL TO LOCAL\",\"sellingPartnerId\":\"7496196107887348213\",\"status\":1,\"statusDesc\":\"Connected\",\"deleted\":null,\"openPolicy\":1,\"refreshExpiresDate\":\"2038-01-07 03:01:59\",\"refreshExpiresIn\":2146446119,\"currency\":\"USD\",\"isDefault\":0,\"mainShop\":0,\"relatedShopCode\":null,\"relatedShopRegion\":null,\"isMultiWarehouse\":0,\"isNewChain\":null,\"platformName\":\"TikTok\",\"bindingPayList\":null,\"relatedAmazonShopId\":null,\"createTime\":\"2026-04-11 07:05:39\"},{\"id\":206998,\"platform\":\"TIKTOK\",\"shopName\":\"tiktok_ENGINEERED WOOD LIMITED\",\"platformShopName\":\"ENGINEERED WOOD LIMITED\",\"region\":\"LOCAL TO LOCAL\",\"marketplaceId\":\"UK\",\"site\":\"LOCAL TO LOCAL\",\"sellingPartnerId\":\"7496154795397253414\",\"status\":1,\"statusDesc\":\"Connected\",\"deleted\":null,\"openPolicy\":1,\"refreshExpiresDate\":\"2038-01-07 03:01:59\",\"refreshExpiresIn\":2146446119,\"currency\":\"GBP\",\"isDefault\":0,\"mainShop\":0,\"relatedShopCode\":null,\"relatedShopRegion\":null,\"isMultiWarehouse\":0,\"isNewChain\":null,\"platformName\":\"TikTok\",\"bindingPayList\":null,\"relatedAmazonShopId\":null,\"createTime\":\"2026-04-08 10:28:58\"},{\"id\":206996,\"platform\":\"TIKTOK\",\"shopName\":\"tiktok_JAMES LEWIS TEAM\",\"platformShopName\":\"JAMES LEWIS TEAM\",\"region\":\"LOCAL TO LOCAL\",\"marketplaceId\":\"UK\",\"site\":\"LOCAL TO LOCAL\",\"sellingPartnerId\":\"7496130334433315291\",\"status\":1,\"statusDesc\":\"Connected\",\"deleted\":null,\"openPolicy\":1,\"refreshExpiresDate\":\"2038-01-07 03:01:59\",\"refreshExpiresIn\":2146446119,\"currency\":\"GBP\",\"isDefault\":0,\"mainShop\":0,\"relatedShopCode\":null,\"relatedShopRegion\":null,\"isMultiWarehouse\":0,\"isNewChain\":null,\"platformName\":\"TikTok\",\"bindingPayList\":null,\"relatedAmazonShopId\":null,\"createTime\":\"2026-04-08 10:22:36\"},{\"id\":206995,\"platform\":\"TIKTOK\",\"shopName\":\"tiktok_RUPERT BANKS TEAM\",\"platformShopName\":\"RUPERT BANKS TEAM\",\"region\":\"LOCAL TO LOCAL\",\"marketplaceId\":\"UK\",\"site\":\"LOCAL TO LOCAL\",\"sellingPartnerId\":\"7496130317260327877\",\"status\":1,\"statusDesc\":\"Connected\",\"deleted\":null,\"openPolicy\":1,\"refreshExpiresDate\":\"2038-01-07 03:01:59\",\"refreshExpiresIn\":2146446119,\"currency\":\"GBP\",\"isDefault\":0,\"mainShop\":0,\"relatedShopCode\":null,\"relatedShopRegion\":null,\"isMultiWarehouse\":0,\"isNewChain\":null,\"platformName\":\"TikTok\",\"bindingPayList\":null,\"relatedAmazonShopId\":null,\"createTime\":\"2026-04-08 10:19:35\"},{\"id\":206994,\"platform\":\"TIKTOK\",\"shopName\":\"tiktok_MARK WRIGHT TEAM\",\"platformShopName\":\"MARK WRIGHT TEAM\",\"region\":\"LOCAL TO LOCAL\",\"marketplaceId\":\"UK\",\"site\":\"LOCAL TO LOCAL\",\"sellingPartnerId\":\"7496129322215639447\",\"status\":1,\"statusDesc\":\"Connected\",\"deleted\":null,\"openPolicy\":1,\"refreshExpiresDate\":\"2038-01-07 03:01:59\",\"refreshExpiresIn\":2146446119,\"currency\":\"GBP\",\"isDefault\":0,\"mainShop\":0,\"relatedShopCode\":null,\"relatedShopRegion\":null,\"isMultiWarehouse\":0,\"isNewChain\":null,\"platformName\":\"TikTok\",\"bindingPayList\":null,\"relatedAmazonShopId\":null,\"createTime\":\"2026-04-08 10:16:06\"},{\"id\":204558,\"platform\":\"TIKTOK\",\"shopName\":\"P5-060_US\",\"platformShopName\":\"ZESTY Lush\",\"region\":\"LOCAL TO LOCAL\",\"marketplaceId\":\"US\",\"site\":\"LOCAL TO LOCAL\",\"sellingPartnerId\":\"7495894035222202913\",\"status\":1,\"statusDesc\":\"Connected\",\"deleted\":null,\"openPolicy\":1,\"refreshExpiresDate\":\"2038-01-07 03:01:59\",\"refreshExpiresIn\":2146446119,\"currency\":\"USD\",\"isDefault\":0,\"mainShop\":0,\"relatedShopCode\":null,\"relatedShopRegion\":null,\"isMultiWarehouse\":0,\"isNewChain\":null,\"platformName\":\"TikTok\",\"bindingPayList\":null,\"relatedAmazonShopId\":null,\"createTime\":\"2026-03-26 09:21:26\"},{\"id\":204138,\"platform\":\"TIKTOK\",\"shopName\":\"P5-003_US\",\"platformShopName\":\"MEDINA\",\"region\":\"LOCAL TO LOCAL\",\"marketplaceId\":\"US\",\"site\":\"LOCAL TO LOCAL\",\"sellingPartnerId\":\"7495916981032421524\",\"status\":1,\"statusDesc\":\"Connected\",\"deleted\":null,\"openPolicy\":1,\"refreshExpiresDate\":\"2038-01-07 03:01:59\",\"refreshExpiresIn\":2146446119,\"currency\":\"USD\",\"isDefault\":0,\"mainShop\":0,\"relatedShopCode\":null,\"relatedShopRegion\":null,\"isMultiWarehouse\":0,\"isNewChain\":null,\"platformName\":\"TikTok\",\"bindingPayList\":null,\"relatedAmazonShopId\":null,\"createTime\":\"2026-03-25 07:18:27\"},{\"id\":204133,\"platform\":\"TIKTOK\",\"shopName\":\"P5-005_US\",\"platformShopName\":\"Renew Tee\",\"region\":\"LOCAL TO LOCAL\",\"marketplaceId\":\"US\",\"site\":\"LOCAL TO LOCAL\",\"sellingPartnerId\":\"7496234151316916503\",\"status\":1,\"statusDesc\":\"Connected\",\"deleted\":null,\"openPolicy\":1,\"refreshExpiresDate\":\"2038-01-07 03:01:59\",\"refreshExpiresIn\":2146446119,\"currency\":\"USD\",\"isDefault\":0,\"mainShop\":0,\"relatedShopCode\":null,\"relatedShopRegion\":null,\"isMultiWarehouse\":0,\"isNewChain\":null,\"platformName\":\"TikTok\",\"bindingPayList\":null,\"relatedAmazonShopId\":null,\"createTime\":\"2026-03-25 07:15:00\"},{\"id\":204130,\"platform\":\"TIKTOK\",\"shopName\":\"P5-006_US\",\"platformShopName\":\"Meme Tee Shop\",\"region\":\"LOCAL TO LOCAL\",\"marketplaceId\":\"US\",\"site\":\"LOCAL TO LOCAL\",\"sellingPartnerId\":\"7495846051227864012\",\"status\":1,\"statusDesc\":\"Connected\",\"deleted\":null,\"openPolicy\":1,\"refreshExpiresDate\":\"2038-01-07 03:01:59\",\"refreshExpiresIn\":2146446119,\"currency\":\"USD\",\"isDefault\":0,\"mainShop\":0,\"relatedShopCode\":null,\"relatedShopRegion\":null,\"isMultiWarehouse\":0,\"isNewChain\":null,\"platformName\":\"TikTok\",\"bindingPayList\":null,\"relatedAmazonShopId\":null,\"createTime\":\"2026-03-25 07:08:14\"},{\"id\":201284,\"platform\":\"TIKTOK\",\"shopName\":\"P5-049_US\",\"platformShopName\":\"Carl L Langley\",\"region\":\"LOCAL TO LOCAL\",\"marketplaceId\":\"US\",\"site\":\"LOCAL TO LOCAL\",\"sellingPartnerId\":\"7496209408894470934\",\"status\":1,\"statusDesc\":\"Connected\",\"deleted\":null,\"openPolicy\":1,\"refreshExpiresDate\":\"2038-01-07 03:01:59\",\"refreshExpiresIn\":2146446119,\"currency\":\"USD\",\"isDefault\":0,\"mainShop\":0,\"relatedShopCode\":null,\"relatedShopRegion\":null,\"isMultiWarehouse\":0,\"isNewChain\":null,\"platformName\":\"TikTok\",\"bindingPayList\":null,\"relatedAmazonShopId\":null,\"createTime\":\"2026-03-13 07:21:22\"},{\"id\":199815,\"platform\":\"TIKTOK\",\"shopName\":\"P5_048_US\",\"platformShopName\":\"ARMAN ALAVERDIAN shop\",\"region\":\"LOCAL TO LOCAL\",\"marketplaceId\":\"US\",\"site\":\"LOCAL TO LOCAL\",\"sellingPartnerId\":\"7494190139529069942\",\"status\":1,\"statusDesc\":\"Connected\",\"deleted\":null,\"openPolicy\":1,\"refreshExpiresDate\":\"2038-01-07 03:01:59\",\"refreshExpiresIn\":2146446119,\"currency\":\"USD\",\"isDefault\":0,\"mainShop\":0,\"relatedShopCode\":null,\"relatedShopRegion\":null,\"isMultiWarehouse\":0,\"isNewChain\":null,\"platformName\":\"TikTok\",\"bindingPayList\":null,\"relatedAmazonShopId\":null,\"createTime\":\"2026-03-07 03:16:57\"},{\"id\":199521,\"platform\":\"TIKTOK\",\"shopName\":\"P5-010_US\",\"platformShopName\":\"STRONGHOLD PLUMBING\",\"region\":\"LOCAL TO LOCAL\",\"marketplaceId\":\"US\",\"site\":\"LOCAL TO LOCAL\",\"sellingPartnerId\":\"7495937691615529979\",\"status\":1,\"statusDesc\":\"Connected\",\"deleted\":null,\"openPolicy\":1,\"refreshExpiresDate\":\"2038-01-07 03:01:59\",\"refreshExpiresIn\":2146446119,\"currency\":\"USD\",\"isDefault\":0,\"mainShop\":0,\"relatedShopCode\":null,\"relatedShopRegion\":null,\"isMultiWarehouse\":0,\"isNewChain\":null,\"platformName\":\"TikTok\",\"bindingPayList\":null,\"relatedAmazonShopId\":null,\"createTime\":\"2026-03-06 02:48:20\"},{\"id\":198840,\"platform\":\"TIKTOK\",\"shopName\":\"P5-027_US\",\"platformShopName\":\"Jocan MaEdmoandson Shop\",\"region\":\"LOCAL TO LOCAL\",\"marketplaceId\":\"US\",\"site\":\"LOCAL TO LOCAL\",\"sellingPartnerId\":\"7496308481964214528\",\"status\":1,\"statusDesc\":\"Connected\",\"deleted\":null,\"openPolicy\":1,\"refreshExpiresDate\":\"2038-01-07 03:01:59\",\"refreshExpiresIn\":2146446119,\"currency\":\"USD\",\"isDefault\":0,\"mainShop\":0,\"relatedShopCode\":null,\"relatedShopRegion\":null,\"isMultiWarehouse\":0,\"isNewChain\":null,\"platformName\":\"TikTok\",\"bindingPayList\":null,\"relatedAmazonShopId\":null,\"createTime\":\"2026-03-03 07:44:14\"},{\"id\":198437,\"platform\":\"TIKTOK\",\"shopName\":\"P5-043_US\",\"platformShopName\":\"Happy Happy Tee\",\"region\":\"LOCAL TO LOCAL\",\"marketplaceId\":\"US\",\"site\":\"LOCAL TO LOCAL\",\"sellingPartnerId\":\"7496223731166840952\",\"status\":1,\"statusDesc\":\"Connected\",\"deleted\":null,\"openPolicy\":1,\"refreshExpiresDate\":\"2038-01-07 03:01:59\",\"refreshExpiresIn\":2146446119,\"currency\":\"USD\",\"isDefault\":0,\"mainShop\":0,\"relatedShopCode\":null,\"relatedShopRegion\":null,\"isMultiWarehouse\":0,\"isNewChain\":null,\"platformName\":\"TikTok\",\"bindingPayList\":null,\"relatedAmazonShopId\":null,\"createTime\":\"2026-03-02 03:19:04\"},{\"id\":198434,\"platform\":\"TIKTOK\",\"shopName\":\"P5-040_US\",\"platformShopName\":\"Jabnice Roase Shop\",\"region\":\"LOCAL TO LOCAL\",\"marketplaceId\":\"US\",\"site\":\"LOCAL TO LOCAL\",\"sellingPartnerId\":\"7496241056741558812\",\"status\":1,\"statusDesc\":\"Connected\",\"deleted\":null,\"openPolicy\":1,\"refreshExpiresDate\":\"2038-01-07 03:01:59\",\"refreshExpiresIn\":2146446119,\"currency\":\"USD\",\"isDefault\":0,\"mainShop\":0,\"relatedShopCode\":null,\"relatedShopRegion\":null,\"isMultiWarehouse\":0,\"isNewChain\":null,\"platformName\":\"TikTok\",\"bindingPayList\":null,\"relatedAmazonShopId\":null,\"createTime\":\"2026-03-02 03:16:51\"},{\"id\":198072,\"platform\":\"TIKTOK\",\"shopName\":\"P5-047_US\",\"platformShopName\":\"Smith's Signature Shirts\",\"region\":\"LOCAL TO LOCAL\",\"marketplaceId\":\"US\",\"site\":\"LOCAL TO LOCAL\",\"sellingPartnerId\":\"7495879513841174706\",\"status\":1,\"statusDesc\":\"Connected\",\"deleted\":null,\"openPolicy\":1,\"refreshExpiresDate\":\"2038-01-07 03:01:59\",\"refreshExpiresIn\":2146446119,\"currency\":\"USD\",\"isDefault\":0,\"mainShop\":0,\"relatedShopCode\":null,\"relatedShopRegion\":null,\"isMultiWarehouse\":0,\"isNewChain\":null,\"platformName\":\"TikTok\",\"bindingPayList\":null,\"relatedAmazonShopId\":null,\"createTime\":\"2026-02-28 02:17:05\"},{\"id\":198069,\"platform\":\"TIKTOK\",\"shopName\":\"P5-044_US\",\"platformShopName\":\"DUMPSHIRT\",\"region\":\"LOCAL TO LOCAL\",\"marketplaceId\":\"US\",\"site\":\"LOCAL TO LOCAL\",\"sellingPartnerId\":\"7496209720946232206\",\"status\":1,\"statusDesc\":\"Connected\",\"deleted\":null,\"openPolicy\":1,\"refreshExpiresDate\":\"2038-01-07 03:01:59\",\"refreshExpiresIn\":2146446119,\"currency\":\"USD\",\"isDefault\":0,\"mainShop\":0,\"relatedShopCode\":null,\"relatedShopRegion\":null,\"isMultiWarehouse\":0,\"isNewChain\":null,\"platformName\":\"TikTok\",\"bindingPayList\":null,\"relatedAmazonShopId\":null,\"createTime\":\"2026-02-28 02:15:06\"},{\"id\":198067,\"platform\":\"TIKTOK\",\"shopName\":\"P5-042_US\",\"platformShopName\":\"Bevearly L Rcamirez Shop\",\"region\":\"LOCAL TO LOCAL\",\"marketplaceId\":\"US\",\"site\":\"LOCAL TO LOCAL\",\"sellingPartnerId\":\"7496231092573800792\",\"status\":1,\"statusDesc\":\"Connected\",\"deleted\":null,\"openPolicy\":1,\"refreshExpiresDate\":\"2038-01-07 03:01:59\",\"refreshExpiresIn\":2146446119,\"currency\":\"USD\",\"isDefault\":0,\"mainShop\":0,\"relatedShopCode\":null,\"relatedShopRegion\":null,\"isMultiWarehouse\":0,\"isNewChain\":null,\"platformName\":\"TikTok\",\"bindingPayList\":null,\"relatedAmazonShopId\":null,\"createTime\":\"2026-02-28 02:13:04\"},{\"id\":198065,\"platform\":\"TIKTOK\",\"shopName\":\"P5-041_US\",\"platformShopName\":\"Leaah Hivll Shop\",\"region\":\"LOCAL TO LOCAL\",\"marketplaceId\":\"US\",\"site\":\"LOCAL TO LOCAL\",\"sellingPartnerId\":\"7496230185454962941\",\"status\":1,\"statusDesc\":\"Connected\",\"deleted\":null,\"openPolicy\":1,\"refreshExpiresDate\":\"2038-01-07 03:01:59\",\"refreshExpiresIn\":2146446119,\"currency\":\"USD\",\"isDefault\":0,\"mainShop\":0,\"relatedShopCode\":null,\"relatedShopRegion\":null,\"isMultiWarehouse\":0,\"isNewChain\":null,\"platformName\":\"TikTok\",\"bindingPayList\":null,\"relatedAmazonShopId\":null,\"createTime\":\"2026-02-28 02:11:35\"},{\"id\":197688,\"platform\":\"TIKTOK\",\"shopName\":\"P5-036_UK\",\"platformShopName\":\"JOHN SHAUGHNESSY TEAM\",\"region\":\"LOCAL TO LOCAL\",\"marketplaceId\":\"UK\",\"site\":\"LOCAL TO LOCAL\",\"sellingPartnerId\":\"7496129323143497967\",\"status\":1,\"statusDesc\":\"Connected\",\"deleted\":null,\"openPolicy\":1,\"refreshExpiresDate\":\"2038-01-07 03:01:59\",\"refreshExpiresIn\":2146446119,\"currency\":\"GBP\",\"isDefault\":0,\"mainShop\":0,\"relatedShopCode\":null,\"relatedShopRegion\":null,\"isMultiWarehouse\":0,\"isNewChain\":null,\"platformName\":\"TikTok\",\"bindingPayList\":null,\"relatedAmazonShopId\":null,\"createTime\":\"2026-02-26 07:17:20\"},{\"id\":197630,\"platform\":\"TIKTOK\",\"shopName\":\"P5-015_US\",\"platformShopName\":\"Deedra Milpler Shop\",\"region\":\"LOCAL TO LOCAL\",\"marketplaceId\":\"US\",\"site\":\"LOCAL TO LOCAL\",\"sellingPartnerId\":\"7494189476647044693\",\"status\":1,\"statusDesc\":\"Connected\",\"deleted\":null,\"openPolicy\":1,\"refreshExpiresDate\":\"2038-01-07 03:01:59\",\"refreshExpiresIn\":2146446119,\"currency\":\"USD\",\"isDefault\":0,\"mainShop\":0,\"relatedShopCode\":null,\"relatedShopRegion\":null,\"isMultiWarehouse\":0,\"isNewChain\":null,\"platformName\":\"TikTok\",\"bindingPayList\":null,\"relatedAmazonShopId\":null,\"createTime\":\"2026-02-26 04:15:17\"},{\"id\":197629,\"platform\":\"TIKTOK\",\"shopName\":\"P5-014_US\",\"platformShopName\":\"Dgfcwagrwayne Crawfordswld Sho\",\"region\":\"LOCAL TO LOCAL\",\"marketplaceId\":\"US\",\"site\":\"LOCAL TO LOCAL\",\"sellingPartnerId\":\"7494189760466945370\",\"status\":1,\"statusDesc\":\"Connected\",\"deleted\":null,\"openPolicy\":1,\"refreshExpiresDate\":\"2038-01-07 03:01:59\",\"refreshExpiresIn\":2146446119,\"currency\":\"USD\",\"isDefault\":0,\"mainShop\":0,\"relatedShopCode\":null,\"relatedShopRegion\":null,\"isMultiWarehouse\":0,\"isNewChain\":null,\"platformName\":\"TikTok\",\"bindingPayList\":null,\"relatedAmazonShopId\":null,\"createTime\":\"2026-02-26 04:13:19\"},{\"id\":183234,\"platform\":\"TIKTOK\",\"shopName\":\"P5-022_US\",\"platformShopName\":\"ES TEAM UNITED\",\"region\":\"LOCAL TO LOCAL\",\"marketplaceId\":\"US\",\"site\":\"LOCAL TO LOCAL\",\"sellingPartnerId\":\"7495890288051653432\",\"status\":1,\"statusDesc\":\"Connected\",\"deleted\":null,\"openPolicy\":1,\"refreshExpiresDate\":\"2038-01-07 03:01:59\",\"refreshExpiresIn\":2146446119,\"currency\":\"USD\",\"isDefault\":0,\"mainShop\":0,\"relatedShopCode\":null,\"relatedShopRegion\":null,\"isMultiWarehouse\":0,\"isNewChain\":null,\"platformName\":\"TikTok\",\"bindingPayList\":null,\"relatedAmazonShopId\":null,\"createTime\":\"2025-12-27 04:24:28\"},{\"id\":177257,\"platform\":\"TIKTOK\",\"shopName\":\"P5-011\",\"platformShopName\":\"Melisbsa Woodaring Shop\",\"region\":\"LOCAL TO LOCAL\",\"marketplaceId\":\"US\",\"site\":\"LOCAL TO LOCAL\",\"sellingPartnerId\":\"7496232795833665827\",\"status\":1,\"statusDesc\":\"Connected\",\"deleted\":null,\"openPolicy\":1,\"refreshExpiresDate\":\"2038-01-07 03:01:59\",\"refreshExpiresIn\":2146446119,\"currency\":\"USD\",\"isDefault\":0,\"mainShop\":0,\"relatedShopCode\":null,\"relatedShopRegion\":null,\"isMultiWarehouse\":0,\"isNewChain\":null,\"platformName\":\"TikTok\",\"bindingPayList\":null,\"relatedAmazonShopId\":null,\"createTime\":\"2025-12-09 10:50:28\"},{\"id\":172578,\"platform\":\"TIKTOK\",\"shopName\":\"P5-008_US\",\"platformShopName\":\"LushLace Shop\",\"region\":\"LOCAL TO LOCAL\",\"marketplaceId\":\"US\",\"site\":\"LOCAL TO LOCAL\",\"sellingPartnerId\":\"7495937854464756583\",\"status\":1,\"statusDesc\":\"Connected\",\"deleted\":null,\"openPolicy\":1,\"refreshExpiresDate\":\"2038-01-07 03:01:59\",\"refreshExpiresIn\":2146446119,\"currency\":\"USD\",\"isDefault\":0,\"mainShop\":0,\"relatedShopCode\":null,\"relatedShopRegion\":null,\"isMultiWarehouse\":0,\"isNewChain\":null,\"platformName\":\"TikTok\",\"bindingPayList\":null,\"relatedAmazonShopId\":null,\"createTime\":\"2025-11-26 02:14:50\"},{\"id\":172577,\"platform\":\"TIKTOK\",\"shopName\":\"P5-009_US\",\"platformShopName\":\"KRYPT Shop\",\"region\":\"LOCAL TO LOCAL\",\"marketplaceId\":\"US\",\"site\":\"LOCAL TO LOCAL\",\"sellingPartnerId\":\"7495938535582436197\",\"status\":1,\"statusDesc\":\"Connected\",\"deleted\":null,\"openPolicy\":1,\"refreshExpiresDate\":\"2038-01-07 03:01:59\",\"refreshExpiresIn\":2146446119,\"currency\":\"USD\",\"isDefault\":0,\"mainShop\":0,\"relatedShopCode\":null,\"relatedShopRegion\":null,\"isMultiWarehouse\":0,\"isNewChain\":null,\"platformName\":\"TikTok\",\"bindingPayList\":null,\"relatedAmazonShopId\":null,\"createTime\":\"2025-11-26 02:13:36\"},{\"id\":169041,\"platform\":\"TIKTOK\",\"shopName\":\"P5-012_US\",\"platformShopName\":\"Heaather Watts Shop\",\"region\":\"LOCAL TO LOCAL\",\"marketplaceId\":\"US\",\"site\":\"LOCAL TO LOCAL\",\"sellingPartnerId\":\"7496200462645168855\",\"status\":1,\"statusDesc\":\"Connected\",\"deleted\":null,\"openPolicy\":1,\"refreshExpiresDate\":\"2038-01-07 03:01:59\",\"refreshExpiresIn\":2146446119,\"currency\":\"USD\",\"isDefault\":0,\"mainShop\":0,\"relatedShopCode\":null,\"relatedShopRegion\":null,\"isMultiWarehouse\":0,\"isNewChain\":null,\"platformName\":\"TikTok\",\"bindingPayList\":null,\"relatedAmazonShopId\":null,\"createTime\":\"2025-11-17 08:42:48\"}],\"total\":29,\"pageSize\":999,\"pageCurrent\":1,\"idList\":null},\"traceId\":null,\"success\":true}",
+    "durationMs": 318
+  },
+  {
+    "ts": "2026-05-27T08:51:44.523Z",
+    "method": "POST",
+    "url": "https://www.google-analytics.com/g/collect?v=2&tid=G-XMZWZ6SSZ4&gtm=45je65m1h1v9103961193z89104011062za20gzb9104011062zd9104011062&_p=1779871902552&gcd=13l3l3l3l1l1&npa=0&dma=0&_eu=AAAAAAQC&are=1&cid=720499828.1778139492&frm=0&pscdl=noapi&rcb=8&sr=1280x720&uaa=x86&uab=64&uafvl=Not%252FA)Brand%3B99.0.0.0%7CChromium%3B148.0.7778.96&uam=&uamb=0&uap=Windows&uapv=10.0.0&uaw=0&ul=en-us&_s=1&tag_exp=0~115616985~115938466~115938468~118228214&sid=1779871904&sct=11&seg=0&dl=https%3A%2F%2Fwww.4seller.com%2Fweb%2Flisting%2Ftiktok%2Fcreate.html%3Fstatus%3Ddraft&dt=Listings-TikTok-Draft%20Details-4Seller&en=page_view&_ss=1&tfd=2300",
+    "reqHeaders": {
+      "sec-ch-ua-platform": "\"Windows\"",
+      "referer": "https://www.4seller.com/",
+      "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36",
+      "sec-ch-ua": "\"Not/A)Brand\";v=\"99\", \"Chromium\";v=\"148\"",
+      "sec-ch-ua-mobile": "?0"
+    },
+    "reqBody": null,
+    "resStatus": 204,
+    "resHeaders": {
+      "cache-control": "no-cache, no-store, must-revalidate",
+      "pragma": "no-cache",
+      "cross-origin-resource-policy": "cross-origin",
+      "access-control-allow-credentials": "true",
+      "content-security-policy-report-only": "script-src 'none'; form-action 'none'; frame-src 'none'; report-uri https://csp.withgoogle.com/csp/scaffolding/ascnsrsggc:138:0",
+      "report-to": "{\"group\":\"ascnsrsggc:138:0\",\"max_age\":2592000,\"endpoints\":[{\"url\":\"https://csp.withgoogle.com/csp/report-to/scaffolding/ascnsrsggc:138:0\"}],}",
+      "expires": "Fri, 01 Jan 1990 00:00:00 GMT",
+      "access-control-allow-origin": "https://www.4seller.com",
+      "cross-origin-opener-policy-report-only": "same-origin; report-to=ascnsrsggc:138:0",
+      "content-length": "0",
+      "alt-svc": "h3=\":443\"; ma=2592000,h3-29=\":443\"; ma=2592000",
+      "date": "Wed, 27 May 2026 08:51:44 GMT",
+      "content-type": "text/plain",
+      "server": "Golfe2"
+    },
+    "resBody": "",
+    "durationMs": 163
+  },
+  {
+    "ts": "2026-05-27T08:51:48.397Z",
+    "method": "POST",
+    "url": "https://www.google-analytics.com/g/collect?v=2&tid=G-6WYSEGGBMD&gtm=45je65m1v9122971598za200zd9122971598&_p=1779871902552&gcd=13l3l3l3l1l1&npa=0&dma=0&ecid=1268002692&_eu=AEAAAAQ&ae=a&are=1&cid=720499828.1778139492&frm=0&pscdl=noapi&rcb=1&sr=1280x720&uaa=x86&uab=64&uafvl=Not%252FA)Brand%3B99.0.0.0%7CChromium%3B148.0.7778.96&uam=&uamb=0&uap=Windows&uapv=10.0.0&uaw=0&ul=en-us&_s=2&tag_exp=0~115938466~115938469~118689382~119168154&sid=1779871903&sct=11&seg=0&dl=https%3A%2F%2Fwww.4seller.com%2Fweb%2Flisting%2Ftiktok%2Fcreate.html%3Fstatus%3Ddraft&dt=Multi-Channel%20Selling%20Tool%20for%20Amazon%2C%20eBay%2C%20TikTok%20%26%20More%20%7C%204Seller&en=scroll&epn.percent_scrolled=90&_et=83&tfd=6270",
+    "reqHeaders": {
+      "sec-ch-ua-platform": "\"Windows\"",
+      "referer": "https://www.4seller.com/",
+      "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36",
+      "sec-ch-ua": "\"Not/A)Brand\";v=\"99\", \"Chromium\";v=\"148\"",
+      "sec-ch-ua-mobile": "?0"
+    },
+    "reqBody": null,
+    "resStatus": 204,
+    "resHeaders": {
+      "cache-control": "no-cache, no-store, must-revalidate",
+      "pragma": "no-cache",
+      "cross-origin-resource-policy": "cross-origin",
+      "access-control-allow-credentials": "true",
+      "content-security-policy-report-only": "script-src 'none'; form-action 'none'; frame-src 'none'; report-uri https://csp.withgoogle.com/csp/scaffolding/ascnsrsggc:138:0",
+      "report-to": "{\"group\":\"ascnsrsggc:138:0\",\"max_age\":2592000,\"endpoints\":[{\"url\":\"https://csp.withgoogle.com/csp/report-to/scaffolding/ascnsrsggc:138:0\"}],}",
+      "expires": "Fri, 01 Jan 1990 00:00:00 GMT",
+      "access-control-allow-origin": "https://www.4seller.com",
+      "cross-origin-opener-policy-report-only": "same-origin; report-to=ascnsrsggc:138:0",
+      "content-length": "0",
+      "alt-svc": "h3=\":443\"; ma=2592000,h3-29=\":443\"; ma=2592000",
+      "date": "Wed, 27 May 2026 08:51:48 GMT",
+      "content-type": "text/plain",
+      "server": "Golfe2"
+    },
+    "resBody": "",
+    "durationMs": 75
+  },
+  {
+    "ts": "2026-05-27T08:51:49.448Z",
+    "method": "POST",
+    "url": "https://www.google-analytics.com/g/collect?v=2&tid=G-XMZWZ6SSZ4&gtm=45je65m1h1v9103961193za20gzb9104011062zd9104011062&_p=1779871902552&gcd=13l3l3l3l1l1&npa=0&dma=0&_eu=AEAAAAQC&ae=a&are=1&cid=720499828.1778139492&frm=0&pscdl=noapi&rcb=8&sr=1280x720&uaa=x86&uab=64&uafvl=Not%252FA)Brand%3B99.0.0.0%7CChromium%3B148.0.7778.96&uam=&uamb=0&uap=Windows&uapv=10.0.0&uaw=0&ul=en-us&_s=2&tag_exp=0~115616985~115938466~115938468~118228214&sid=1779871904&sct=11&seg=0&dl=https%3A%2F%2Fwww.4seller.com%2Fweb%2Flisting%2Ftiktok%2Fcreate.html%3Fstatus%3Ddraft&dt=Listings-TikTok-Draft%20Details-4Seller&en=scroll&epn.percent_scrolled=90&_et=10&tfd=7323",
+    "reqHeaders": {
+      "sec-ch-ua-platform": "\"Windows\"",
+      "referer": "https://www.4seller.com/",
+      "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36",
+      "sec-ch-ua": "\"Not/A)Brand\";v=\"99\", \"Chromium\";v=\"148\"",
+      "sec-ch-ua-mobile": "?0"
+    },
+    "reqBody": null,
+    "resStatus": 204,
+    "resHeaders": {
+      "cache-control": "no-cache, no-store, must-revalidate",
+      "pragma": "no-cache",
+      "cross-origin-resource-policy": "cross-origin",
+      "access-control-allow-credentials": "true",
+      "content-security-policy-report-only": "script-src 'none'; form-action 'none'; frame-src 'none'; report-uri https://csp.withgoogle.com/csp/scaffolding/ascnsrsggc:138:0",
+      "report-to": "{\"group\":\"ascnsrsggc:138:0\",\"max_age\":2592000,\"endpoints\":[{\"url\":\"https://csp.withgoogle.com/csp/report-to/scaffolding/ascnsrsggc:138:0\"}],}",
+      "expires": "Fri, 01 Jan 1990 00:00:00 GMT",
+      "access-control-allow-origin": "https://www.4seller.com",
+      "cross-origin-opener-policy-report-only": "same-origin; report-to=ascnsrsggc:138:0",
+      "content-length": "0",
+      "alt-svc": "h3=\":443\"; ma=2592000,h3-29=\":443\"; ma=2592000",
+      "date": "Wed, 27 May 2026 08:51:49 GMT",
+      "content-type": "text/plain",
+      "server": "Golfe2"
+    },
+    "resBody": "",
+    "durationMs": 73
+  }
+]

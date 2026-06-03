@@ -1,0 +1,81 @@
+{
+  "code": "0",
+  "msg": "ok",
+  "info": {
+    "ymalRankListInfo": null,
+    "firstScreenRankInfo": {
+      "id": 390,
+      "pageId": "GOODS",
+      "ruleId": 45,
+      "content": [
+        {
+          "beFilteredReason": null,
+          "comKey": "RANK_LIST_RCMD",
+          "branchValue": "",
+          "positionCode": "GOODS-2",
+          "comId": "1151",
+          "floor": 1,
+          "hideComp": 0,
+          "recoveryType": "HIDDEN",
+          "content": {
+            "id": "4vakxtfo9zz",
+            "props": {
+              "style": {
+                "type": "RANK_LIST_RCMD"
+              },
+              "items": [
+                {
+                  "id": "52",
+                  "entryId": "51",
+                  "rank_of_goods": {
+                    "num": null,
+                    "list": [
+                      {
+                        "productSelectUrlId": "1766035",
+                        "imageList": [
+                          "//img.ltwebstatic.com/images3_pi/2024/10/19/62/1729267278da9deb187f181f3e9a67f2755d88ecf9_thumbnail_220x293.webp",
+                          "//img.ltwebstatic.com/images3_pi/2024/09/11/e8/17260489042cef61e36d4836a18e518eb0cd5008b3_thumbnail_220x293.webp",
+                          "//img.ltwebstatic.com/v4/j/pi/2025/05/20/24/1747704445f40a230e364a8e471296059d5c27ceb6_thumbnail_220x293.webp"
+                        ],
+                        "scoreStr": "No.1",
+                        "carrierCombineRuleList": [
+                          "GOODS_ATTRIBUTE",
+                          "GOODS_CATEGORY_MALL"
+                        ],
+                        "rankingTypeText": "Bestseller",
+                        "composeIdText": "in 10 Piece Set Women Thongs",
+                        "composeId": "676395",
+                        "mobileIdentifier": "15",
+                        "score": 1,
+                        "url": "/sales/ranking_list?data=%7B%22content_carrier_id%22%3A%221766035%22%2C%22src_identifier%22%3A%22ri%3D15%60rn%3DBestseller%60ps%3D-%60jc%3D1766035%60cate_id%3D4297%60goods_rank%3D1%60rank_strategy%3D5077%22%2C%22ranking_from%22%3A%22recommend%22%2C%22src_module%22%3A%22recommend%22%2C%22page_from%22%3A%22detail%22%2C%22carrier_sub_type%22%3A%2215%22%2C%22goods_id%22%3A%22311110882%22%2C%22allow_strong_hint%22%3A%221%22%2C%22board_generate_type%22%3A%22GOODS_ATTRIBUTE%60GOODS_CATEGORY_MALL%22%7D",
+                        "sourceId": null,
+                        "contentCarrierId": "1766035",
+                        "carrierTempId": null,
+                        "src_identifier": [
+                          "ri=15",
+                          "rn=Bestseller",
+                          "ps=-",
+                          "jc=1766035",
+                          "cate_id=4297",
+                          "goods_rank=1",
+                          "rank_strategy=5077"
+                        ],
+                        "rankingBannerText": "No.1 Bestseller",
+                        "board_generate_type": "GOODS_ATTRIBUTE`GOODS_CATEGORY_MALL",
+                        "rank_strategy": "5077"
+                      }
+                    ],
+                    "fault": null
+                  },
+                  "rule_id": null,
+                  "ada": null
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "rankRecProductInfos": null
+  }
+}

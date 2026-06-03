@@ -74,18 +74,16 @@ export const getUserDirsByName = async (username: string): Promise<UserDirs | nu
 };
 
 /**
- * Resolve brand name cho 1 (user, profile). Logic:
+ * Resolve brand name cho 1 (user, profile). CHỈ theo brand của user (đã bỏ global):
  *   1. user.brandProfilesOverride.profiles[profile] nếu có
  *   2. user.brandProfilesOverride.default nếu có
- *   3. global brand-profiles.json profiles[profile]
- *   4. global brand-profiles.json default
+ *   3. "" (không brand)
  */
 export const resolveBrandForUser = async (
   username: string | undefined | null,
   profileName: string
 ): Promise<string> => {
-  const { resolveBrand } = await import("../config/appConfig");
-  if (!username) return resolveBrand(profileName);
+  if (!username) return "";
   const cfg = await loadAdminConfig();
   const u = cfg.users.find((x) => x.username === username);
   const override = u?.brandProfilesOverride;
@@ -93,7 +91,7 @@ export const resolveBrandForUser = async (
     if (override.profiles && override.profiles[profileName]) return override.profiles[profileName];
     if (override.default) return override.default;
   }
-  return resolveBrand(profileName);
+  return "";
 };
 
 /**

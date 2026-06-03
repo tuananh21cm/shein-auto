@@ -21,7 +21,8 @@
     "fs-extra": "^11.3.3",
     "node-cron": "^3.0.3",
     "node-html-to-image": "^5.0.0",
-    "playwright-core": "^1.55.1"
+    "playwright-core": "^1.55.1",
+    "sharp": "^0.34.5"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",

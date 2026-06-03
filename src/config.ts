@@ -18,6 +18,8 @@ export const config = {
   cookieFile: path.join(__dirname, "cookies", "listing4sellerCookie.json"),
   telegramBotToken: process.env.TELEGRAM_BOT_TOKEN ?? "",
   telegramChatId: process.env.TELEGRAM_CHAT_ID ?? "",
+  /** RapidAPI key dùng chung cho 2 API SHEIN (shein-data-api + shein-online-data). */
+  rapidApiKey: process.env.RAPIDAPI_KEY ?? "",
 };
 
 if (!config.geminiApiKey) {

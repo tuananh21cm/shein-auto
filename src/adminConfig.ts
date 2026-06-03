@@ -21,7 +21,7 @@ export interface AdminUser {
   shipFeeOverride?: number | null;
   multiplierOverride?: number | null;
   extraAddOverride?: number | null;
-  /** Override brand mapping cho user này. null = inherit global brand-profiles.json */
+  /** Brand mapping của user này (đã bỏ global). null/rỗng = không brand. */
   brandProfilesOverride?: { default?: string; profiles?: Record<string, string> } | null;
 }
 

@@ -50,6 +50,11 @@ import { crawlStoreViaKiki } from "./core/crawlStoreViaKiki";
 import { kiki } from "./services/kiki/client";
 import { readKikiConfig, saveKikiProfiles } from "./services/kiki/config";
 import { scoreWin } from "./core/winScore";
+import { runDailyResearch } from "./core/research/dailyResearch";
+import { enrichCandidates } from "./core/research/enrichCandidates";
+import { validateCandidates } from "./core/research/validateCandidates";
+import { generateResearchBriefing } from "./services/gemini/researchInsights";
+import { researchStore, today as researchToday } from "./state/researchStore";
 
 const adminSessionSecret = process.env.ADMIN_SESSION_SECRET || "shein-auto-secret";
 
@@ -1422,6 +1427,163 @@ export const startAdminServer = async () => {
       res.json(result);
     } catch (err: any) {
       res.status(500).json({ error: err?.message ?? "Lỗi tìm shop tương tự" });
+    }
+  });
+
+  // ── Win Research (P1): candidate hằng ngày + duyệt 1-click → queue ──
+  let researchRunning = false;
+
+  // Các ngày đã có snapshot research
+  app.get("/admin/api/research/days", (_req, res) => {
+    try {
+      res.json({ days: researchStore.listDays(), today: researchToday() });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? "Lỗi đọc days" });
+    }
+  });
+
+  // Nhiệt ngách của 1 ngày
+  app.get("/admin/api/research/niches", (req, res) => {
+    try {
+      const day = ((req.query.day as string) || researchStore.listDays()[0] || researchToday()).trim();
+      res.json({ day, niches: researchStore.listNiches(day) });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? "Lỗi đọc niches" });
+    }
+  });
+
+  // Danh sách candidate (mặc định ngày mới nhất, status=new)
+  app.get("/admin/api/research/candidates", (req, res) => {
+    try {
+      const day = ((req.query.day as string) || researchStore.listDays()[0] || researchToday()).trim();
+      const status = (req.query.status as any) || undefined;
+      const limit = Math.min(200, Number(req.query.limit ?? 100));
+      const offset = Number(req.query.offset ?? 0);
+      const { items, total } = researchStore.listCandidates({ day, status, limit, offset });
+      res.json({ day, total, candidates: items });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? "Lỗi đọc candidates" });
+    }
+  });
+
+  // Chạy 1 vòng research (async — trả ngay, tiến độ qua live log SSE)
+  app.post("/admin/api/research/run", (req, res) => {
+    const sessionUser = (req.session as any).user as SessionUser;
+    if (sessionUser.role === "viewer") return res.status(403).json({ error: "Viewer không được chạy research" });
+    if (researchRunning) return res.status(409).json({ error: "Research đang chạy, chờ xong đã" });
+    researchRunning = true;
+    res.json({ ok: true, started: true });
+    runDailyResearch({ onLog: (m) => console.log("[research]", m) })
+      .catch((e) => console.error("[research] lỗi:", e?.message ?? e))
+      .finally(() => { researchRunning = false; });
+  });
+
+  // AI briefing (Gemini) cho ngày — phân tích + ghi ai_reason cho candidate (async)
+  let aiRunning = false;
+  app.post("/admin/api/research/ai", (req, res) => {
+    const sessionUser = (req.session as any).user as SessionUser;
+    if (sessionUser.role === "viewer") return res.status(403).json({ error: "Viewer không được" });
+    if (aiRunning) return res.status(409).json({ error: "AI đang chạy, chờ xong đã" });
+    const day = ((req.body?.day as string) || "").trim() || undefined;
+    aiRunning = true;
+    res.json({ ok: true, started: true });
+    generateResearchBriefing({ day, onLog: (m) => console.log("[research-ai]", m) })
+      .catch((e) => console.error("[research-ai] lỗi:", e?.message ?? e))
+      .finally(() => { aiRunning = false; });
+  });
+
+  app.get("/admin/api/research/briefing", (req, res) => {
+    try {
+      const day = ((req.query.day as string) || researchStore.listDays()[0] || researchToday()).trim();
+      res.json({ day, briefing: researchStore.getBriefing(day) });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? "Lỗi đọc briefing" });
+    }
+  });
+
+  // Deep Validation Gate: mở detail Kiki → sold/rank + local + true-to-size + verdict (async)
+  let validateRunning = false;
+  app.post("/admin/api/research/validate", (req, res) => {
+    const sessionUser = (req.session as any).user as SessionUser;
+    if (sessionUser.role === "viewer") return res.status(403).json({ error: "Viewer không được" });
+    if (validateRunning) return res.status(409).json({ error: "Validate đang chạy, chờ xong đã" });
+    const profileId = ((req.body?.profileId as string) || "").trim();
+    if (!profileId) return res.status(400).json({ error: "Thiếu Kiki profileId" });
+    const day = ((req.body?.day as string) || "").trim() || undefined;
+    const limit = Math.min(40, Number(req.body?.limit ?? 20));
+    validateRunning = true;
+    res.json({ ok: true, started: true, limit });
+    validateCandidates({ profileId, day, limit, onLog: (m) => console.log("[validate]", m) })
+      .catch((e) => console.error("[validate] lỗi:", e?.message ?? e))
+      .finally(() => { validateRunning = false; });
+  });
+
+  // Làm giàu sold thật + rank cho top candidate bằng Kiki (async)
+  let enrichRunning = false;
+  app.post("/admin/api/research/enrich", (req, res) => {
+    const sessionUser = (req.session as any).user as SessionUser;
+    if (sessionUser.role === "viewer") return res.status(403).json({ error: "Viewer không được" });
+    if (enrichRunning) return res.status(409).json({ error: "Enrich đang chạy, chờ xong đã" });
+    const profileId = ((req.body?.profileId as string) || "").trim();
+    if (!profileId) return res.status(400).json({ error: "Thiếu Kiki profileId" });
+    const day = ((req.body?.day as string) || "").trim() || undefined;
+    const limit = Math.min(40, Number(req.body?.limit ?? 20));
+    enrichRunning = true;
+    res.json({ ok: true, started: true, limit });
+    enrichCandidates({ profileId, day, limit, onLog: (m) => console.log("[enrich]", m) })
+      .catch((e) => console.error("[enrich] lỗi:", e?.message ?? e))
+      .finally(() => { enrichRunning = false; });
+  });
+
+  // Bỏ qua 1 candidate
+  app.post("/admin/api/research/candidates/:id/dismiss", (req, res) => {
+    const sessionUser = (req.session as any).user as SessionUser;
+    if (sessionUser.role === "viewer") return res.status(403).json({ error: "Viewer không được" });
+    const c = researchStore.updateCandidate(req.params.id, { status: "dismissed" });
+    if (!c) return res.status(404).json({ error: "Không tìm thấy candidate" });
+    res.json({ ok: true, candidate: c });
+  });
+
+  // Duyệt 1-click: cào sp bằng Kiki → đẩy vào shop → status=queued
+  app.post("/admin/api/research/candidates/:id/queue", async (req, res) => {
+    try {
+      const sessionUser = (req.session as any).user as SessionUser;
+      if (sessionUser.role === "viewer") return res.status(403).json({ error: "Viewer không được đăng" });
+
+      const cand = researchStore.findCandidate(req.params.id);
+      if (!cand) return res.status(404).json({ error: "Không tìm thấy candidate" });
+      if (!cand.url) return res.status(400).json({ error: "Candidate thiếu URL sản phẩm" });
+
+      const body = req.body as { shop?: string; profileId?: string; options?: { divide4?: boolean; maxColors?: number } };
+      const shop = (body.shop ?? "").trim();
+      const profileId = (body.profileId ?? "").trim();
+      if (!shop) return res.status(400).json({ error: "Phải chọn shop đích" });
+      if (!profileId) return res.status(400).json({ error: "Thiếu Kiki profileId" });
+
+      const { getUserDirsByName } = await import("./state/userDirs");
+      const dirs = await getUserDirsByName(sessionUser.username);
+      if (!dirs?.baseSheinAutoDir) return res.status(400).json({ error: "User chưa cấu hình baseSheinAutoDir" });
+
+      // Validate shop thuộc quyền user
+      const adminCfg = await loadAdminConfig();
+      const fullUser = adminCfg.users.find((u) => u.username === sessionUser.username);
+      if ((fullUser?.profiles ?? []).length > 0 && !fullUser!.profiles.includes(shop)) {
+        return res.status(403).json({ error: `Không có quyền shop: ${shop}` });
+      }
+
+      const logs: string[] = [];
+      const data = await scrapeViaKiki({
+        url: cand.url,
+        profileId,
+        options: body.options,
+        onLog: (m) => { logs.push(m); console.log("[research:queue]", m); },
+      });
+      const written = await dispatchScrapedData(dirs.baseSheinAutoDir, data, [shop]);
+      const updated = researchStore.updateCandidate(cand.id, { status: "queued", targetShop: shop });
+      refreshQueueSnapshot().catch(() => {});
+      res.json({ ok: true, candidate: updated, queued: written, product_name: data.product_name, logs });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? "Lỗi đẩy candidate vào queue" });
     }
   });
 

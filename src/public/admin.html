@@ -207,6 +207,9 @@
     <div class="nav-item" data-view="stats">
       <span class="ico">📊</span><span>4Seller Stats</span>
     </div>
+    <div class="nav-item" data-view="research">
+      <span class="ico">🧠</span><span>Research Win</span>
+    </div>
     <div class="nav-item" data-view="winhunt">
       <span class="ico">🔥</span><span>Săn Win SHEIN</span>
     </div>
@@ -346,6 +349,63 @@
       <div class="card" style="margin-top: 18px;">
         <h3>Per-shop counts</h3>
         <div id="statsShopsWrap"><div class="empty">Đang tải…</div></div>
+      </div>
+    </section>
+
+    <!-- ───── RESEARCH WIN (P1) ───── -->
+    <section class="view" id="view-research">
+      <div class="page-head">
+        <div>
+          <h1>🧠 Research Win</h1>
+          <div class="subtitle">Candidate hằng ngày từ SHEIN US — chấm opportunityScore (win + nhiệt ngách + biên giá). Duyệt 1-click → cào Kiki → đẩy vào queue đăng.</div>
+        </div>
+        <span id="researchRunBadge" class="badge badge-warn" style="display:none;">⏳ đang chạy…</span>
+      </div>
+
+      <div class="card" style="margin-bottom:14px;">
+        <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end;">
+          <button class="btn" onclick="runResearch()">🚀 Chạy research hôm nay</button>
+          <button class="btn btn-ghost" onclick="validateResearch()" title="Mở detail bằng Kiki: sold thật + rank + local/inter + true-to-size → verdict PASS/WATCH/REJECT">🔍 Validate (Kiki)</button>
+          <button class="btn btn-ghost" onclick="aiResearch()" title="Gemini phân tích: briefing + gợi ý ngách + lý do bán cho từng sp">🤖 AI phân tích</button>
+          <div>
+            <label style="display:block; font-size:0.8rem; color:var(--text-mute); margin-bottom:4px;">Ngày</label>
+            <select id="researchDay" onchange="loadCandidates()" style="padding:9px; border-radius:8px; border:1px solid var(--border); background:var(--bg-elev); color:var(--text);"></select>
+          </div>
+          <div>
+            <label style="display:block; font-size:0.8rem; color:var(--text-mute); margin-bottom:4px;">Trạng thái</label>
+            <select id="researchStatus" onchange="loadCandidates()" style="padding:9px; border-radius:8px; border:1px solid var(--border); background:var(--bg-elev); color:var(--text);">
+              <option value="new">Mới</option>
+              <option value="queued">Đã đẩy queue</option>
+              <option value="dismissed">Đã bỏ</option>
+              <option value="">Tất cả</option>
+            </select>
+          </div>
+          <div>
+            <label style="display:block; font-size:0.8rem; color:var(--text-mute); margin-bottom:4px;">Verdict</label>
+            <select id="researchVerdict" onchange="loadCandidates()" style="padding:9px; border-radius:8px; border:1px solid var(--border); background:var(--bg-elev); color:var(--text);">
+              <option value="">Tất cả</option>
+              <option value="PASS">✅ PASS</option>
+              <option value="WATCH">🟡 WATCH</option>
+              <option value="REJECT">❌ REJECT</option>
+              <option value="none">Chưa validate</option>
+            </select>
+          </div>
+          <div style="flex:1; min-width:160px;">
+            <label style="display:block; font-size:0.8rem; color:var(--text-mute); margin-bottom:4px;">Kiki profile (để duyệt)</label>
+            <select id="researchProfile" style="width:100%; padding:9px; border-radius:8px; border:1px solid var(--border); background:var(--bg-elev); color:var(--text);"></select>
+          </div>
+          <div style="flex:1; min-width:140px;">
+            <label style="display:block; font-size:0.8rem; color:var(--text-mute); margin-bottom:4px;">Shop đích</label>
+            <select id="researchShop" style="width:100%; padding:9px; border-radius:8px; border:1px solid var(--border); background:var(--bg-elev); color:var(--text);"></select>
+          </div>
+        </div>
+        <div id="researchNiches" style="margin-top:12px; display:flex; gap:6px; flex-wrap:wrap;"></div>
+      </div>
+
+      <div id="researchBriefing" style="display:none;" class="card"></div>
+      <div id="researchMeta" style="color:var(--text-mute); margin-bottom:10px; font-size:0.88rem;"></div>
+      <div id="researchGrid" class="grid" style="grid-template-columns:repeat(auto-fill,minmax(230px,1fr)); gap:14px;">
+        <div class="empty">Chưa có candidate — bấm "Chạy research hôm nay".</div>
       </div>
     </section>
 
@@ -606,6 +666,7 @@ const state = {
   config: { users: [], settings: { adminPort: 3000 } },
   history: { items: [], total: 0 },
   settings: null,
+  research: { loaded: false, profiles: [], shops: [], day: null, candidates: [] },
 };
 const $ = (sel) => document.querySelector(sel);
 const escapeHtml = (v) => String(v ?? "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;");
@@ -671,6 +732,7 @@ document.querySelectorAll(".nav-item").forEach((item) => {
     if (view === "history") loadHistory();
     if (view === "listings") loadShopsOrListings();
     if (view === "stats") loadStats();
+    if (view === "research") initResearch();
     if (view === "winhunt") initWinHunt();
     if (view === "similar") { /* chờ user nhập */ }
     if (view === "kiki") initKiki();
@@ -1804,6 +1866,229 @@ function renderSimilar(d) {
 
 // ─── Kiki Scrape ──────────────────────────────────────
 state.kiki = { profiles: [], shops: [], loaded: false };
+
+// ─── Research Win (P1) ────────────────────────────────
+async function initResearch() {
+  if (!state.research.loaded) {
+    state.research.loaded = true;
+    // Load Kiki profiles + shops dùng chung cho duyệt
+    try {
+      const d = await (await fetch("/admin/api/kiki/profiles")).json();
+      state.research.profiles = d.profiles || [];
+    } catch {}
+    try {
+      const d = await (await fetch("/admin/api/listings/shops")).json();
+      state.research.shops = (d.shops || []).map((s) => s.folder);
+    } catch {}
+    $("#researchProfile").innerHTML = state.research.profiles.length
+      ? state.research.profiles.map((p) => `<option value="${escapeHtml(p.id)}">${escapeHtml(p.name)}</option>`).join('')
+      : '<option value="">(chưa có Kiki profile)</option>';
+    $("#researchShop").innerHTML = state.research.shops.length
+      ? state.research.shops.map((f) => `<option value="${escapeHtml(f)}">${escapeHtml(f)}</option>`).join('')
+      : '<option value="">(chưa có shop)</option>';
+  }
+  await loadResearchDays();
+  await loadCandidates();
+}
+
+async function loadResearchDays() {
+  try {
+    const d = await (await fetch("/admin/api/research/days")).json();
+    const days = d.days && d.days.length ? d.days : [d.today];
+    const sel = $("#researchDay");
+    const cur = sel.value;
+    sel.innerHTML = days.map((x) => `<option value="${x}">${x}</option>`).join('');
+    if (cur && days.includes(cur)) sel.value = cur;
+  } catch {}
+}
+
+async function loadCandidates() {
+  const day = $("#researchDay").value;
+  const status = $("#researchStatus").value;
+  const grid = $("#researchGrid");
+  grid.innerHTML = '<div class="empty">⏳ Đang tải…</div>';
+  try {
+    const q = new URLSearchParams({ day: day || "", status: status || "" });
+    const d = await (await fetch("/admin/api/research/candidates?" + q)).json();
+    if (!d.candidates) throw new Error(d.error || "lỗi");
+    state.research.candidates = d.candidates;
+    const verdict = $("#researchVerdict").value;
+    let items = d.candidates;
+    if (verdict === 'none') items = items.filter((c) => !c.verdict);
+    else if (verdict) items = items.filter((c) => c.verdict === verdict);
+    const vc = d.candidates.reduce((a, c) => { const k = c.verdict || 'none'; a[k] = (a[k] || 0) + 1; return a; }, {});
+    $("#researchMeta").innerHTML = `${d.day} · ${d.total} candidate · `
+      + `<span style="color:#16a34a">✅${vc.PASS || 0}</span> `
+      + `<span style="color:#d97706">🟡${vc.WATCH || 0}</span> `
+      + `<span style="color:#dc2626">❌${vc.REJECT || 0}</span> `
+      + `<span style="color:var(--text-mute)">◌${vc.none || 0} chưa validate</span>`;
+    renderCandidates(items);
+    // nhiệt ngách
+    const nd = await (await fetch("/admin/api/research/niches?day=" + encodeURIComponent(day || ""))).json();
+    renderNiches(nd.niches || []);
+    loadBriefing(d.day);
+  } catch (err) {
+    grid.innerHTML = `<div class="empty" style="color:var(--danger)">Lỗi: ${escapeHtml(err.message)}</div>`;
+  }
+}
+
+function renderNiches(niches) {
+  const wrap = $("#researchNiches");
+  if (!niches.length) { wrap.innerHTML = ''; return; }
+  wrap.innerHTML = niches.slice(0, 12).map((n) => {
+    const c = n.heatScore >= 80 ? 'var(--danger)' : n.heatScore >= 60 ? 'var(--accent)' : 'var(--text-mute)';
+    return `<span class="badge" style="border:1px solid ${c}; color:${c};" title="supply ${n.supplyCount} · hot ${n.hotShare}% · median $${n.medianPrice ?? '-'}">${escapeHtml(n.nicheKey)} 🔥${n.heatScore}</span>`;
+  }).join('');
+}
+
+function renderCandidates(items) {
+  const grid = $("#researchGrid");
+  if (!items.length) { grid.innerHTML = '<div class="empty">Không có candidate.</div>'; return; }
+  grid.innerHTML = items.map((c) => {
+    const tierColor = c.winTier === 'hot' ? 'var(--danger)' : c.winTier === 'good' ? 'var(--accent)' : 'var(--text-mute)';
+    const sold = c.soldText ? `· <b style="color:var(--accent)">sold ${escapeHtml(c.soldText)}</b>` : (c.soldNum != null ? `· sold ${c.soldNum}` : '');
+    const rankBadge = c.rankText ? `<span class="badge" style="position:absolute; bottom:6px; left:6px; background:var(--accent); color:#fff; font-size:0.62rem; max-width:90%;">🏆 ${escapeHtml(c.rankText.slice(0,30))}</span>` : '';
+    const vColor = c.verdict === 'PASS' ? '#16a34a' : c.verdict === 'WATCH' ? '#d97706' : c.verdict === 'REJECT' ? '#dc2626' : '';
+    const verdictChip = c.verdict ? `<span class="badge" style="position:absolute; bottom:6px; right:6px; background:${vColor}; color:#fff; font-weight:700;">${c.verdict}${c.validationScore!=null?' '+c.validationScore:''}</span>` : '';
+    const valBadges = (c.badges && c.badges.length)
+      ? `<div style="display:flex; gap:3px; flex-wrap:wrap;">${c.badges.map((b)=>`<span class="badge" style="padding:1px 5px; font-size:0.64rem;">${escapeHtml(b)}</span>`).join('')}</div>` : '';
+    const valReasons = (c.validation && c.validation.reasons && c.validation.reasons.length)
+      ? `<div style="font-size:0.66rem; color:${vColor||'var(--text-mute)'};">${escapeHtml(c.validation.reasons.join(' · '))}</div>` : '';
+    let actions;
+    if (c.status === 'new') {
+      if (c.verdict === 'REJECT') {
+        actions = `<button class="btn btn-ghost" style="flex:1; padding:7px; opacity:.55;" disabled title="${escapeHtml((c.validation&&c.validation.reasons||[]).join('; '))}">❌ REJECT</button>
+           <button class="btn btn-ghost" style="padding:7px 10px;" onclick="dismissCandidate('${escapeHtml(c.id)}', this)">✕</button>`;
+      } else {
+        const lbl = c.verdict === 'WATCH' ? '⚠️ Đăng' : '✅ Đăng';
+        actions = `<button class="btn" style="flex:1; padding:7px;${c.verdict==='WATCH'?'background:#d97706;border-color:#d97706;':''}" onclick="queueCandidate('${escapeHtml(c.id)}', this)">${lbl}</button>
+           <button class="btn btn-ghost" style="padding:7px 10px;" onclick="dismissCandidate('${escapeHtml(c.id)}', this)">✕</button>`;
+      }
+    } else {
+      actions = `<span class="badge ${c.status==='queued'?'badge-success':''}" style="flex:1; text-align:center;">${c.status==='queued'?'✅ đã đẩy '+escapeHtml(c.targetShop||''):escapeHtml(c.status)}</span>`;
+    }
+    return `<div class="card" style="padding:0; overflow:hidden; display:flex; flex-direction:column;${vColor?`border:1px solid ${vColor};`:''}">
+      <div style="position:relative;">
+        <a href="${escapeHtml(c.url)}" target="_blank"><img src="${escapeHtml(c.image)}" loading="lazy" style="width:100%; aspect-ratio:3/4; object-fit:cover; background:var(--bg-elev);"></a>
+        <span class="badge" style="position:absolute; top:6px; left:6px; background:rgba(0,0,0,.7); color:#fff; font-weight:700;">⭐ ${c.opportunityScore}</span>
+        <span class="badge" style="position:absolute; top:6px; right:6px; background:${tierColor}; color:#fff;">${escapeHtml(c.winTier)}</span>
+        ${rankBadge}
+        ${verdictChip}
+      </div>
+      <div style="padding:10px; display:flex; flex-direction:column; gap:6px; flex:1;">
+        <div style="font-size:0.8rem; line-height:1.3; height:2.6em; overflow:hidden;">${escapeHtml((c.name||'').slice(0,80))}</div>
+        <div style="font-size:0.78rem; color:var(--text-mute);">
+          <b style="color:var(--text);">$${c.finalPrice ?? '-'}</b> bán · win ${c.winScore} · ${c.commentNum} rv ${sold}
+        </div>
+        <div style="font-size:0.72rem; color:var(--text-mute);">${escapeHtml(c.nicheKey)}</div>
+        ${valBadges}
+        ${valReasons}
+        <div style="font-size:0.7rem; color:${c.aiReason ? 'var(--text)' : 'var(--text-mute)'}; line-height:1.3; min-height:2.4em;">${c.aiReason ? '🤖 ' : ''}${escapeHtml(c.aiReason || c.reason)}</div>
+        <div style="display:flex; gap:6px; margin-top:auto;">${actions}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function runResearch() {
+  if (!confirm("Chạy 1 vòng research (quét ~15 ngách qua RapidAPI, ~1-2 phút)?\nTiến độ xem ở Dashboard live log.")) return;
+  try {
+    const res = await fetch("/admin/api/research/run", { method: "POST" });
+    const d = await res.json();
+    if (!res.ok) throw new Error(d.error);
+    $("#researchRunBadge").style.display = '';
+    toast("Đã bắt đầu research — xem live log ở Dashboard. Tự refresh sau ~2 phút.", "success");
+    setTimeout(async () => {
+      $("#researchRunBadge").style.display = 'none';
+      await loadResearchDays();
+      await loadCandidates();
+    }, 120000);
+  } catch (err) { toast("Lỗi: " + err.message, "error"); }
+}
+
+async function loadBriefing(day) {
+  const box = $("#researchBriefing");
+  try {
+    const d = await (await fetch("/admin/api/research/briefing?day=" + encodeURIComponent(day || ""))).json();
+    const b = d.briefing;
+    if (!b || !b.briefing) { box.style.display = 'none'; return; }
+    const sugg = (b.suggestions || []).map((s) =>
+      `<span class="badge" style="border:1px solid var(--accent); color:var(--accent); cursor:help;" title="${escapeHtml(s.why)} (query: ${escapeHtml(s.query)})">+ ${escapeHtml(s.key)}</span>`
+    ).join(' ');
+    box.style.display = '';
+    box.innerHTML = `<div style="display:flex; gap:8px; align-items:center; margin-bottom:6px;"><b>🤖 AI briefing</b><span style="color:var(--text-mute); font-size:0.75rem;">${b.day}</span></div>
+      <div style="font-size:0.88rem; line-height:1.5; white-space:pre-wrap;">${escapeHtml(b.briefing)}</div>
+      ${sugg ? `<div style="margin-top:10px;"><span style="color:var(--text-mute); font-size:0.78rem;">Ngách nên thử thêm:</span><br>${sugg}</div>` : ''}`;
+  } catch { box.style.display = 'none'; }
+}
+
+async function aiResearch() {
+  if (!confirm("Gọi Gemini phân tích danh sách hôm nay (1 lượt, ~5-15s)?")) return;
+  try {
+    const res = await fetch("/admin/api/research/ai", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ day: $("#researchDay").value }),
+    });
+    const d = await res.json();
+    if (!res.ok) throw new Error(d.error);
+    toast("AI đang phân tích — tự refresh sau ~15s.", "success");
+    setTimeout(loadCandidates, 15000);
+  } catch (err) { toast("Lỗi: " + err.message, "error"); }
+}
+
+async function validateResearch() {
+  const profileId = $("#researchProfile").value;
+  if (!profileId) { toast("Chọn Kiki profile trước", "error"); return; }
+  if (!confirm("Kiểm định sâu top 20 candidate bằng Kiki?\nMở detail từng sp lấy sold + local/inter + true-to-size → verdict.\nMỗi sp ~15-25s (cần Kiki online). Tiến độ ở Dashboard live log.")) return;
+  try {
+    const res = await fetch("/admin/api/research/validate", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ profileId, day: $("#researchDay").value, limit: 20 }),
+    });
+    const d = await res.json();
+    if (!res.ok) throw new Error(d.error);
+    $("#researchRunBadge").textContent = "🔍 đang kiểm định…";
+    $("#researchRunBadge").style.display = '';
+    toast("Đã bắt đầu validate — xem live log. Danh sách tự refresh.", "success");
+    let ticks = 0;
+    const iv = setInterval(async () => {
+      ticks++;
+      await loadCandidates();
+      if (ticks >= 24) { clearInterval(iv); $("#researchRunBadge").style.display = 'none'; }
+    }, 25000);
+  } catch (err) { toast("Lỗi: " + err.message, "error"); }
+}
+
+async function queueCandidate(id, btn) {
+  const profileId = $("#researchProfile").value;
+  const shop = $("#researchShop").value;
+  if (!profileId) { toast("Chọn Kiki profile trước", "error"); return; }
+  if (!shop) { toast("Chọn shop đích trước", "error"); return; }
+  btn.disabled = true; btn.textContent = "⏳ đang cào…";
+  try {
+    const res = await fetch(`/admin/api/research/candidates/${encodeURIComponent(id)}/queue`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ shop, profileId }),
+    });
+    const d = await res.json();
+    if (!res.ok) throw new Error(d.error);
+    toast(`✅ Đã đẩy "${(d.product_name||'').slice(0,30)}" vào ${shop}`, "success");
+    await loadCandidates();
+  } catch (err) {
+    toast("Lỗi đăng: " + err.message, "error");
+    btn.disabled = false; btn.textContent = "✅ Đăng";
+  }
+}
+
+async function dismissCandidate(id, btn) {
+  btn.disabled = true;
+  try {
+    const res = await fetch(`/admin/api/research/candidates/${encodeURIComponent(id)}/dismiss`, { method: "POST" });
+    const d = await res.json();
+    if (!res.ok) throw new Error(d.error);
+    await loadCandidates();
+  } catch (err) { toast("Lỗi: " + err.message, "error"); btn.disabled = false; }
+}
 
 async function initKiki() {
   if (state.kiki.loaded) return;

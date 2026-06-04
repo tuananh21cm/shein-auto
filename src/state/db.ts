@@ -77,6 +77,126 @@ const MIGRATIONS: ((db: Database.Database) => void)[] = [
   (db) => {
     db.exec(`ALTER TABLE users ADD COLUMN brand_profiles_override TEXT;`);
   },
+  // v5: Signal Store cho Win Intelligence Engine (research P1).
+  //   research_product  — snapshot 1 sp đã chấm điểm theo ngày (dedup theo day+goodsId)
+  //   research_niche    — rollup theo ngách theo ngày (heat, supply, avgWin)
+  //   research_candidate— danh sách candidate chọn để đăng, status duyệt 1-click
+  (db) => {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS research_product (
+        day TEXT NOT NULL,                -- YYYY-MM-DD (UTC) snapshot
+        goods_id TEXT NOT NULL,
+        niche_key TEXT NOT NULL,
+        niche_group TEXT NOT NULL DEFAULT '',
+        name TEXT NOT NULL DEFAULT '',
+        image TEXT NOT NULL DEFAULT '',
+        url TEXT NOT NULL DEFAULT '',
+        store_code TEXT,
+        price REAL,
+        retail_price REAL,
+        discount_pct REAL,
+        final_price REAL,                 -- giá bán dự kiến (công thức pricing.json)
+        comment_num INTEGER NOT NULL DEFAULT 0,
+        rating REAL,
+        sold_num INTEGER,                 -- sold thật nếu đã làm giàu qua Kiki (NULL = chưa)
+        win_score REAL NOT NULL DEFAULT 0,
+        win_tier TEXT NOT NULL DEFAULT 'weak',
+        margin_score REAL NOT NULL DEFAULT 0,
+        opportunity_score REAL NOT NULL DEFAULT 0,
+        source TEXT NOT NULL DEFAULT '',
+        captured_at INTEGER NOT NULL,
+        PRIMARY KEY (day, goods_id, niche_key)
+      );
+      CREATE INDEX IF NOT EXISTS idx_rp_day_opp ON research_product(day, opportunity_score DESC);
+      CREATE INDEX IF NOT EXISTS idx_rp_niche ON research_product(niche_key, day);
+
+      CREATE TABLE IF NOT EXISTS research_niche (
+        day TEXT NOT NULL,
+        niche_key TEXT NOT NULL,
+        niche_group TEXT NOT NULL DEFAULT '',
+        query TEXT NOT NULL DEFAULT '',
+        supply_count INTEGER NOT NULL DEFAULT 0,
+        avg_top_win REAL NOT NULL DEFAULT 0,
+        hot_share REAL NOT NULL DEFAULT 0,    -- % sp tier hot/good
+        median_price REAL,
+        margin_band REAL NOT NULL DEFAULT 0,
+        heat_score REAL NOT NULL DEFAULT 0,   -- 0-100 nhiệt ngách
+        captured_at INTEGER NOT NULL,
+        PRIMARY KEY (day, niche_key)
+      );
+      CREATE INDEX IF NOT EXISTS idx_rn_day_heat ON research_niche(day, heat_score DESC);
+
+      CREATE TABLE IF NOT EXISTS research_candidate (
+        id TEXT PRIMARY KEY,              -- day:goodsId
+        day TEXT NOT NULL,
+        goods_id TEXT NOT NULL,
+        niche_key TEXT NOT NULL,
+        niche_group TEXT NOT NULL DEFAULT '',
+        name TEXT NOT NULL DEFAULT '',
+        image TEXT NOT NULL DEFAULT '',
+        url TEXT NOT NULL DEFAULT '',
+        store_code TEXT,
+        price REAL,
+        final_price REAL,
+        comment_num INTEGER NOT NULL DEFAULT 0,
+        rating REAL,
+        sold_num INTEGER,
+        win_score REAL NOT NULL DEFAULT 0,
+        win_tier TEXT NOT NULL DEFAULT 'weak',
+        opportunity_score REAL NOT NULL DEFAULT 0,
+        reason TEXT NOT NULL DEFAULT '',  -- lý do vì sao được chọn (rule-based; AI gắn ở P4)
+        status TEXT NOT NULL DEFAULT 'new', -- new | approved | queued | dismissed
+        target_shop TEXT,                -- shop đích khi approve (vd P5-022)
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_rc_day_status ON research_candidate(day, status);
+      CREATE INDEX IF NOT EXISTS idx_rc_status_opp ON research_candidate(status, opportunity_score DESC);
+    `);
+  },
+  // v6: Kiki enrichment (P2) — sold thật + rank Bestseller.
+  //   sold_text  : chuỗi gốc SHEIN ("6.6k+")
+  //   rank_text  : banner rank ("No.1 Bestseller in <ngách>") — best-effort
+  //   enriched_at: mốc đã làm giàu (NULL = chưa)
+  (db) => {
+    db.exec(`
+      ALTER TABLE research_product ADD COLUMN sold_text TEXT;
+      ALTER TABLE research_product ADD COLUMN rank_text TEXT;
+      ALTER TABLE research_product ADD COLUMN enriched_at INTEGER;
+      ALTER TABLE research_candidate ADD COLUMN sold_text TEXT;
+      ALTER TABLE research_candidate ADD COLUMN rank_text TEXT;
+      ALTER TABLE research_candidate ADD COLUMN enriched_at INTEGER;
+    `);
+  },
+  // v7: AI reasoning (P4 — Gemini). ai_reason per candidate + briefing/ngách gợi ý theo ngày.
+  (db) => {
+    db.exec(`
+      ALTER TABLE research_candidate ADD COLUMN ai_reason TEXT;
+
+      CREATE TABLE IF NOT EXISTS research_briefing (
+        day TEXT PRIMARY KEY,
+        briefing TEXT NOT NULL DEFAULT '',
+        suggestions TEXT NOT NULL DEFAULT '[]', -- JSON: [{key,query,why}]
+        created_at INTEGER NOT NULL
+      );
+    `);
+  },
+  // v8: Deep Validation Gate — kết quả kiểm định sâu detail (Kiki).
+  (db) => {
+    db.exec(`
+      ALTER TABLE research_candidate ADD COLUMN validation_score REAL;
+      ALTER TABLE research_candidate ADD COLUMN verdict TEXT;          -- PASS | WATCH | REJECT
+      ALTER TABLE research_candidate ADD COLUMN is_local INTEGER;       -- 1 local / 0 inter / NULL unknown
+      ALTER TABLE research_candidate ADD COLUMN ship_mode TEXT;         -- local | international | unknown
+      ALTER TABLE research_candidate ADD COLUMN ship_days INTEGER;      -- est business days min
+      ALTER TABLE research_candidate ADD COLUMN true_to_size REAL;      -- % (NULL = không lấy được)
+      ALTER TABLE research_candidate ADD COLUMN ugc_count INTEGER;
+      ALTER TABLE research_candidate ADD COLUMN ip_risk INTEGER;        -- 1 = nghi ngờ bản quyền
+      ALTER TABLE research_candidate ADD COLUMN validation_json TEXT;   -- breakdown đầy đủ
+      ALTER TABLE research_candidate ADD COLUMN validated_at INTEGER;
+      CREATE INDEX IF NOT EXISTS idx_rc_verdict ON research_candidate(day, verdict);
+    `);
+  },
 ];
 
 const runMigrations = (db: Database.Database): void => {

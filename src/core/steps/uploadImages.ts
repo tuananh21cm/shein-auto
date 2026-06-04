@@ -50,7 +50,8 @@ const applyRemake = async (localPath: string, seedKey: string): Promise<string> 
 export const uploadProductImages = async (
   page: any,
   imageUrls: string[],
-  remakeSeed?: string
+  remakeSeed?: string,
+  opts?: { insertAfterMainPath?: string | null }
 ): Promise<void> => {
   console.log("--- Bắt đầu quy trình Upload Ảnh (Bản an toàn đa luồng) ---");
 
@@ -71,6 +72,13 @@ export const uploadProductImages = async (
       })
     );
     console.log(`⬇️ [${uniqueId}] Download${workerConfig().imageRemake?.enabled ? "+remake" : ""} ${imageUrls.length} ảnh mất ${Math.round((Date.now() - t0) / 1000)}s`);
+
+    // Chèn ảnh GỘP Size Guide ngay sau ảnh main (index 1) — KHÔNG remake để chữ giữ sắc nét.
+    if (opts?.insertAfterMainPath && fs.existsSync(opts.insertAfterMainPath)) {
+      const at = Math.min(1, localFilePaths.length);
+      localFilePaths.splice(at, 0, opts.insertAfterMainPath);
+      console.log(`📐 [${uniqueId}] Chèn ảnh Size Guide vào gallery ở vị trí ${at} (sau ảnh main)`);
+    }
 
     const productUploadContainer = page.locator(".file_upload__index").first();
     const fileInput = productUploadContainer.locator("input.file_upload__input");

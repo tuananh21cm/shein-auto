@@ -407,19 +407,68 @@
                     .find((el) => /Size Guide|Größentabelle|Guide des tailles/i.test(el.innerText || el.textContent));
             if (sizeBtn) {
                 await forceClick(sizeBtn); await wait(1500);
-                const table = document.querySelector('.bsc-common-size-table__content_inner-table, table, [class*="size-table"]');
-                if (table) {
+
+                // Ép đơn vị về INCH. Toggle SHEIN: ul.bsc-size-unit-switch > li, active = .unit-active.
+                const ensureInch = async () => {
+                    const items = Array.from(document.querySelectorAll('.bsc-size-unit-switch li, .bsc-size-unit-switch [class*="unit"]'));
+                    const inch = items.find((el) => /^in(ch|ches)?$/i.test((el.innerText || el.textContent || '').trim()));
+                    if (inch && !inch.classList.contains('unit-active')) { await forceClick(inch); await wait(500); }
+                    return !!inch;
+                };
+                // Đọc bảng đang hiển thị → { headers, data }
+                const readSizeTable = () => {
+                    const table = document.querySelector('.bsc-common-size-table__content_inner-table, table, [class*="size-table"]');
+                    if (!table) return null;
                     const headers = Array.from(table.querySelectorAll('thead td, thead th')).map((td) => td.innerText.trim());
-                    data.size_chart = {
-                        unit: document.querySelector('.bsc-sys-switch__item.is-active')?.innerText.trim() || 'cm',
-                        data: Array.from(table.querySelectorAll('tbody tr')).map((row) => {
-                            const cells = Array.from(row.querySelectorAll('td'));
-                            const obj = {};
-                            headers.forEach((h, idx) => { if (h) obj[h] = cells[idx]?.innerText.trim(); });
-                            return obj;
-                        }),
-                    };
+                    const rows = Array.from(table.querySelectorAll('tbody tr')).map((row) => {
+                        const cells = Array.from(row.querySelectorAll('td'));
+                        const obj = {};
+                        headers.forEach((h, idx) => { if (h) obj[h] = cells[idx]?.innerText.trim(); });
+                        return obj;
+                    });
+                    return { headers, data: rows };
+                };
+
+                if (!(await ensureInch())) console.warn('[SHEIN-SCRAPER] Không thấy toggle IN/CM — gán unit=inch mặc định.');
+
+                // Nhiều mảnh (vd bikini: Pants / Bikini Tops). SHEIN chỉ render bảng tab đang
+                // active → phải click từng tab (.bsc-multi-part-tab > *, active = .part-active).
+                const tabWrap = document.querySelector('.bsc-multi-part-tab');
+                const tabs = tabWrap
+                    ? Array.from(tabWrap.children).filter((el) => (el.innerText || el.textContent || '').trim())
+                    : [];
+                const sections = [];
+                if (tabs.length > 1) {
+                    for (const tab of tabs) {
+                        const name = (tab.innerText || tab.textContent || '').trim();
+                        if (!tab.classList.contains('part-active')) {
+                            const prevHeader = document.querySelector('.bsc-common-size-table__content_inner-table thead')?.innerText.trim() ?? '';
+                            await forceClick(tab);
+                            await waitForChange('.bsc-common-size-table__content_inner-table thead', prevHeader, 2500);
+                            await ensureInch(); // đơn vị có thể reset khi đổi tab
+                        }
+                        const t = readSizeTable();
+                        if (t && t.data.length) sections.push({ name, headers: t.headers, data: t.data });
+                    }
+                } else {
+                    const t = readSizeTable();
+                    if (t && t.data.length) sections.push({ headers: t.headers, data: t.data });
                 }
+
+                if (sections.length) data.size_chart = { unit: 'inch', sections };
+
+                // Measure guide ("How to Measure"): mô tả cách đo + ảnh sơ đồ → đưa vào mô tả listing.
+                const mgItems = Array.from(document.querySelectorAll('.bsc-size-measure-guide__desc')).map((d) => {
+                    const idx = d.querySelector('.bsc-size-measure-guide__desc__index')?.textContent.trim() || '';
+                    let name = d.querySelector('h6')?.textContent.trim() || '';
+                    if (idx && name.startsWith(idx)) name = name.slice(idx.length).trim();
+                    const desc = d.querySelector('p')?.textContent.trim() || '';
+                    return { index: idx, name, desc };
+                }).filter((x) => x.name);
+                const mgImgEl = document.querySelector('.bsc-size-measure-guide__image img, .product_guide_img img');
+                const mgImage = mgImgEl ? getOriginalImageUrl(mgImgEl.getAttribute('src') || mgImgEl.src) : null;
+                if (mgItems.length) data.measure_guide = { items: mgItems, image: mgImage };
+
                 const closeBtn = document.querySelector('.modal-header__close, .she-close-external, .f-close');
                 if (closeBtn) await forceClick(closeBtn);
             }

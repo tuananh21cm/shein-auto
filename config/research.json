@@ -1,0 +1,68 @@
+{
+  "country": "us",
+  "perNichePerPage": 40,
+
+  "_comment_niches": "Ngách seed để quét win hằng ngày. group = nhóm để rollup; query = keyword search SHEIN US. Sửa thoải mái, không cần build lại.",
+  "niches": [
+    { "key": "summer-dress",   "group": "dresses",   "query": "summer dress" },
+    { "key": "maxi-dress",     "group": "dresses",   "query": "maxi dress" },
+    { "key": "bodycon-dress",  "group": "dresses",   "query": "bodycon dress" },
+    { "key": "two-piece-set",  "group": "sets",      "query": "two piece set women" },
+    { "key": "lounge-set",     "group": "sets",      "query": "lounge set women" },
+    { "key": "y2k-crop-top",   "group": "tops",      "query": "y2k crop top" },
+    { "key": "cami-top",       "group": "tops",      "query": "cami tank top women" },
+    { "key": "corset-top",     "group": "tops",      "query": "corset top" },
+    { "key": "oversized-tee",  "group": "tops",      "query": "oversized t shirt women" },
+    { "key": "cargo-pants",    "group": "bottoms",   "query": "cargo pants women" },
+    { "key": "wide-leg-pants", "group": "bottoms",   "query": "wide leg pants women" },
+    { "key": "denim-shorts",   "group": "bottoms",   "query": "denim shorts women" },
+    { "key": "bikini",         "group": "beachwear", "query": "bikini set" },
+    { "key": "one-piece-swim", "group": "beachwear", "query": "one piece swimsuit" },
+    { "key": "shapewear",      "group": "underwear", "query": "shapewear bodysuit" }
+  ],
+
+  "_comment_weights": "Trọng số opportunityScore (0-1). demandFit hiện trung tính 50 vì chưa có Kalodata.",
+  "weights": {
+    "win": 0.45,
+    "nicheHeat": 0.2,
+    "margin": 0.2,
+    "demandFit": 0.15
+  },
+
+  "_comment_margin": "Final price (sau công thức pricing.json) rơi vào [sweetLow, sweetHigh] = 100đ. Ngoài khoảng giảm dần; > hardMax = 0đ.",
+  "margin": {
+    "sweetLow": 12,
+    "sweetHigh": 30,
+    "hardMax": 60
+  },
+
+  "candidate": {
+    "_comment": "Số candidate sinh mỗi vòng + ngưỡng tối thiểu + số candidate tối đa / ngách để đa dạng.",
+    "targetCount": 40,
+    "minOpportunity": 55,
+    "maxPerNiche": 6,
+    "minReviewsForHot": 50
+  },
+
+  "_comment_validation": "Cổng kiểm định sâu (Deep Validation Gate) khi mở detail bằng Kiki. Hard gate fail → REJECT. Local ưu tiên, inter → WATCH. Thiếu true-to-size → bỏ qua tiêu chí đó.",
+  "validation": {
+    "minRating": 4.0,
+    "minSold": 100,
+    "fitMin": 80,
+    "localShipMaxDays": 12,
+    "watchScore": 60,
+    "deepDiscountPct": 75,
+    "minUgcForContent": 1,
+    "ipBrands": ["disney","marvel","nba","nfl","mlb","nhl","pokemon","pikachu","sanrio","hello kitty","barbie","harry potter","looney tunes","batman","superman","spongebob","care bears","tom and jerry","minecraft","stitch","mickey","snoopy","betty boop","garfield","scooby","powerpuff","star wars","naruto","sailor moon","kuromi","stranger things","squid game","taylor swift"]
+  },
+
+  "_comment_cron": "Tự chạy research hằng sáng. schedule = cron 5 trường (giờ server). autoEnrich cần Kiki online + enrichProfileId → mặc định TẮT (bán tự động: research auto, enrich/đăng do người).",
+  "cron": {
+    "enabled": true,
+    "schedule": "0 7 * * *",
+    "timezone": "",
+    "autoEnrich": false,
+    "enrichProfileId": "",
+    "enrichLimit": 20
+  }
+}

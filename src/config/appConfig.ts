@@ -44,10 +44,48 @@ interface CategoriesFile {
   categories: string[];
 }
 
+export interface ResearchNiche {
+  key: string;
+  group: string;
+  query: string;
+}
+export interface ResearchFile {
+  country: string;
+  perNichePerPage: number;
+  niches: ResearchNiche[];
+  weights: { win: number; nicheHeat: number; margin: number; demandFit: number };
+  margin: { sweetLow: number; sweetHigh: number; hardMax: number };
+  candidate: {
+    targetCount: number;
+    minOpportunity: number;
+    maxPerNiche: number;
+    minReviewsForHot: number;
+  };
+  validation?: {
+    minRating: number;
+    minSold: number;
+    fitMin: number;
+    localShipMaxDays: number;
+    watchScore: number;
+    deepDiscountPct: number;
+    minUgcForContent: number;
+    ipBrands: string[];
+  };
+  cron?: {
+    enabled: boolean;
+    schedule: string;
+    timezone?: string;
+    autoEnrich?: boolean;
+    enrichProfileId?: string;
+    enrichLimit?: number;
+  };
+}
+
 let _pricing: PricingFile | null = null;
 let _worker: WorkerFile | null = null;
 let _sizeMap: SizeMapFile | null = null;
 let _categories: CategoriesFile | null = null;
+let _research: ResearchFile | null = null;
 
 export const pricing = (): PricingFile =>
   (_pricing ??= readJson<PricingFile>("pricing.json"));
@@ -60,6 +98,9 @@ export const sizeMap = (): Record<string, string> =>
 
 export const tiktokCategories = (): string[] =>
   (_categories ??= readJson<CategoriesFile>("tiktok-categories.json")).categories;
+
+export const researchConfig = (): ResearchFile =>
+  (_research ??= readJson<ResearchFile>("research.json"));
 
 /**
  * Tính giá bán cuối cùng từ giá gốc.
@@ -87,4 +128,5 @@ export const reloadAppConfig = (): void => {
   _worker = null;
   _sizeMap = null;
   _categories = null;
+  _research = null;
 };

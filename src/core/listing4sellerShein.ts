@@ -20,8 +20,13 @@ import {
   selectDescriptionImages,
   uploadDescriptionImages,
 } from "./steps/fillDescription";
+import { processMeasureGuideImage } from "./steps/measureGuideImage";
 import { fillShippingAndCertification } from "./steps/fillShipping";
-import { handleSizeChartUpload } from "./steps/handleSizeChart";
+import {
+  handleSizeChartUpload,
+  extractSizeChartSections,
+  buildSizeGuideImageFile,
+} from "./steps/handleSizeChart";
 import { detectPublishOutcome, checkPageErrors, captureScreenshot } from "./steps/publishAndDetect";
 import { removeUnavailableVariants } from "./steps/removeUnavailableVariants";
 
@@ -136,13 +141,42 @@ export const listing4sellerShein = async (
       await assertNoErrors(page, "removeUnavailableVariants");
     }
 
-    await uploadProductImages(page, mergedProductImages, targetProfile);
+    // Ảnh GỘP Size Guide (bảng size + How To Measure) → chèn vào gallery, ngay sau ảnh main.
+    let sizeGuidePath: string | null = null;
+    try {
+      const guideSections = extractSizeChartSections(data.size_chart);
+      if (guideSections.length > 0) {
+        const mgImage = await processMeasureGuideImage(data.measure_guide?.image); // che watermark SHEIN
+        const measureGuide = data.measure_guide
+          ? { items: data.measure_guide.items, image: mgImage }
+          : undefined;
+        sizeGuidePath = await buildSizeGuideImageFile(
+          guideSections,
+          measureGuide,
+          data.size_chart?.unit || "inch"
+        );
+      }
+    } catch (e: any) {
+      console.warn("⚠️ Không tạo được ảnh Size Guide gallery, bỏ qua:", e?.message);
+    }
+
+    await uploadProductImages(page, mergedProductImages, targetProfile, {
+      insertAfterMainPath: sizeGuidePath,
+    });
+    if (sizeGuidePath) {
+      try {
+        fs.unlinkSync(sizeGuidePath);
+      } catch {
+        /* ignore */
+      }
+    }
     await uploadVariantImages(page, data.variant_images, targetProfile);
     await assertNoErrors(page, "uploadImages");
 
     await handleBrand(page, data.brand_name);
 
     const colorList = data.listing_variations?.colors || [];
+    // How To Measure đã nằm trong ảnh GỘP Size Guide ở gallery → mô tả chỉ còn attributes.
     const descHtml = generateDescriptionHtml(
       data.product_name,
       data.attributes,

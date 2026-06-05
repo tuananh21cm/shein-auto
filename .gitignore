@@ -19,6 +19,9 @@ data/cache/
 data/screenshots/
 data/cookies/
 
+# TikTok crawler discovery dumps
+data/_tiktok_discovery/
+
 # Worker temp
 *.log
 temp_failed_cleanup/

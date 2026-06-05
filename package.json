@@ -7,9 +7,13 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "start": "tsx src/index.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "crawl:tiktok": "tsx src/scripts/crawlTiktok.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.101.0",
     "@google/generative-ai": "^0.24.1",
     "axios": "^1.13.2",
     "bcryptjs": "^3.0.3",
@@ -34,6 +38,7 @@
     "@types/node": "^22.5.4",
     "@types/node-cron": "^3.0.11",
     "tsx": "^4.19.2",
-    "typescript": "^5.3.3"
+    "typescript": "^5.3.3",
+    "vitest": "^4.1.8"
   }
 }

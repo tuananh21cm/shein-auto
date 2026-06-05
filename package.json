@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "crawl:tiktok": "tsx src/scripts/crawlTiktok.ts"
+    "crawl:tiktok": "tsx src/scripts/crawlTiktok.ts",
+    "discover:tiktok": "tsx src/scripts/discoverRoutes.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.101.0",

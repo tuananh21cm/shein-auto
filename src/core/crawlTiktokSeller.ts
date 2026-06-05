@@ -4,7 +4,7 @@ import { ensureNoCaptcha } from "../services/kiki/captcha";
 import { attachCaptureBus } from "../services/tiktok/captureBus";
 import { ROUTES } from "../services/tiktok/routes";
 import { TiktokDb } from "../services/tiktok/db";
-import type { CrawlSnapshot, RouteMetrics, CrawlStatus } from "../services/tiktok/types";
+import type { CrawlSnapshot, RouteMetrics, CrawlStatus, RouteDef } from "../services/tiktok/types";
 
 export function isLoginWall(url: string): boolean {
   return /\/(account\/)?login|\/passport|\/signin/i.test(url);
@@ -15,6 +15,8 @@ export interface CrawlTiktokParams {
   db: TiktokDb;
   /** Bật discovery dump (data/_tiktok_discovery/<date>/). */
   discoverDir?: string;
+  /** Danh sách route tùy biến (mặc định = ROUTES production). Dùng cho discovery phase 2. */
+  routes?: RouteDef[];
   onLog?: (msg: string) => void;
 }
 
@@ -31,6 +33,7 @@ async function humanScroll(page: any): Promise<void> {
 
 export async function crawlTiktokSeller(params: CrawlTiktokParams): Promise<CrawlSnapshot> {
   const { profileId, db, discoverDir } = params;
+  const routeList = params.routes ?? ROUTES;
   const log = (m: string) => params.onLog?.(m);
   const runDate = todayStr();
   const startedAt = new Date().toISOString();
@@ -52,7 +55,7 @@ export async function crawlTiktokSeller(params: CrawlTiktokParams): Promise<Craw
     page = await ctx.newPage();
     const bus = attachCaptureBus(page, discoverDir ? { dumpDir: discoverDir } : {});
 
-    for (const route of ROUTES) {
+    for (const route of routeList) {
       bus.setRoute(route.key);
       bus.clear();
       const rm: RouteMetrics = { route: route.key, ok: false, metrics: [] };

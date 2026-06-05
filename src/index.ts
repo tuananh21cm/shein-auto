@@ -9,6 +9,7 @@ import { refreshQueueSnapshot } from "./state/queueState";
 import { geminiCache } from "./services/gemini/geminiCache";
 import { initDb, closeDb } from "./state/db";
 import { scheduleResearchCron } from "./core/research/researchCron";
+import { scheduleTiktokCron } from "./core/tiktokCron";
 
 // Pipe console.* lên eventBus để SSE stream xuống UI. Phải gọi sớm.
 installConsoleTap();
@@ -35,6 +36,7 @@ bootstrap().catch((err) => {
 cron.schedule(config.cronFileRouter, runFileRouterOnce);
 cron.schedule(config.cronQueueManager, runQueueManagerOnce);
 scheduleResearchCron();
+scheduleTiktokCron();
 
 const shutdown = (signal: string) => {
   console.log(`\n📴 Nhận ${signal}, dừng worker...`);

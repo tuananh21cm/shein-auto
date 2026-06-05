@@ -30,6 +30,13 @@ interface WorkerFile {
   imageUploadMaxImages: number;
   descriptionImagesCount: number;
   descriptionMaxAttributes: number;
+  /** Bật/tắt chèn ảnh GỘP Size Guide (bảng + How To Measure) vào gallery sau ảnh main.
+   *  Mặc định false: TikTok hiện không cho dùng ảnh dạng này làm ảnh sản phẩm. */
+  sizeGuideGalleryImage?: boolean;
+  /** Bật/tắt điền mục Specifics (map SHEIN attributes → dropdown 4Seller). Mặc định false. */
+  fillSpecifics?: boolean;
+  /** Ảnh "nhiều màu" làm ảnh main. style A=collage grid, B=main+strip, C=main+badge. */
+  colorShowcase?: { enabled: boolean; style: "A" | "B" | "C" };
   imageRemake?: {
     enabled: boolean;
     preset: "light" | "standard" | "aggressive";
@@ -39,6 +46,11 @@ interface WorkerFile {
 }
 interface SizeMapFile {
   map: Record<string, string>;
+}
+export interface SpecificsMapFile {
+  // 1 key SHEIN có thể trỏ 1 hoặc NHIỀU field 4Seller (thử lần lượt, field nào có + khớp thì điền).
+  keyMap: Record<string, string | string[]>;
+  valueSynonyms: Record<string, string>;
 }
 interface CategoriesFile {
   categories: string[];
@@ -81,9 +93,20 @@ export interface ResearchFile {
   };
 }
 
+export interface TiktokFile {
+  enabled: boolean;
+  profileId: string;
+  cron: string;
+  timezone?: string;
+  model: string;
+  analyze: boolean;
+}
+
 let _pricing: PricingFile | null = null;
 let _worker: WorkerFile | null = null;
+let _tiktok: TiktokFile | null = null;
 let _sizeMap: SizeMapFile | null = null;
+let _specificsMap: SpecificsMapFile | null = null;
 let _categories: CategoriesFile | null = null;
 let _research: ResearchFile | null = null;
 
@@ -96,11 +119,17 @@ export const workerConfig = (): WorkerFile =>
 export const sizeMap = (): Record<string, string> =>
   (_sizeMap ??= readJson<SizeMapFile>("size-map.json")).map;
 
+export const specificsMap = (): SpecificsMapFile =>
+  (_specificsMap ??= readJson<SpecificsMapFile>("specifics-map.json"));
+
 export const tiktokCategories = (): string[] =>
   (_categories ??= readJson<CategoriesFile>("tiktok-categories.json")).categories;
 
 export const researchConfig = (): ResearchFile =>
   (_research ??= readJson<ResearchFile>("research.json"));
+
+export const tiktokConfig = (): TiktokFile =>
+  (_tiktok ??= readJson<TiktokFile>("tiktok.json"));
 
 /**
  * Tính giá bán cuối cùng từ giá gốc.
@@ -127,6 +156,7 @@ export const reloadAppConfig = (): void => {
   _pricing = null;
   _worker = null;
   _sizeMap = null;
+  _specificsMap = null;
   _categories = null;
   _research = null;
 };

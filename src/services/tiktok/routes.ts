@@ -1,10 +1,15 @@
 import type { RouteDef } from "./types";
 import { extractHomepage } from "./extractors/homepage";
-import { extractCompassOverview } from "./extractors/compassOverview";
 
 /**
- * Registry route v1. Mở rộng phase sau = thêm 1 entry + 1 extractor.
- * URL Compass có thể cần tinh chỉnh path sau discovery.
+ * Registry route cào hằng ngày. Mở rộng phase sau = thêm 1 entry + 1 extractor.
+ *
+ * v1: CHỈ homepage — route này luôn sạch (không captcha) và cho đủ bộ chỉ số
+ * sức khỏe shop (AHR, vi phạm, settlement, đơn). Route `compass-overview` đã bị
+ * tạm gỡ khỏi crawl hằng ngày vì (1) trigger captcha mỗi lần → kẹt cron không
+ * người canh, (2) endpoint sales/traffic (GMV) chưa bắt được. Extractor compass
+ * (extractors/compassOverview.ts) vẫn giữ để dùng lại ở phase 2 khi giải quyết
+ * captcha + map được endpoint analytics.
  */
 export const ROUTES: RouteDef[] = [
   {
@@ -12,14 +17,5 @@ export const ROUTES: RouteDef[] = [
     url: "https://seller-us.tiktok.com/homepage",
     settleMs: 4000,
     extractor: extractHomepage,
-  },
-  {
-    // GAP (discovery 2026-06-05): endpoint sales/traffic của Compass (GMV/visitors/
-    // conversion) chưa fire trong lượt cào — chart load lazy sau captcha. Cần dwell lâu
-    // hơn / scroll tới chart hoặc xác định endpoint analytics ở lần discovery sau.
-    key: "compass-overview",
-    url: "https://seller-us.tiktok.com/compass/overview",
-    settleMs: 8000,
-    extractor: extractCompassOverview,
   },
 ];

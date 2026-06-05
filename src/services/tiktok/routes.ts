@@ -14,9 +14,12 @@ export const ROUTES: RouteDef[] = [
     extractor: extractHomepage,
   },
   {
+    // GAP (discovery 2026-06-05): endpoint sales/traffic của Compass (GMV/visitors/
+    // conversion) chưa fire trong lượt cào — chart load lazy sau captcha. Cần dwell lâu
+    // hơn / scroll tới chart hoặc xác định endpoint analytics ở lần discovery sau.
     key: "compass-overview",
     url: "https://seller-us.tiktok.com/compass/overview",
-    settleMs: 5000,
+    settleMs: 8000,
     extractor: extractCompassOverview,
   },
 ];

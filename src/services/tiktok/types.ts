@@ -49,6 +49,8 @@ export interface CrawlSnapshot {
   notes?: string;
 }
 
+export type HealthStatus = "good" | "warning" | "critical";
+
 export interface AnalysisAlert {
   severity: "high" | "medium" | "low";
   title: string;
@@ -60,10 +62,23 @@ export interface AnalysisTodo {
   task: string;
   why?: string;
 }
+/** Chấm điểm sức khỏe 1 mảng (Sức khỏe, Vận hành, Doanh số, Marketing, Sản phẩm, Inbox). */
+export interface AnalysisArea {
+  area: string;
+  status: HealthStatus;
+  note: string;
+}
+/** Xu hướng đáng kể so với hôm qua. */
+export interface AnalysisTrend {
+  label: string;
+  direction: "up" | "down";
+  note: string;
+}
 export interface AnalysisResult {
+  overallStatus: HealthStatus;
   summary: string;
+  areas: AnalysisArea[];
+  trends: AnalysisTrend[];
   alerts: AnalysisAlert[];
-  strengths: string[];
-  weaknesses: string[];
   todos: AnalysisTodo[];
 }

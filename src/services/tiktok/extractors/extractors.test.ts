@@ -9,6 +9,7 @@ import { extractChat } from "./chat";
 import { extractOrders } from "./orders";
 import { extractReturns } from "./returns";
 import { extractProductOpportunity } from "./productOpportunity";
+import { extractProductManage } from "./productManage";
 import type { Capture } from "../types";
 
 // Fixtures dựa trên payload THẬT từ discovery 2026-06-05 (đã rút gọn).
@@ -371,6 +372,36 @@ describe("extractProductOpportunity (real shape)", () => {
   });
   it("không vỡ khi captures rỗng", () => {
     expect(extractProductOpportunity([])).toEqual([]);
+  });
+});
+
+describe("extractProductManage (real shape)", () => {
+  const caps: Capture[] = [
+    {
+      url: "https://seller-us.tiktok.com/api/v1/product/local/products/list",
+      status: 200,
+      body: {
+        data: {
+          total_product_count: 153,
+          products: [
+            { product_name: "A", product_performance: { last_28days_pv: "94", last_28days_order: "2" }, total_available_stock: 23, product_low_stock: { out_of_stock_sku_count: 0, low_stock_sku_count: 0 } },
+            { product_name: "B", product_performance: { last_28days_pv: "0", last_28days_order: "0" }, total_available_stock: 5, product_low_stock: { out_of_stock_sku_count: 1, low_stock_sku_count: 2 } },
+          ],
+        },
+      },
+    },
+  ];
+  it("bóc tổng SP + đếm 0-view/low/out-stock + top theo views", () => {
+    const m = extractProductManage(caps);
+    expect(m.find((x) => x.key === "products_total")?.valueNum).toBe(153);
+    expect(m.find((x) => x.key === "products_no_views_28d")?.valueNum).toBe(1);
+    expect(m.find((x) => x.key === "products_low_stock")?.valueNum).toBe(1);
+    expect(m.find((x) => x.key === "products_out_of_stock")?.valueNum).toBe(1);
+    expect(m.find((x) => x.key === "top_product_1")?.valueText).toContain("A");
+    expect(m.find((x) => x.key === "top_product_1")?.valueText).toContain("94 views");
+  });
+  it("không vỡ khi captures rỗng", () => {
+    expect(extractProductManage([])).toEqual([]);
   });
 });
 

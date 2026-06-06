@@ -55,4 +55,20 @@ export const ROUTES: RouteDef[] = [
     skipCaptcha: true,
     extractor: extractMessages,
   },
+  {
+    // Tab Account activity — lấy tin hiện ra (passive)
+    key: "messages-account",
+    url: "https://seller-us.tiktok.com/message/center?shop_region=US&tab_id=-4000000",
+    settleMs: 12000,
+    skipCaptcha: true,
+    extractor: extractMessages,
+  },
+  {
+    // Tab Marketing & promotions — lấy tin hiện ra (passive)
+    key: "messages-marketing",
+    url: "https://seller-us.tiktok.com/message/center?shop_region=US&tab_id=-5000000",
+    settleMs: 12000,
+    skipCaptcha: true,
+    extractor: extractMessages,
+  },
 ];

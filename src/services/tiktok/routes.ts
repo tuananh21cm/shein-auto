@@ -5,6 +5,7 @@ import { extractPromotion } from "./extractors/promotion";
 import { extractCampaign } from "./extractors/campaign";
 import { extractMessages } from "./extractors/messages";
 import { extractChat } from "./extractors/chat";
+import { extractOrders } from "./extractors/orders";
 
 /**
  * Registry route cào hằng ngày. Mở rộng = thêm 1 entry + 1 extractor.
@@ -21,6 +22,15 @@ export const ROUTES: RouteDef[] = [
     url: "https://seller-us.tiktok.com/homepage",
     settleMs: 4000,
     extractor: extractHomepage,
+  },
+  {
+    // Quản lý order: Action Needed (ship 24h/quá hạn/hủy/hoàn) + đếm trạng thái
+    key: "orders",
+    url: "https://seller-us.tiktok.com/order?shop_region=US",
+    settleMs: 15000,
+    skipCaptcha: true,
+    waitForEndpoint: "fulfillment/na/dashboard/get",
+    extractor: extractOrders,
   },
   {
     key: "shop-overview",

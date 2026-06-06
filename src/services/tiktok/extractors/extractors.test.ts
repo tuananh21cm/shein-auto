@@ -6,6 +6,7 @@ import { extractPromotion } from "./promotion";
 import { extractCampaign } from "./campaign";
 import { extractMessages } from "./messages";
 import { extractChat } from "./chat";
+import { extractOrders } from "./orders";
 import type { Capture } from "../types";
 
 // Fixtures dựa trên payload THẬT từ discovery 2026-06-05 (đã rút gọn).
@@ -277,6 +278,40 @@ describe("extractChat (real fixture — customer messages)", () => {
   });
   it("không vỡ khi captures rỗng", () => {
     expect(extractChat([])).toEqual([]);
+  });
+});
+
+describe("extractOrders (real fixture)", () => {
+  const caps: Capture[] = [
+    {
+      url: "https://seller-us.tiktok.com/api/fulfillment/na/dashboard/get",
+      status: 200,
+      body: {
+        data: {
+          dashboard_columns: [
+            { column_id: "100100", title_text: "Ship within 24 hours or less", order_count: 2 },
+            { column_id: "100200", title_text: "Auto-canceling within 24 hours or less", order_count: 0 },
+            { column_id: "100300", title_text: "Shipping overdue", order_count: 0 },
+            { column_id: "100600", title_text: "Return/refund requested", order_count: 1 },
+          ],
+        },
+      },
+    },
+    {
+      url: "https://seller-us.tiktok.com/api/fulfillment/na/order/search_count",
+      status: 200,
+      body: { data: { count_map: { "101": 6, "1100": 1, "102": 26 } } },
+    },
+  ];
+  it("bóc Action Needed theo title + đếm trạng thái", () => {
+    const m = extractOrders(caps);
+    expect(m.find((x) => x.key === "action_ship_within_24h")?.valueNum).toBe(2);
+    expect(m.find((x) => x.key === "action_return_refund_requested")?.valueNum).toBe(1);
+    expect(m.find((x) => x.key === "orders_to_ship")?.valueNum).toBe(6);
+    expect(m.find((x) => x.key === "orders_shipped")?.valueNum).toBe(1);
+  });
+  it("không vỡ khi captures rỗng", () => {
+    expect(extractOrders([])).toEqual([]);
   });
 });
 

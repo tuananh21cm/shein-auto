@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { extractHomepage } from "./homepage";
 import { extractCompassOverview } from "./compassOverview";
 import { extractShopOverview } from "./shopOverview";
+import { extractPromotion } from "./promotion";
 import type { Capture } from "../types";
 
 // Fixtures dựa trên payload THẬT từ discovery 2026-06-05 (đã rút gọn).
@@ -113,6 +114,62 @@ describe("extractShopOverview (real fixture — lấy kỳ 1D mới nhất)", ()
   });
   it("không vỡ khi captures rỗng", () => {
     expect(extractShopOverview([])).toEqual([]);
+  });
+});
+
+// Fixture THẬT từ discovery 2026-06-06 (promotion route, rút gọn).
+const promotionCaps: Capture[] = [
+  {
+    url: "https://seller-us.tiktok.com/api/v1/promotion/get_summary",
+    status: 200,
+    body: { data: { quantity_info: [{ promotion_status: 2, quantity: 4 }, { promotion_status: 3, quantity: 0 }] } },
+  },
+  {
+    url: "https://seller-us.tiktok.com/api/v4/insights/seller/shop/promotion/info",
+    status: 200,
+    body: {
+      data: {
+        promotions: [
+          { promotion_tool: 6, info: { has_any_promotion_tool: true } },
+          { promotion_tool: 1, info: { has_any_promotion_tool: true } },
+          { promotion_tool: 2, info: { has_any_promotion_tool: false } },
+        ],
+      },
+    },
+  },
+  {
+    url: "https://seller-us.tiktok.com/api/v1/insights/seller/shop/promotion/period/stats",
+    status: 200,
+    body: {
+      data: {
+        segments: [
+          {
+            time_descriptor: { granularity: "7D" },
+            timed_stats: [
+              {
+                stats_promotion_tools: [
+                  { promotion_tools: 6, metrics: [{ stats_type_str: "REVENUE", stats: { amount: "179.94" } }] },
+                  { promotion_tools: 3, metrics: [{ stats_type_str: "REVENUE", stats: { amount: "150.13" } }] },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    },
+  },
+];
+
+describe("extractPromotion (real fixture)", () => {
+  it("bóc số promotion đang chạy/sắp tới + tool bật + doanh thu top", () => {
+    const m = extractPromotion(promotionCaps);
+    expect(m.find((x) => x.key === "promotions_ongoing")?.valueNum).toBe(4);
+    expect(m.find((x) => x.key === "promotions_upcoming")?.valueNum).toBe(0);
+    expect(m.find((x) => x.key === "promotion_tools_enabled")?.valueNum).toBe(2);
+    expect(m.find((x) => x.key === "promotion_revenue_top_7d")?.valueNum).toBe(179.94);
+  });
+  it("không vỡ khi captures rỗng", () => {
+    expect(extractPromotion([])).toEqual([]);
   });
 });
 

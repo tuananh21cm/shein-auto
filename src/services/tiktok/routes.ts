@@ -2,6 +2,7 @@ import type { RouteDef } from "./types";
 import { extractHomepage } from "./extractors/homepage";
 import { extractShopOverview } from "./extractors/shopOverview";
 import { extractPromotion } from "./extractors/promotion";
+import { extractCampaign } from "./extractors/campaign";
 
 /**
  * Registry route cào hằng ngày. Mở rộng = thêm 1 entry + 1 extractor.
@@ -34,5 +35,13 @@ export const ROUTES: RouteDef[] = [
     skipCaptcha: true,
     waitForEndpoint: "promotion/period/stats",
     extractor: extractPromotion,
+  },
+  {
+    key: "campaign",
+    url: "https://seller-us.tiktok.com/promotion/campaign-tools/all",
+    settleMs: 20000, // max chờ — thoát ngay khi endpoint fire
+    skipCaptcha: true,
+    waitForEndpoint: "parents_campaigns/list",
+    extractor: extractCampaign,
   },
 ];

@@ -90,6 +90,8 @@ export async function crawlTiktokSeller(params: CrawlTiktokParams): Promise<Craw
             await page.mouse.wheel(0, 350).catch(() => {});
             await page.waitForTimeout(1500);
           }
+          // grace: chờ thêm cho các endpoint phụ fire muộn kịp về (vd summary_info)
+          await page.waitForTimeout(3000);
         } else {
           await page.waitForTimeout(route.settleMs ?? 3000);
         }

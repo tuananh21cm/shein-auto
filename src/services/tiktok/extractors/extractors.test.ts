@@ -3,6 +3,7 @@ import { extractHomepage } from "./homepage";
 import { extractCompassOverview } from "./compassOverview";
 import { extractShopOverview } from "./shopOverview";
 import { extractPromotion } from "./promotion";
+import { extractCampaign } from "./campaign";
 import type { Capture } from "../types";
 
 // Fixtures dựa trên payload THẬT từ discovery 2026-06-05 (đã rút gọn).
@@ -170,6 +171,37 @@ describe("extractPromotion (real fixture)", () => {
   });
   it("không vỡ khi captures rỗng", () => {
     expect(extractPromotion([])).toEqual([]);
+  });
+});
+
+// Fixture THẬT từ discovery 2026-06-06 (campaign route, giá trị non-zero để test cộng).
+const campaignCaps: Capture[] = [
+  {
+    url: "https://seller-us.tiktok.com/api/v1/promotion/campaign/seller/campaign/summary_info",
+    status: 200,
+    body: { data: { summary_info: [{ campaign_count: 2, scene: 1 }, { campaign_count: 1, scene: 2 }] } },
+  },
+  {
+    url: "https://seller-us.tiktok.com/api/v1/promotion/campaign/seller/parents_campaigns/list",
+    status: 200,
+    body: { data: { total_count: 6, campaigns_list: [] } },
+  },
+  {
+    url: "https://seller-us.tiktok.com/api/v1/promotion/campaign/seller/register_task/statistic/get",
+    status: 200,
+    body: { data: { statistic_infos: [{ count: 0, scene: 1 }, { count: 0, scene: 9, recommend_static_info: { has_new_recommend: true, new_recommend_count: 3 } }] } },
+  },
+];
+
+describe("extractCampaign (real fixture)", () => {
+  it("bóc campaign đang tham gia + khả dụng + gợi ý mới", () => {
+    const m = extractCampaign(campaignCaps);
+    expect(m.find((x) => x.key === "campaigns_joined")?.valueNum).toBe(3);
+    expect(m.find((x) => x.key === "campaigns_available")?.valueNum).toBe(6);
+    expect(m.find((x) => x.key === "campaigns_new_recommend")?.valueNum).toBe(3);
+  });
+  it("không vỡ khi captures rỗng", () => {
+    expect(extractCampaign([])).toEqual([]);
   });
 });
 

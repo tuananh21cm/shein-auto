@@ -7,6 +7,7 @@ import { extractCampaign } from "./campaign";
 import { extractMessages } from "./messages";
 import { extractChat } from "./chat";
 import { extractOrders } from "./orders";
+import { extractReturns } from "./returns";
 import type { Capture } from "../types";
 
 // Fixtures dựa trên payload THẬT từ discovery 2026-06-05 (đã rút gọn).
@@ -312,6 +313,35 @@ describe("extractOrders (real fixture)", () => {
   });
   it("không vỡ khi captures rỗng", () => {
     expect(extractOrders([])).toEqual([]);
+  });
+});
+
+describe("extractReturns (real fixture)", () => {
+  it("bóc respond_24h / auto_approved_7d / can_be_appealed / disputes", () => {
+    const caps: Capture[] = [
+      {
+        url: "https://seller-us.tiktok.com/api/v1/reverse/dashboard/get",
+        status: 200,
+        body: {
+          data: {
+            dashboard_columns: [
+              { title_text: "Respond within 24 hours", order_count: 0 },
+              { title_text: "Auto-approved (last 7d)", order_count: 2 },
+              { title_text: "Can be appealed", order_count: 1 },
+              { title_text: "Disputes awaiting response", order_count: 0 },
+            ],
+          },
+        },
+      },
+    ];
+    const m = extractReturns(caps);
+    expect(m.find((x) => x.key === "return_respond_within_24h")?.valueNum).toBe(0);
+    expect(m.find((x) => x.key === "return_auto_approved_7d")?.valueNum).toBe(2);
+    expect(m.find((x) => x.key === "return_can_be_appealed")?.valueNum).toBe(1);
+    expect(m.find((x) => x.key === "return_disputes_awaiting_response")?.valueNum).toBe(0);
+  });
+  it("không vỡ khi captures rỗng", () => {
+    expect(extractReturns([])).toEqual([]);
   });
 });
 

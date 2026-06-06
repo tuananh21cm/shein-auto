@@ -6,6 +6,7 @@ import { extractCampaign } from "./extractors/campaign";
 import { extractMessages } from "./extractors/messages";
 import { extractChat } from "./extractors/chat";
 import { extractOrders } from "./extractors/orders";
+import { extractReturns } from "./extractors/returns";
 
 /**
  * Registry route cào hằng ngày. Mở rộng = thêm 1 entry + 1 extractor.
@@ -31,6 +32,15 @@ export const ROUTES: RouteDef[] = [
     skipCaptcha: true,
     waitForEndpoint: "fulfillment/na/dashboard/get",
     extractor: extractOrders,
+  },
+  {
+    // Quản lý return & refund: respond 24h, auto-approved, can-appeal, disputes
+    key: "returns",
+    url: "https://seller-us.tiktok.com/order/return?from=menu&shop_region=US",
+    settleMs: 15000,
+    skipCaptcha: true,
+    waitForEndpoint: "reverse/dashboard/get",
+    extractor: extractReturns,
   },
   {
     key: "shop-overview",

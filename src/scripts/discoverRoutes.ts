@@ -30,14 +30,31 @@ const DISCOVER_ROUTES: { key: string; url: string }[] = [
   { key: "return-refund", url: "https://seller-us.tiktok.com/compass/return-refund" },
 ];
 
+/** Sinh route-key gọn từ URL (bỏ domain, query). */
+function keyFromUrl(u: string): string {
+  try {
+    const p = new URL(u).pathname.replace(/^\/+|\/+$/g, "");
+    return p.replace(/\//g, "-") || "root";
+  } catch {
+    return "route";
+  }
+}
+
 async function main() {
   const cfg = tiktokConfig();
   if (!cfg.profileId) throw new Error("Chưa cấu hình profileId trong config/tiktok.json");
 
-  const routes: RouteDef[] = DISCOVER_ROUTES.map((r) => ({
+  // URL truyền qua CLI → discovery đúng các route đó; nếu không có → dùng batch mặc định.
+  const cliUrls = process.argv.slice(2).filter((a) => /^https?:\/\//.test(a));
+  const list = cliUrls.length
+    ? cliUrls.map((u) => ({ key: keyFromUrl(u), url: u }))
+    : DISCOVER_ROUTES;
+
+  const routes: RouteDef[] = list.map((r) => ({
     key: r.key,
     url: r.url,
-    settleMs: 5000,
+    settleMs: cliUrls.length ? 15000 : 5000, // route lạ: chờ lâu hơn để API fire
+    skipCaptcha: true, // capture-first: không treo chờ captcha
     extractor: () => [], // discovery: chỉ dump, không bóc
   }));
 

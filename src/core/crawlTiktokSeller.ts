@@ -72,12 +72,27 @@ export async function crawlTiktokSeller(params: CrawlTiktokParams): Promise<Craw
           break;
         }
 
-        await ensureNoCaptcha(page, { onLog: log, context: `TikTok ${route.key}`, profileId });
+        if (route.skipCaptcha) {
+          log(`  (capture-first: không chờ captcha, hứng data rồi đóng)`);
+        } else {
+          await ensureNoCaptcha(page, { onLog: log, context: `TikTok ${route.key}`, profileId });
+        }
         if (route.waitForSelector) {
           await page.waitForSelector(route.waitForSelector, { timeout: 15_000 }).catch(() => {});
         }
         await humanScroll(page);
-        await page.waitForTimeout(route.settleMs ?? 3000);
+        if (route.waitForEndpoint) {
+          // poll tới khi endpoint chỉ số fire (API analytics fire muộn), scroll nhẹ kích lazy-load
+          const re = new RegExp(route.waitForEndpoint);
+          const maxWait = route.settleMs ?? 20_000;
+          const start = Date.now();
+          while (Date.now() - start < maxWait && !bus.snapshot().some((c) => re.test(c.url))) {
+            await page.mouse.wheel(0, 350).catch(() => {});
+            await page.waitForTimeout(1500);
+          }
+        } else {
+          await page.waitForTimeout(route.settleMs ?? 3000);
+        }
 
         const caps = bus.snapshot();
         for (const c of caps) db.insertRawCapture(runId, route.key, c.url, c.status);

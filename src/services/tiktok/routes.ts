@@ -1,15 +1,15 @@
 import type { RouteDef } from "./types";
 import { extractHomepage } from "./extractors/homepage";
+import { extractShopOverview } from "./extractors/shopOverview";
 
 /**
- * Registry route cào hằng ngày. Mở rộng phase sau = thêm 1 entry + 1 extractor.
+ * Registry route cào hằng ngày. Mở rộng = thêm 1 entry + 1 extractor.
  *
- * v1: CHỈ homepage — route này luôn sạch (không captcha) và cho đủ bộ chỉ số
- * sức khỏe shop (AHR, vi phạm, settlement, đơn). Route `compass-overview` đã bị
- * tạm gỡ khỏi crawl hằng ngày vì (1) trigger captcha mỗi lần → kẹt cron không
- * người canh, (2) endpoint sales/traffic (GMV) chưa bắt được. Extractor compass
- * (extractors/compassOverview.ts) vẫn giữ để dùng lại ở phase 2 khi giải quyết
- * captcha + map được endpoint analytics.
+ * - `homepage`: route sạch (không captcha) → sức khỏe shop (AHR, vi phạm, settle, đơn).
+ * - `shop-overview`: trang /compass/product-analysis fire endpoint v3 overview stats
+ *   (revenue/traffic/conversion theo ngày). Route /compass/* dính captcha MỖI lần nhưng
+ *   data fire trước overlay → dùng `skipCaptcha` (capture-first): load, hứng, đóng nhanh,
+ *   KHÔNG chờ giải captcha. Extractor compassOverview (legacy) giữ cho phase sau.
  */
 export const ROUTES: RouteDef[] = [
   {
@@ -17,5 +17,13 @@ export const ROUTES: RouteDef[] = [
     url: "https://seller-us.tiktok.com/homepage",
     settleMs: 4000,
     extractor: extractHomepage,
+  },
+  {
+    key: "shop-overview",
+    url: "https://seller-us.tiktok.com/compass/product-analysis",
+    settleMs: 25000, // max chờ — thoát ngay khi endpoint fire
+    skipCaptcha: true,
+    waitForEndpoint: "v3/insights/seller/shop/overview/performance/stats",
+    extractor: extractShopOverview,
   },
 ];

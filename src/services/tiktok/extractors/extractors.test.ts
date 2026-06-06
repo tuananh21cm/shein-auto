@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { extractHomepage } from "./homepage";
 import { extractCompassOverview } from "./compassOverview";
+import { extractShopOverview } from "./shopOverview";
 import type { Capture } from "../types";
 
 // Fixtures dựa trên payload THẬT từ discovery 2026-06-05 (đã rút gọn).
@@ -60,9 +61,63 @@ describe("extractHomepage (real fixtures)", () => {
   });
 });
 
-// Compass sales endpoint (GMV/traffic) CHƯA bắt được ở discovery 2026-06-05 (chart load lazy
-// sau captcha) → test bằng fixture tổng hợp, giữ contract cho khi map được endpoint thật.
-describe("extractCompassOverview (synthetic — sales endpoint chưa map)", () => {
+// Fixture THẬT từ discovery 2026-06-05-phase2 (endpoint v3 overview stats, rút gọn 2 kỳ).
+const overviewCaps: Capture[] = [
+  {
+    url: "https://seller-us.tiktok.com/api/v3/insights/seller/shop/overview/performance/stats",
+    status: 200,
+    body: {
+      data: {
+        segments: [
+          {
+            time_descriptor: { granularity: "all" },
+            timed_stats: [{ start: "2026-05-29", end: "2026-06-04", stats: { revenue: { amount: "179.94" }, main_order_cnt: 7 } }],
+          },
+          {
+            time_descriptor: { granularity: "1D" },
+            timed_stats: [
+              { start: "2026-06-03", end: "2026-06-04", stats: { revenue: { amount: "52.39" }, main_order_cnt: 2 } },
+              {
+                start: "2026-06-04",
+                end: "2026-06-05",
+                stats: {
+                  revenue: { amount: "46.71" },
+                  gross_revenue: { amount: "48.2" },
+                  refund_amount: { amount: "0" },
+                  main_order_cnt: 2,
+                  item_sold_cnt: 2,
+                  product_page_view_cnt: 218,
+                  product_page_visitor_cnt: "119",
+                  review_cnt: 1,
+                  conversion_rate: "0.0168",
+                  video_content_revenue: { amount: "0" },
+                },
+              },
+            ],
+          },
+        ],
+      },
+    },
+  },
+];
+
+describe("extractShopOverview (real fixture — lấy kỳ 1D mới nhất)", () => {
+  it("bóc revenue/orders/traffic/conversion của ngày mới nhất", () => {
+    const m = extractShopOverview(overviewCaps);
+    expect(m.find((x) => x.key === "revenue")?.valueNum).toBe(46.71);
+    expect(m.find((x) => x.key === "orders")?.valueNum).toBe(2);
+    expect(m.find((x) => x.key === "page_views")?.valueNum).toBe(218);
+    expect(m.find((x) => x.key === "visitors")?.valueNum).toBe(119);
+    expect(m.find((x) => x.key === "conversion_rate")?.valueNum).toBe(1.68);
+    expect(m.find((x) => x.key === "period")?.valueText).toBe("2026-06-04→2026-06-05");
+  });
+  it("không vỡ khi captures rỗng", () => {
+    expect(extractShopOverview([])).toEqual([]);
+  });
+});
+
+// Compass sales endpoint cũ (extractCompassOverview) giữ làm unit test contract synthetic.
+describe("extractCompassOverview (synthetic — legacy, giữ cho phase sau)", () => {
   it("bóc gmv/orders/conversion khi có data", () => {
     const caps: Capture[] = [
       {

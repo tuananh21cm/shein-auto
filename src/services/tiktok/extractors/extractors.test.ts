@@ -5,6 +5,7 @@ import { extractShopOverview } from "./shopOverview";
 import { extractPromotion } from "./promotion";
 import { extractCampaign } from "./campaign";
 import { extractMessages } from "./messages";
+import { extractChat } from "./chat";
 import type { Capture } from "../types";
 
 // Fixtures dựa trên payload THẬT từ discovery 2026-06-05 (đã rút gọn).
@@ -252,6 +253,30 @@ describe("extractMessages (real fixture)", () => {
   });
   it("không vỡ khi captures rỗng", () => {
     expect(extractMessages([])).toEqual([]);
+  });
+});
+
+describe("extractChat (real fixture — customer messages)", () => {
+  it("bóc unread + queue + helpdesk", () => {
+    const caps: Capture[] = [
+      {
+        url: "https://seller-us.tiktok.com/api/v1/shop_im/shop/user/get_shop_live_metrics",
+        status: 200,
+        body: { data: { shop_live_metrics: [{ oec_shop_id: "7496308481964214528", unread_count: 3, queue_length: 1 }] } },
+      },
+      {
+        url: "https://seller-us.tiktok.com/api/v1/proxy/seller/helpdesk/unread_msg/get",
+        status: 200,
+        body: { data: { Count: 2, Message: [] } },
+      },
+    ];
+    const m = extractChat(caps);
+    expect(m.find((x) => x.key === "chat_unread")?.valueNum).toBe(3);
+    expect(m.find((x) => x.key === "chat_queue")?.valueNum).toBe(1);
+    expect(m.find((x) => x.key === "helpdesk_unread")?.valueNum).toBe(2);
+  });
+  it("không vỡ khi captures rỗng", () => {
+    expect(extractChat([])).toEqual([]);
   });
 });
 

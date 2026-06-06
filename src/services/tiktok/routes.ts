@@ -4,6 +4,7 @@ import { extractShopOverview } from "./extractors/shopOverview";
 import { extractPromotion } from "./extractors/promotion";
 import { extractCampaign } from "./extractors/campaign";
 import { extractMessages } from "./extractors/messages";
+import { extractChat } from "./extractors/chat";
 
 /**
  * Registry route cào hằng ngày. Mở rộng = thêm 1 entry + 1 extractor.
@@ -53,7 +54,8 @@ export const ROUTES: RouteDef[] = [
     url: "https://seller-us.tiktok.com/message/center?shop_region=US&tab_id=-3000000",
     settleMs: 12000,
     skipCaptcha: true,
-    extractor: extractMessages,
+    // radar chính sách + thống kê customer messages (chat unread/queue) trên cùng trang
+    extractor: (caps) => [...extractMessages(caps), ...extractChat(caps)],
   },
   {
     // Tab Account activity — lấy tin hiện ra (passive)

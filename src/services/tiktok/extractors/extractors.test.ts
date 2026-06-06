@@ -8,6 +8,7 @@ import { extractMessages } from "./messages";
 import { extractChat } from "./chat";
 import { extractOrders } from "./orders";
 import { extractReturns } from "./returns";
+import { extractProductOpportunity } from "./productOpportunity";
 import type { Capture } from "../types";
 
 // Fixtures dựa trên payload THẬT từ discovery 2026-06-05 (đã rút gọn).
@@ -342,6 +343,34 @@ describe("extractReturns (real fixture)", () => {
   });
   it("không vỡ khi captures rỗng", () => {
     expect(extractReturns([])).toEqual([]);
+  });
+});
+
+describe("extractProductOpportunity (real shape)", () => {
+  const caps: Capture[] = [
+    {
+      url: "https://seller-us.tiktok.com/api/v1/product/oc/seller_product_opportunity/seller/lead/list",
+      status: 200,
+      body: {
+        data: {
+          "0": { lead_name: "high demand low comp", search_volume: "9,924", online_products: "1", level3_cate_name: "T-shirts" },
+          "1": { lead_name: "trending crowded", search_volume: "10,887", online_products: "147", level2_cate_name: "Men's Tops" },
+          "2": { lead_name: "tiny niche", search_volume: "100", online_products: "0", level1_cate_name: "X" },
+        },
+      },
+    },
+  ];
+  it("đếm tổng + xếp top theo cầu/cung (lọc search>=1000)", () => {
+    const m = extractProductOpportunity(caps);
+    expect(m.find((x) => x.key === "opportunities_tracked")?.valueNum).toBe(3);
+    // low-comp 9924/1 đứng trên crowded 10887/147; tiny (100) bị lọc
+    expect(m.find((x) => x.key === "opp_1")?.valueText).toContain("high demand low comp");
+    expect(m.find((x) => x.key === "opp_1")?.valueText).toContain("9,924");
+    expect(m.find((x) => x.key === "opp_2")?.valueText).toContain("trending crowded");
+    expect(m.find((x) => x.key === "opp_3")).toBeUndefined();
+  });
+  it("không vỡ khi captures rỗng", () => {
+    expect(extractProductOpportunity([])).toEqual([]);
   });
 });
 

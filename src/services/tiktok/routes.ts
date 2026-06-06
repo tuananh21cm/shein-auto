@@ -7,6 +7,7 @@ import { extractMessages } from "./extractors/messages";
 import { extractChat } from "./extractors/chat";
 import { extractOrders } from "./extractors/orders";
 import { extractReturns } from "./extractors/returns";
+import { extractProductOpportunity } from "./extractors/productOpportunity";
 
 /**
  * Registry route cào hằng ngày. Mở rộng = thêm 1 entry + 1 extractor.
@@ -41,6 +42,15 @@ export const ROUTES: RouteDef[] = [
     skipCaptcha: true,
     waitForEndpoint: "reverse/dashboard/get",
     extractor: extractReturns,
+  },
+  {
+    // Product opportunities: top keyword/sp theo cầu/cung (gợi ý nên list hàng gì)
+    key: "product-opportunity",
+    url: "https://seller-us.tiktok.com/product/opportunity?shop_region=US&sort_field=1&use_like=false",
+    settleMs: 20000,
+    skipCaptcha: true,
+    waitForEndpoint: "seller_product_opportunity/seller/lead/list",
+    extractor: extractProductOpportunity,
   },
   {
     key: "shop-overview",

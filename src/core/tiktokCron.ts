@@ -10,6 +10,7 @@ import { crawlTiktokSeller } from "./crawlTiktokSeller";
 import { TiktokDb } from "../services/tiktok/db";
 import { analyzeSnapshot } from "../services/tiktok/analyze";
 import { renderMarkdown } from "../services/tiktok/renderReport";
+import { sendTiktokReport } from "../services/tiktok/notifyReport";
 
 let running = false;
 let task: ScheduledTask | null = null;
@@ -69,6 +70,10 @@ export async function runTiktokJob(opts: RunTiktokOptions = {}): Promise<void> {
     if (analysis.alerts.length) db.insertAlerts(snap.runId, analysis.alerts);
 
     log(`✅ Báo cáo: ${reportPath} (${analysis.alerts.length} alert).`);
+
+    // Gửi phần overview (bỏ bảng chi tiết dài) + link file lên Telegram
+    const overview = md.split("## 📑 Chi tiết")[0].trim();
+    await sendTiktokReport(`${overview}\n\n📄 Chi tiết đầy đủ: ${reportPath}`, log);
   } catch (e: any) {
     console.error("[tiktok-cron] ✗ Lỗi:", e?.message ?? e);
   } finally {

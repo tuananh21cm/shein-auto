@@ -1,6 +1,63 @@
 import axios from "axios";
+import type { CrawlSnapshot, AnalysisResult, HealthStatus } from "./types";
 
 const TG_API = "https://api.telegram.org";
+
+const ST_ICON: Record<HealthStatus, string> = { good: "🟢", warning: "🟡", critical: "🔴" };
+const ST_WORD: Record<HealthStatus, string> = { good: "TỐT", warning: "CẦN CHÚ Ý", critical: "NGHIÊM TRỌNG" };
+const SEV_ICON: Record<string, string> = { high: "🔴", medium: "🟡", low: "🟢" };
+
+function short(s: string, n: number): string {
+  const t = (s || "").replace(/\s+/g, " ").trim();
+  return t.length > n ? t.slice(0, n - 1) + "…" : t;
+}
+
+/**
+ * Render report cho Telegram: plain text gọn, emoji dẫn mắt, KHÔNG markdown/bảng.
+ * Chỉ nêu trọng tâm — status từng mảng + cảnh báo + việc cần làm (rút ngắn).
+ */
+export function renderTelegram(snap: CrawlSnapshot, a: AnalysisResult, reportPath?: string): string {
+  const L: string[] = [];
+  L.push(`${ST_ICON[a.overallStatus]} TIKTOK SHOP · ${snap.runDate} · ${ST_WORD[a.overallStatus]}`);
+  if (a.summary) {
+    L.push("");
+    L.push(short(a.summary, 260));
+  }
+
+  if (a.areas?.length) {
+    L.push("");
+    L.push("━━━ SỨC KHỎE ━━━");
+    for (const ar of a.areas) L.push(`${ST_ICON[ar.status] ?? "⚪"} ${ar.area} · ${short(ar.note, 95)}`);
+  }
+
+  if (a.trends?.length) {
+    L.push("");
+    L.push("━━━ 📈 XU HƯỚNG ━━━");
+    for (const t of a.trends.slice(0, 5)) L.push(`${t.direction === "up" ? "↑" : "↓"} ${t.label}: ${short(t.note, 70)}`);
+  }
+
+  if (a.alerts?.length) {
+    L.push("");
+    L.push("━━━ 🚨 CẢNH BÁO ━━━");
+    for (const al of a.alerts.slice(0, 5))
+      L.push(`${SEV_ICON[al.severity] ?? "•"} ${short(al.title, 75)}${al.action ? `\n   → ${short(al.action, 90)}` : ""}`);
+  }
+
+  if (a.todos?.length) {
+    L.push("");
+    L.push("━━━ ✅ VIỆC CẦN LÀM ━━━");
+    [...a.todos]
+      .sort((x, y) => x.priority - y.priority)
+      .slice(0, 6)
+      .forEach((t, i) => L.push(`${i + 1}. ${short(t.task, 95)}`));
+  }
+
+  if (reportPath) {
+    L.push("");
+    L.push(`📄 ${reportPath}`);
+  }
+  return L.join("\n");
+}
 
 /** Tách text thành các đoạn <= maxLen (ưu tiên cắt ở xuống dòng) cho giới hạn 4096 của Telegram. */
 export function chunkText(text: string, maxLen = 3900): string[] {

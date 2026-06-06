@@ -10,7 +10,7 @@ import { crawlTiktokSeller } from "./crawlTiktokSeller";
 import { TiktokDb } from "../services/tiktok/db";
 import { analyzeSnapshot } from "../services/tiktok/analyze";
 import { renderMarkdown } from "../services/tiktok/renderReport";
-import { sendTiktokReport } from "../services/tiktok/notifyReport";
+import { sendTiktokReport, renderTelegram } from "../services/tiktok/notifyReport";
 
 let running = false;
 let task: ScheduledTask | null = null;
@@ -71,9 +71,8 @@ export async function runTiktokJob(opts: RunTiktokOptions = {}): Promise<void> {
 
     log(`✅ Báo cáo: ${reportPath} (${analysis.alerts.length} alert).`);
 
-    // Gửi phần overview (bỏ bảng chi tiết dài) + link file lên Telegram
-    const overview = md.split("## 📑 Chi tiết")[0].trim();
-    await sendTiktokReport(`${overview}\n\n📄 Chi tiết đầy đủ: ${reportPath}`, log);
+    // Gửi bản Telegram gọn (không markdown/bảng) + link file chi tiết
+    await sendTiktokReport(renderTelegram(snap, analysis, path.relative(process.cwd(), reportPath)), log);
   } catch (e: any) {
     console.error("[tiktok-cron] ✗ Lỗi:", e?.message ?? e);
   } finally {

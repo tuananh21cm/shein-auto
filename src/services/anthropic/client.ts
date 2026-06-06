@@ -22,7 +22,7 @@ export async function callClaude(params: ClaudeCallParams): Promise<string> {
   const model = params.model ?? "claude-opus-4-8";
   const res = await client().messages.create({
     model,
-    max_tokens: params.maxTokens ?? 2048,
+    max_tokens: params.maxTokens ?? 4096,
     system: [{ type: "text", text: params.system, cache_control: { type: "ephemeral" } }],
     messages: [{ role: "user", content: params.user }],
   });

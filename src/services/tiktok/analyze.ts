@@ -11,7 +11,8 @@ Trả về DUY NHẤT một JSON đúng schema (không markdown, không giải t
   "weaknesses": ["điểm yếu"],
   "todos": [{"priority":1,"task":"","why":""}]
 }
-Ưu tiên cảnh báo chỉ số xấu đi so với hôm qua. todos sắp theo priority tăng dần (1 = gấp nhất).`;
+Ưu tiên cảnh báo chỉ số xấu đi so với hôm qua. todos sắp theo priority tăng dần (1 = gấp nhất).
+ĐẶC BIỆT: nếu có unread_policies/unread_violations/unread_account_updates > 0 hoặc các mục msg_* (tiêu đề thông báo TikTok), hãy coi đó là tín hiệu CHÍNH SÁCH quan trọng — tạo alert mức cao, tóm tắt nội dung message, và đề xuất chiến thuật/hành động cụ thể để tuân thủ, tránh bị phạt/khóa shop.`;
 
 export function buildUserPrompt(today: CrawlSnapshot, yesterday: MetricRow[]): string {
   const todayMetrics = today.routes.flatMap((r) =>

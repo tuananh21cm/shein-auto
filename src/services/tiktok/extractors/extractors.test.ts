@@ -4,6 +4,7 @@ import { extractCompassOverview } from "./compassOverview";
 import { extractShopOverview } from "./shopOverview";
 import { extractPromotion } from "./promotion";
 import { extractCampaign } from "./campaign";
+import { extractMessages } from "./messages";
 import type { Capture } from "../types";
 
 // Fixtures dựa trên payload THẬT từ discovery 2026-06-05 (đã rút gọn).
@@ -202,6 +203,55 @@ describe("extractCampaign (real fixture)", () => {
   });
   it("không vỡ khi captures rỗng", () => {
     expect(extractCampaign([])).toEqual([]);
+  });
+});
+
+// Fixture THẬT từ discovery 2026-06-06 (message center, rút gọn).
+const messageCaps: Capture[] = [
+  {
+    url: "https://seller-us.tiktok.com/api/v1/seller/message/pull_by_category_v2",
+    status: 200,
+    body: {
+      data: {
+        list_details: [
+          { msg_category_type: -1000000, msg_category_type_name: "Your priority", new_message_count: 0 },
+          { msg_category_type: 4000000, msg_category_type_name: "Violations", new_message_count: 1 },
+          { msg_category_type: 6000000, msg_category_type_name: "Policies", new_message_count: 1 },
+          { msg_category_type: 1400000, msg_category_type_name: "Account updates", new_message_count: 1 },
+        ],
+      },
+    },
+  },
+  {
+    url: "https://seller-us.tiktok.com/api/v2/seller/message/list",
+    status: 200,
+    body: {
+      data: {
+        total_count: 1,
+        message: [
+          { title: "Strengthened Enforcement for Inaccurate Tracking Information", brief_content: "What sellers need to do for accurate tracking", read_status: 0 },
+        ],
+      },
+    },
+  },
+];
+
+describe("extractMessages (real fixture)", () => {
+  it("bóc unread theo category chính sách + tổng", () => {
+    const m = extractMessages(messageCaps);
+    expect(m.find((x) => x.key === "unread_violations")?.valueNum).toBe(1);
+    expect(m.find((x) => x.key === "unread_policies")?.valueNum).toBe(1);
+    expect(m.find((x) => x.key === "unread_account_updates")?.valueNum).toBe(1);
+    expect(m.find((x) => x.key === "unread_total")?.valueNum).toBe(3);
+  });
+  it("bóc tiêu đề message đã load (để AI đọc)", () => {
+    const m = extractMessages(messageCaps);
+    const msg = m.find((x) => x.key === "msg_1");
+    expect(msg?.valueText).toContain("Strengthened Enforcement");
+    expect(msg?.valueText).toContain("[unread]");
+  });
+  it("không vỡ khi captures rỗng", () => {
+    expect(extractMessages([])).toEqual([]);
   });
 });
 

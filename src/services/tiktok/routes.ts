@@ -3,6 +3,7 @@ import { extractHomepage } from "./extractors/homepage";
 import { extractShopOverview } from "./extractors/shopOverview";
 import { extractPromotion } from "./extractors/promotion";
 import { extractCampaign } from "./extractors/campaign";
+import { extractMessages } from "./extractors/messages";
 
 /**
  * Registry route cào hằng ngày. Mở rộng = thêm 1 entry + 1 extractor.
@@ -43,5 +44,15 @@ export const ROUTES: RouteDef[] = [
     skipCaptcha: true,
     waitForEndpoint: "parents_campaigns/list",
     extractor: extractCampaign,
+  },
+  {
+    // Inbox: radar không miss thông báo chính sách (Violations/Policies/Account updates).
+    // Dwell cố định (không waitForEndpoint) để mọi call pull_by_category_v2 + message/list
+    // kịp fire — full-category list thường fire sau call partial đầu tiên.
+    key: "messages",
+    url: "https://seller-us.tiktok.com/message/center?shop_region=US&tab_id=-3000000",
+    settleMs: 12000,
+    skipCaptcha: true,
+    extractor: extractMessages,
   },
 ];

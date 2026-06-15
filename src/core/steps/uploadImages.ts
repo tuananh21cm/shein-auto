@@ -9,20 +9,62 @@ interface VariantImageParam {
   [color: string]: string | string[];
 }
 
-const downloadToFile = async (url: string, filePath: string): Promise<void> => {
-  const response = await axios({ url, method: "GET", responseType: "stream" });
+// Lỗi mạng tạm thời từ CDN (reset/treo/DNS) → đáng retry. 404/403... thì không.
+const isTransientNetErr = (err: any): boolean => {
+  const code = err?.code ?? "";
+  const msg: string = err?.message ?? "";
+  return (
+    ["ECONNRESET", "ETIMEDOUT", "ECONNABORTED", "EAI_AGAIN", "ENOTFOUND", "EPIPE", "ECONNREFUSED"].includes(code) ||
+    /ECONNRESET|ETIMEDOUT|socket hang up|timeout|network|aborted/i.test(msg)
+  );
+};
+
+// Tải 1 lần: stream về file, bắt lỗi cả ở response lẫn GIỮA CHỪNG stream (socket reset).
+const downloadOnce = async (url: string, filePath: string): Promise<void> => {
+  const response = await axios({
+    url,
+    method: "GET",
+    responseType: "stream",
+    timeout: 30_000,
+    headers: {
+      "User-Agent":
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
+    },
+  });
   const writer = fs.createWriteStream(filePath);
-  response.data.pipe(writer);
-  await new Promise((resolve, reject) => {
-    writer.on("finish", () => {
-      writer.close();
-      resolve(true);
-    });
-    writer.on("error", (err) => {
-      writer.close();
+  await new Promise<void>((resolve, reject) => {
+    // Lỗi ECONNRESET khi đang stream phát ra ở response.data, không phải writer.
+    response.data.on("error", (err: any) => {
+      writer.destroy();
       reject(err);
     });
+    writer.on("error", (err) => {
+      writer.destroy();
+      reject(err);
+    });
+    writer.on("finish", () => resolve());
+    response.data.pipe(writer);
   });
+};
+
+const downloadToFile = async (url: string, filePath: string, maxRetries = 3): Promise<void> => {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      // Mỗi lần thử ghi đè sạch (xoá file dở của lần trước nếu có).
+      await fs.promises.rm(filePath, { force: true }).catch(() => {});
+      await downloadOnce(url, filePath);
+      return;
+    } catch (err: any) {
+      if (attempt === maxRetries || !isTransientNetErr(err)) {
+        throw new Error(`Tải ảnh thất bại (${err?.code ?? err?.message}) sau ${attempt} lần: ${url}`);
+      }
+      const delay = 800 * Math.pow(2, attempt - 1) + Math.floor(Math.random() * 400);
+      console.warn(
+        `⚠️ Tải ảnh lỗi (${err?.code ?? err?.message}) — retry ${attempt}/${maxRetries - 1} sau ${delay}ms: ${url}`
+      );
+      await new Promise((r) => setTimeout(r, delay));
+    }
+  }
 };
 
 export const uploadProductImages = async (page: any, imageUrls: string[]): Promise<void> => {
@@ -86,6 +128,12 @@ export const uploadProductImages = async (page: any, imageUrls: string[]): Promi
   }
 };
 
+// Universal selector cho 1 ô variant-image (US cũ + DE/FR mới)
+const VARIANT_BOX_SELECTOR = [".variant_imgs li", ".variant_multiple_imgs .flex.column"].join(", ");
+
+// Escape ký tự đặc biệt để dùng tên màu trong RegExp an toàn (vd "Red (Bright)")
+const escapeRegExp = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
 export const uploadVariantImages = async (
   page: any,
   variantImages: VariantImageParam[]
@@ -97,6 +145,24 @@ export const uploadVariantImages = async (
     for (const [key, value] of Object.entries(item)) {
       imageMap[key] = Array.isArray(value) ? value : [value];
     }
+  }
+  const colorCount = Object.keys(imageMap).length;
+
+  // Readiness gate: đợi vùng Variant Image render ĐỦ số màu + ổn định ~1.5s trước
+  // khi khớp màu. Sửa gốc lỗi "màu đầu tiên khớp quá sớm → count 0 → bỏ sót".
+  {
+    const tReady = Date.now();
+    const maxReady = 15_000;
+    const stableReadyMs = 1_500;
+    let lastN = -1;
+    let lastChange = Date.now();
+    while (Date.now() - tReady < maxReady) {
+      const n = await page.locator(VARIANT_BOX_SELECTOR).count();
+      if (n !== lastN) { lastN = n; lastChange = Date.now(); }
+      if (n >= colorCount && Date.now() - lastChange > stableReadyMs) break;
+      await page.waitForTimeout(300);
+    }
+    console.log(`🧩 Variant image section sẵn sàng: ${lastN}/${colorCount} ô (sau ${Math.round((Date.now() - tReady) / 1000)}s)`);
   }
 
   const uniqueId = crypto.randomBytes(8).toString("hex");
@@ -110,22 +176,24 @@ export const uploadVariantImages = async (
     const localPaths: string[] = [];
 
     try {
-      // Universal selector: support cả cấu trúc US cũ và DE/FR mới
       const variantContainer = page
-        .locator(
-          [".variant_imgs li", ".variant_multiple_imgs .flex.column"].join(", ")
-        )
-        .filter({
-          hasText: new RegExp(`${searchColor}`, "i"),
-        });
+        .locator(VARIANT_BOX_SELECTOR)
+        .filter({ hasText: new RegExp(escapeRegExp(searchColor), "i") });
 
-      const count = await variantContainer.count();
+      // Retry khớp container: vùng có thể re-layout sau mỗi lần upload màu trước.
+      let count = 0;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        count = await variantContainer.count();
+        if (count > 0) break;
+        await page.waitForTimeout(1000);
+      }
 
       if (count === 0) {
         const currentUIColors = await page
           .locator(".variant_imgs .line_ellipsis, .variant_multiple_imgs .flex.column")
           .allInnerTexts();
-        console.warn(`⚠️ Bỏ qua màu: "${searchColor}". UI hiện có:`, currentUIColors);
+        console.error(`❌ Không tìm thấy ô variant cho màu: "${searchColor}". UI hiện có:`, currentUIColors);
+        failedColors.push(searchColor);
         continue;
       }
 
@@ -151,24 +219,36 @@ export const uploadVariantImages = async (
       const fileInput = targetBox.locator("input.file_upload__input");
       await fileInput.waitFor({ state: "attached" });
 
-      // Đếm ảnh có trước, set files, rồi smart wait đạt expected
       const imgsBefore = await targetBox.locator("img").count();
       const expected = imgsBefore + localPaths.length;
-      await fileInput.setInputFiles(localPaths);
 
-      const tUp = Date.now();
-      const maxWait = 30_000;
-      const stable = 2_000;
+      // Set files + smart-wait; nếu không có ảnh nào được thêm → thử lại 1 lần nữa.
       let last = imgsBefore;
-      let lastChange = Date.now();
-      while (Date.now() - tUp < maxWait) {
-        const c = await targetBox.locator("img").count();
-        if (c !== last) { last = c; lastChange = Date.now(); }
-        if (c >= expected) break;
-        if (c > imgsBefore && Date.now() - lastChange > stable) break;
-        await page.waitForTimeout(400);
+      for (let tryUpload = 0; tryUpload < 2; tryUpload++) {
+        await fileInput.setInputFiles(localPaths);
+        const tUp = Date.now();
+        const maxWait = 30_000;
+        const stable = 2_000;
+        last = await targetBox.locator("img").count();
+        let lastChange = Date.now();
+        while (Date.now() - tUp < maxWait) {
+          const c = await targetBox.locator("img").count();
+          if (c !== last) { last = c; lastChange = Date.now(); }
+          if (c >= expected) break;
+          if (c > imgsBefore && Date.now() - lastChange > stable) break;
+          await page.waitForTimeout(400);
+        }
+        if (last > imgsBefore) break; // đã có ảnh → xong
+        console.warn(`⚠️ "${searchColor}": chưa có ảnh nào sau lần thử ${tryUpload + 1}, retry...`);
+        await page.waitForTimeout(800);
       }
-      console.log(`✅ "${searchColor}": ${localPaths.length} ảnh upload (${imgsBefore}→${last}) trong ${Math.round((Date.now() - tUp) / 1000)}s`);
+
+      if (last <= imgsBefore) {
+        console.error(`❌ "${searchColor}": upload xong nhưng KHÔNG có ảnh nào (${imgsBefore}→${last}).`);
+        failedColors.push(searchColor);
+        continue;
+      }
+      console.log(`✅ "${searchColor}": ${localPaths.length} ảnh upload (${imgsBefore}→${last}).`);
     } catch (innerError) {
       console.error(`❌ Lỗi tại màu ${searchColor}:`, innerError);
       failedColors.push(searchColor);

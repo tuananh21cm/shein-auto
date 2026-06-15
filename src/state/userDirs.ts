@@ -2,6 +2,7 @@ import path from "path";
 import fs from "fs-extra";
 import { config } from "../config";
 import { loadAdminConfig, AdminUser } from "../adminConfig";
+import { resolveBrand, workerConfig, pricing as pricingGlobal } from "../config/appConfig";
 
 export interface UserDirs {
   username: string;
@@ -84,7 +85,6 @@ export const resolveBrandForUser = async (
   username: string | undefined | null,
   profileName: string
 ): Promise<string> => {
-  const { resolveBrand } = await import("../config/appConfig");
   if (!username) return resolveBrand(profileName);
   const cfg = await loadAdminConfig();
   const u = cfg.users.find((x) => x.username === username);
@@ -128,7 +128,6 @@ export const getEffectiveSettings = async (username: string): Promise<{
   headless: boolean;
   pricing: { shipFee: number; multiplier: number; extraAdd: number };
 }> => {
-  const { workerConfig, pricing: pricingGlobal } = await import("../config/appConfig");
   const w = workerConfig();
   const p = pricingGlobal();
   const cfg = await loadAdminConfig();

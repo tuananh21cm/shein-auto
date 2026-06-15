@@ -1,24 +1,38 @@
+/**
+ * Viết hoa chữ cái đầu mỗi từ, GIỮ NGUYÊN phần còn lại của từ.
+ * Cố ý không lowercase phần đuôi để không phá acronym/brand sẵn có
+ * (vd "2-Piece", "USB", "ROMWE" giữ nguyên; "red summer" → "Red Summer").
+ */
+const toTitleCase = (s: string): string =>
+  s.replace(/(^|\s)(\p{L})/gu, (_m, boundary, ch) => boundary + ch.toUpperCase());
+
 export const cleanTitle = (input: any, brand: string = ""): string => {
-  let rawText = "";
+  const prefix = brand && brand.trim() ? `${brand.trim()} ` : "";
+
+  // Lấy phần text sản phẩm (KHÔNG gồm brand) từ các dạng input khác nhau
+  let productText = "";
   if (typeof input === "object" && input !== null) {
     if (input.text && input.text.thirdPartyData) {
-      rawText = brand + " " + input.text.thirdPartyData;
+      productText = input.text.thirdPartyData;
     } else if (input.thirdPartyData) {
-      rawText = brand + " " + input.thirdPartyData;
+      productText = input.thirdPartyData;
     } else {
-      rawText = brand + " " + JSON.stringify(input);
+      productText = JSON.stringify(input);
     }
   } else if (typeof input === "string") {
     if (input.trim().startsWith("{")) {
       try {
         const parsed = JSON.parse(input);
-        rawText = brand + " " + (parsed.thirdPartyData || (parsed.text && parsed.text.thirdPartyData) || input);
+        productText = parsed.thirdPartyData || (parsed.text && parsed.text.thirdPartyData) || input;
       } catch {
-        rawText = brand + " " + input;
+        productText = input;
       }
     } else {
-      rawText = brand + " " + input;
+      productText = input;
     }
   }
-  return rawText || "";
+
+  // Viết hoa chữ cái đầu mỗi từ cho phần text sản phẩm; brand giữ nguyên case.
+  const titled = toTitleCase(productText.trim());
+  return (prefix + titled).trim();
 };

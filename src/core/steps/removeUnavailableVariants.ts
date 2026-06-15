@@ -30,8 +30,11 @@ export const removeUnavailableVariants = async (
   // Duyệt ngược từ dưới lên để khỏi lệch index khi xóa
   for (let i = rowCount - 1; i >= 0; i--) {
     const row = rows.nth(i);
+    // Title variant nằm ở ô Variant (div.line_ellipsis[title=...]). KHÔNG ràng buộc
+    // td:first-child vì 4Seller đã thêm cột checkbox dẫn đầu → variant không còn ở td đầu.
     const fullTitle = await row
-      .locator("td:first-child div.line_ellipsis")
+      .locator("div.line_ellipsis[title]")
+      .first()
       .getAttribute("title");
     if (!fullTitle) continue;
 

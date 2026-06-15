@@ -1,7 +1,7 @@
 {
   "_comment": "Formula: finalPrice = (originalPrice + shipFee) * multiplier + extraAdd. shipFee mặc định 5 (phí ship). multiplier = margin (vd 1.6 = +60%).",
   "shipFee": 5,
-  "multiplier": 2.5,
+  "multiplier": 1.6,
   "extraAdd": 0,
   "defaultQty": 5,
   "defaultWeight": "0.3",

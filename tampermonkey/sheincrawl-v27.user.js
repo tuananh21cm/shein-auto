@@ -76,6 +76,15 @@
         return m ? m[1].trim() : raw.trim();
     };
 
+    /**
+     * Bỏ HEADER nhóm fit: tên fit đứng trơ (vd "Regular") HOẶC dạng "<Fit> Size/Sizes"
+     * (vd "Regular Sizes", "Plus Size"). GIỮ size thật dù bắt đầu bằng tên fit —
+     * vd "Petite XXS" (sau "Petite" còn "XXS", không phải "size(s)") vẫn được lấy.
+     * Không phân biệt hoa thường.
+     */
+    const SKIP_SIZE_RE = /^(regular|tall|curve|plus|petite|pettie|maternity)(\s+sizes?)?$/i;
+    const isSkippedSize = (text) => SKIP_SIZE_RE.test((text || '').trim());
+
     const detectMarket = () => {
         const h = window.location.hostname;
         if (h.endsWith('.co.uk')) return 'UK';
@@ -215,6 +224,7 @@
         for (const btn of buttons) {
             const rawText = btn.textContent?.trim();
             if (!rawText) continue;
+            if (isSkippedSize(rawText)) continue;  // skip Regular/Tall/Curve/Plus/Petite/Maternity
             const text = normalizeShein(rawText);  // "2 (XS)" → "XS"
             const cls = btn.className || '';
             const parentCls = btn.parentElement?.className || '';
@@ -295,7 +305,9 @@
 
             // 4. SIZE union — normalize "2 (XS)" → "XS"
             const initialSizes = Array.from(document.querySelectorAll(SELECTORS.sizeButtons))
-                .map((el) => normalizeShein(el.textContent.trim()))
+                .map((el) => el.textContent.trim())
+                .filter((raw) => raw && !isSkippedSize(raw))  // skip Regular/Tall/Curve/Plus/Petite/Maternity
+                .map((raw) => normalizeShein(raw))
                 .filter(Boolean);
             const allSizesSet = new Set(initialSizes);
 

@@ -1,3 +1,27 @@
+// Retry: tối đa 3 lượt cho MỖI lời gọi, với exponential backoff.
+// Chỉ retry các lỗi tạm thời (503/429/500/quá tải/mạng/response rỗng); lỗi khác ném ngay.
+function isRetryable(error: any): boolean {
+  const msg: string = error?.message ?? "";
+  return (
+    error?.retryable === true ||
+    error?.status === 503 ||
+    error?.status === 429 ||
+    error?.status === 500 ||
+    msg.includes("503") ||
+    msg.includes("500") ||
+    msg.includes("Service Unavailable") ||
+    msg.includes("high demand") ||
+    msg.includes("RESOURCE_EXHAUSTED") ||
+    msg.includes("overloaded") ||
+    // Lỗi mạng / response rỗng / parse fail tạm thời
+    msg.includes("fetch failed") ||
+    msg.includes("ECONNRESET") ||
+    msg.includes("ETIMEDOUT") ||
+    msg.includes("socket hang up") ||
+    msg.includes("network")
+  );
+}
+
 export async function retryGemini<T>(
   fn: () => Promise<T>,
   maxRetries: number = 3,
@@ -7,20 +31,16 @@ export async function retryGemini<T>(
     try {
       return await fn();
     } catch (error: any) {
-      const isRetryable =
-        error?.status === 503 ||
-        error?.message?.includes("503") ||
-        error?.message?.includes("Service Unavailable") ||
-        error?.message?.includes("high demand") ||
-        error?.message?.includes("RESOURCE_EXHAUSTED") ||
-        error?.status === 429;
-
-      if (!isRetryable || attempt === maxRetries) {
+      if (!isRetryable(error) || attempt === maxRetries) {
         throw error;
       }
 
       const delay = baseDelayMs * Math.pow(2, attempt) + Math.random() * 1000;
-      console.warn(`⚠️ Gemini API attempt ${attempt + 1}/${maxRetries + 1} failed (retryable). Retrying in ${Math.round(delay)}ms...`);
+      console.warn(
+        `⚠️ Gemini lỗi tạm thời (retryable). Retry ${attempt + 1}/${maxRetries} sau ${Math.round(
+          delay
+        )}ms... [${error?.message ?? error}]`
+      );
       await new Promise((resolve) => setTimeout(resolve, delay));
     }
   }

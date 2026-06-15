@@ -115,6 +115,30 @@ export const historyStore = {
     return { items: rows.map(rowToEntry), total };
   },
 
+  /**
+   * Đếm số entry theo folder trong khoảng [fromMs, toMs) (epoch ms), lọc theo status.
+   * Dùng cho thống kê "list hôm nay/hôm qua" trên card shop.
+   */
+  async countByFolder(opts: {
+    fromMs: number;
+    toMs: number;
+    status?: HistoryStatus;
+  }): Promise<Record<string, number>> {
+    const db = getDb();
+    const where = ["finished_at >= ?", "finished_at < ?"];
+    const params: any[] = [opts.fromMs, opts.toMs];
+    if (opts.status) {
+      where.push("status = ?");
+      params.push(opts.status);
+    }
+    const rows = db
+      .prepare(`SELECT folder, COUNT(*) as c FROM history WHERE ${where.join(" AND ")} GROUP BY folder`)
+      .all(...params) as { folder: string; c: number }[];
+    const out: Record<string, number> = {};
+    for (const r of rows) out[r.folder] = r.c;
+    return out;
+  },
+
   async find(id: string): Promise<HistoryEntry | null> {
     const db = getDb();
     const row = db.prepare("SELECT * FROM history WHERE id = ?").get(id) as HistoryRow | undefined;

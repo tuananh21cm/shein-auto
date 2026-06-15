@@ -846,7 +846,7 @@ function renderShops() {
             <div class="counter fail"><div class="val">${s.fail}</div><div class="lbl">Fail</div></div>
           </div>
         </div>
-        <div class="last-time" title="${escapeHtml(absTime(s.lastActivityMs))}">⏱ Last activity: ${escapeHtml(relTime(s.lastActivityMs))}</div>
+        <div class="last-time" title="${escapeHtml(absTime(s.lastActivityMs))}">Today: <b>${s.todayCount ?? 0}</b> | Yesterday: <b>${s.yesterdayCount ?? 0}</b></div>
       </div>
     `
       )
@@ -1705,7 +1705,7 @@ async function savePricing() {
 }
 
 // ─── Brand mapping ────────────────────────────────────
-state.brands = { default: "LUSHLACE", profiles: {} };
+state.brands = { default: "", profiles: {} };
 
 async function loadBrands() {
   try {
@@ -1773,7 +1773,7 @@ function removeBrandRow(i) {
 async function saveBrands() {
   if (state.user.role !== "admin") return toast("Chỉ admin", "error");
   try {
-    state.brands.default = $("#brandDefault").value.trim() || "LUSHLACE";
+    state.brands.default = $("#brandDefault").value.trim();
     const res = await fetch("/admin/api/brands", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -1781,7 +1781,7 @@ async function saveBrands() {
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error);
-    toast(`Đã lưu ${Object.keys(state.brands.profiles).length} mapping + default ${data.default}`);
+    toast(`Đã lưu ${Object.keys(state.brands.profiles).length} mapping + default ${data.default || "(no brand)"}`);
   } catch (err) {
     toast(err.message, "error");
   }

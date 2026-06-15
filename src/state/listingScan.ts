@@ -1,6 +1,7 @@
 import fs from "fs-extra";
 import path from "path";
 import { getAllUserDirs, UserDirs } from "./userDirs";
+import { historyStore } from "./historyStore";
 
 export type ListingStatus = "pending" | "success" | "fail";
 
@@ -33,6 +34,9 @@ export interface ShopSummary {
   total: number;
   lastActivityMs: number;
   cover: string | null;
+  /** Số listing đăng thành công hôm nay / hôm qua (mốc ngày theo GMT-7). */
+  todayCount: number;
+  yesterdayCount: number;
 }
 
 const parsePrice = (raw: any): number | null => {
@@ -307,9 +311,27 @@ export const scanShopsSummary = async (opts?: { username?: string }): Promise<Sh
         total: pending.count + success.count + fail.count,
         lastActivityMs: Math.max(pending.mtimeMs, success.mtimeMs, fail.mtimeMs),
         cover,
+        todayCount: 0,
+        yesterdayCount: 0,
       });
     }
   }
+
+  // Đếm listing đăng thành công hôm nay / hôm qua theo mốc ngày GMT-7 (cố định)
+  // từ bảng history (finished_at = thời điểm hoàn tất thật).
+  const TZ = -7 * 60 * 60 * 1000; // GMT-7
+  const startToday = Math.floor((Date.now() + TZ) / 86_400_000) * 86_400_000 - TZ;
+  const startYesterday = startToday - 86_400_000;
+  const endToday = startToday + 86_400_000;
+  const [todayCounts, yestCounts] = await Promise.all([
+    historyStore.countByFolder({ fromMs: startToday, toMs: endToday, status: "success" }),
+    historyStore.countByFolder({ fromMs: startYesterday, toMs: startToday, status: "success" }),
+  ]);
+  for (const s of summaries) {
+    s.todayCount = todayCounts[s.folder] ?? 0;
+    s.yesterdayCount = yestCounts[s.folder] ?? 0;
+  }
+
   summaries.sort((a, b) => b.lastActivityMs - a.lastActivityMs);
   return summaries;
 };

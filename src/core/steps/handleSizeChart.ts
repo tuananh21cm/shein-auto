@@ -2,7 +2,26 @@ import fs from "fs";
 import path from "path";
 import crypto from "crypto";
 import { promises as fsPromises } from "fs";
-import nodeHtmlToImage from "node-html-to-image";
+
+/**
+ * Render HTML thành PNG bằng chính Chromium đang chạy listing — tránh phụ thuộc
+ * node-html-to-image (kéo Puppeteer v23, bị ERR_UNSUPPORTED_ESM_URL_SCHEME
+ * trên Windows khi resolve browser binary).
+ */
+const renderHtmlToPng = async (page: any, html: string, outputPath: string): Promise<void> => {
+  const browser = page.context().browser();
+  if (!browser) {
+    throw new Error("Không lấy được Browser từ page để render Size Chart");
+  }
+  const ctx = await browser.newContext({ viewport: { width: 900, height: 900 } });
+  try {
+    const renderPage = await ctx.newPage();
+    await renderPage.setContent(html, { waitUntil: "load" });
+    await renderPage.screenshot({ path: outputPath, type: "png", fullPage: false });
+  } finally {
+    await ctx.close().catch(() => {});
+  }
+};
 
 const THEMES = [
   {
@@ -151,11 +170,8 @@ export const handleSizeChartUpload = async (page: any, jsonData: any): Promise<v
     if (jsonData.size_chart && jsonData.size_chart.data?.length > 0) {
       console.log(`🎨 Tạo ảnh từ JSON (ID: ${uniqueId})`);
       const headers = Object.keys(jsonData.size_chart.data[0]);
-      await nodeHtmlToImage({
-        output: tempPath,
-        html: generateSizeChartHtml(jsonData.size_chart.data, headers),
-        puppeteerArgs: { defaultViewport: { width: 900, height: 900 } },
-      });
+      const html = generateSizeChartHtml(jsonData.size_chart.data, headers);
+      await renderHtmlToPng(page, html, tempPath);
     } else if (jsonData.size_chart_img) {
       console.log("📸 Sử dụng ảnh base64 có sẵn...");
       const base64Data = jsonData.size_chart_img.split(",")[1];

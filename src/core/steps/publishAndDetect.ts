@@ -77,6 +77,83 @@ export const checkPageErrors = async (
 };
 
 /**
+ * Quét các "blocker" validation mà checkPageErrors bỏ sót:
+ *  - el-message-box modal (confirm/alert chặn submit)
+ *  - text validation rải rác trong bảng variant ("Can not be empty", "required"...)
+ *    — không dùng class .el-form-item__error nên checkPageErrors không thấy.
+ * Trả về chuỗi mô tả (kèm field gần nhất nếu có) hoặc null.
+ */
+export const collectBlockers = async (page: any): Promise<string | null> => {
+  try {
+    return await page.evaluate(() => {
+      const out: string[] = [];
+
+      // 1. Modal el-message-box (nếu có) — thường chặn toàn bộ submit
+      const mb = document.querySelector(".el-message-box");
+      if (mb && (mb as HTMLElement).offsetParent !== null) {
+        const t = (mb.textContent || "").replace(/\s+/g, " ").trim();
+        if (t) out.push(`[modal] ${t.slice(0, 200)}`);
+      }
+
+      // 2. Text validation ở các leaf node đang hiển thị.
+      // Cố ý KHÔNG match chữ "required" trơ — nó hay xuất hiện ở label/help/header
+      // (vd cột bắt buộc) gây false positive. Chỉ match cụm lỗi rõ ràng.
+      const re =
+        /can ?not be empty|cannot be empty|this field is required|is required|please (enter|select|complete|upload|fill|add)/i;
+      const all = Array.from(document.querySelectorAll("body *")) as HTMLElement[];
+      for (const el of all) {
+        if (el.children.length > 0) continue; // chỉ leaf
+        if (el.offsetParent === null) continue; // phải đang hiển thị
+        const txt = (el.textContent || "").trim();
+        if (!txt || txt.length > 80 || !re.test(txt)) continue;
+
+        let ctx = "";
+
+        // (a) Nếu lỗi nằm trong bảng variant → lấy tên variant của row + header cột
+        const tr = el.closest("tr");
+        if (tr) {
+          let variant = "";
+          const titled = tr.querySelector("div.line_ellipsis[title]");
+          if (titled) variant = (titled.getAttribute("title") || "").trim();
+          if (!variant) {
+            for (const td of Array.from(tr.querySelectorAll("td"))) {
+              const t = (td.textContent || "").trim();
+              if (t) { variant = t; break; }
+            }
+          }
+          let col = "";
+          const td = el.closest("td");
+          if (td) {
+            const idx = Array.from(tr.children).indexOf(td);
+            const table = tr.closest("table");
+            const head = table ? Array.from(table.querySelectorAll("thead th, thead td")) : [];
+            if (idx >= 0 && head[idx]) col = (head[idx].textContent || "").replace(/\s+/g, " ").trim();
+          }
+          ctx = [variant && `variant "${variant}"`, col && `cột "${col}"`].filter(Boolean).join(", ");
+        }
+
+        // (b) fallback: title/aria-label của ancestor
+        if (!ctx) {
+          let p: HTMLElement | null = el;
+          for (let k = 0; k < 6 && p; k++) {
+            p = p.parentElement;
+            const cand = p?.getAttribute?.("title") || p?.getAttribute?.("aria-label");
+            if (cand) { ctx = `gần "${cand}"`; break; }
+          }
+        }
+
+        out.push(ctx ? `${txt} (${ctx})` : txt);
+        if (out.length >= 8) break;
+      }
+
+      return Array.from(new Set(out)).join(" | ") || null;
+    });
+  } catch {
+    return null;
+  }
+};
+
+/**
  * Chụp screenshot full page rồi return path. Dùng cho debug khi listing fail.
  */
 export const captureScreenshot = async (page: any, label: string): Promise<string | null> => {
@@ -161,6 +238,23 @@ export const detectPublishOutcome = async (
       return { ok: true, reason: `Redirect tới ${currentUrl}`, finalUrl: currentUrl };
     }
 
+    // Success toast → ưu tiên cao nhất (4Seller bắn "Successfully!" khi publish OK)
+    const successToastEarly = page
+      .locator(".el-message--success, .el-notification--success")
+      .first();
+    if (await successToastEarly.isVisible({ timeout: 200 }).catch(() => false)) {
+      const txt = ((await successToastEarly.textContent().catch(() => "")) ?? "").trim();
+      console.log(`✅ Success toast: ${txt}`);
+      try {
+        await page.waitForFunction(() => !location.pathname.includes("/create.html"), {
+          timeout: 10_000,
+        });
+        return { ok: true, reason: `Success toast: ${txt}`, finalUrl: page.url() };
+      } catch {
+        return { ok: true, reason: `Success toast (no redirect): ${txt}`, finalUrl: page.url() };
+      }
+    }
+
     // Error toast/notification/inline → fail ngay (đã click publish nên inline error có nghĩa)
     const errMsg = await checkPageErrors(page, true);
     if (errMsg) {
@@ -168,30 +262,17 @@ export const detectPublishOutcome = async (
       return { ok: false, reason: errMsg, finalUrl: currentUrl, screenshotPath: sc ?? undefined };
     }
 
-    // Success toast → đợi 10s URL change, nếu không cũng coi là success
-    const successToast = page.locator(".el-message--success, .el-notification--success").first();
-    if (await successToast.isVisible({ timeout: 200 }).catch(() => false)) {
-      const txt = ((await successToast.textContent().catch(() => "")) ?? "").trim();
-      console.log(`✅ Success toast: ${txt}`);
-      try {
-        await page.waitForFunction(
-          () => !location.pathname.includes("/create.html"),
-          { timeout: 10_000 }
-        );
-        return { ok: true, reason: `Success toast: ${txt}`, finalUrl: page.url() };
-      } catch {
-        return { ok: true, reason: `Success toast (no redirect): ${txt}`, finalUrl: page.url() };
-      }
-    }
-
     await page.waitForTimeout(500);
   }
 
   // Timeout: vẫn ở create page, không có toast → coi như fail
+  const blocker = await collectBlockers(page);
   const sc = await captureScreenshot(page, "publish-timeout");
   return {
     ok: false,
-    reason: `Timeout ${timeoutMs / 1000}s, vẫn ở create page (không thấy toast)`,
+    reason:
+      `Timeout ${timeoutMs / 1000}s, vẫn ở create page (không thấy toast)` +
+      (blocker ? ` — nghi do: ${blocker}` : ""),
     finalUrl: page.url(),
     screenshotPath: sc ?? undefined,
   };

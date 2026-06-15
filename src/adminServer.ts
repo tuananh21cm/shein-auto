@@ -212,7 +212,6 @@ export const startAdminServer = async () => {
       }
       // Profiles rỗng = "tất cả shop trong baseDir của user"
       // Auto-scan để tampermonkey luôn có list mới nhất
-      const { getUserDirsByName } = await import("./state/userDirs");
       const dirs = await getUserDirsByName(user.username);
       if (!dirs?.baseSheinAutoDir || !(await fs.pathExists(dirs.baseSheinAutoDir))) {
         return res.json({ username: user.username, profiles: [], source: "empty" });
@@ -241,7 +240,6 @@ export const startAdminServer = async () => {
       const { productId, shops } = req.body as { productId?: string; shops?: string[] };
       if (!productId) return res.status(400).json({ error: "Thiếu productId" });
       const userShops = Array.isArray(shops) ? shops : user.profiles ?? [];
-      const { getUserDirsByName } = await import("./state/userDirs");
       const dirs = await getUserDirsByName(user.username);
       if (!dirs?.baseSheinAutoDir) {
         return res.status(400).json({ error: "User chưa cấu hình baseSheinAutoDir" });
@@ -284,7 +282,6 @@ export const startAdminServer = async () => {
       if (!Array.isArray(shops) || shops.length === 0) {
         return res.status(400).json({ error: "Phải chọn ít nhất 1 shop" });
       }
-      const { getUserDirsByName } = await import("./state/userDirs");
       const dirs = await getUserDirsByName(user.username);
       if (!dirs?.baseSheinAutoDir) {
         return res.status(400).json({ error: "User chưa cấu hình baseSheinAutoDir" });
@@ -1020,7 +1017,7 @@ export const startAdminServer = async () => {
       const raw = await fs.readFile(BRAND_FILE, "utf-8");
       const cfg = JSON.parse(raw);
       res.json({
-        default: cfg.default ?? "LUSHLACE",
+        default: cfg.default ?? "",
         profiles: cfg.profiles ?? {},
       });
     } catch (err: any) {
@@ -1035,7 +1032,7 @@ export const startAdminServer = async () => {
 
       const body = req.body as { default?: string; profiles?: Record<string, string> };
       const cfg = {
-        default: typeof body.default === "string" && body.default ? body.default : "LUSHLACE",
+        default: typeof body.default === "string" ? body.default.trim() : "",
         profiles: {} as Record<string, string>,
       };
       if (body.profiles && typeof body.profiles === "object") {

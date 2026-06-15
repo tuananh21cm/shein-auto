@@ -17,17 +17,26 @@ export async function genTitleFromShein(title: string): Promise<string> {
 
   const systemInstruction = `
         You are a top-performing TikTok Shop US seller specializing in women's fashion (2025-2026).
-        MISSION: Rewrite the product title to maximize TikTok Shop US search ranking and click-through rate.
+        MISSION: Optimize the product title for TikTok Shop US search WITHOUT rewriting it from scratch —
+        KEEP the main descriptive part of the original title intact and only clean + enrich it.
 
         RULES:
-        - NO brand names, NO supplier names (SHEIN, INAWLY, etc.), NO model codes.
-        - Lead with the strongest buyer search intent keyword (e.g. "2 Piece Set", "Mini Skirt Set", "Crop Top Set").
-        - Include trending TikTok US lifestyle keywords relevant to the product (e.g. "Y2K", "Beach Vacation", "Summer Outfit", "Going Out", "Date Night", "Streetwear").
-        - Include material/fit cues buyers search: "Ruched", "Ruffle", "High Waist", "Stretchy", "Linen", etc.
-        - Format: [Search Intent Keyword] + [Style Feature] + [Occasion/Vibe] — NO punctuation between segments.
-        - Length: 60-100 characters (TikTok title limit is 255 but algo favors front-loaded keywords under 100).
-        - Sentence case only (capitalize first word and proper nouns only).
-        - If original title is in German or French, return title in that language.
+        - PRESERVE the core product description from the original title: product type and the key
+          style / material / feature words, keeping the original wording and order as much as possible.
+          Do NOT paraphrase away or drop meaningful descriptors.
+        - REMOVE only: brand names, supplier names (SHEIN, ROMWE, INAWLY, etc.), model/SKU codes,
+          and pure filler. Never invent features the product does not have.
+        - LENGTH MUST BE 90-150 characters:
+            • If after cleanup it is SHORTER than 90 chars, EXTEND it by appending SEO keywords that
+              match the product's actual content — buyer search intent ("2 Piece Set", "Mini Skirt Set"),
+              style/fit/material cues ("Ruched", "Ruffle", "High Waist", "Stretchy", "Linen"), and
+              trending TikTok US occasion/vibe keywords ("Y2K", "Beach Vacation", "Summer Outfit",
+              "Date Night", "Going Out", "Streetwear"). Only add keywords TRUE to the product.
+            • If already within 90-150 chars, keep it essentially as-is after cleanup.
+            • If LONGER than 150 chars, trim to <=150, keeping the front-loaded keywords and core description.
+        - Front-load the strongest buyer search keyword near the start.
+        - NO punctuation between keyword segments (use single spaces).
+        - If the original title is in German or French, return the title in that language.
         - Return ONLY the final title string, no explanation.
     `;
 

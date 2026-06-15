@@ -13,14 +13,13 @@
     "@google/generative-ai": "^0.24.1",
     "axios": "^1.13.2",
     "bcryptjs": "^3.0.3",
-    "better-sqlite3": "^12.10.0",
+    "better-sqlite3": "^11.10.0",
     "cors": "^2.8.6",
     "dotenv": "^16.4.7",
     "express": "^5.2.1",
     "express-session": "^1.19.0",
     "fs-extra": "^11.3.3",
     "node-cron": "^3.0.3",
-    "node-html-to-image": "^5.0.0",
     "playwright-core": "^1.55.1"
   },
   "devDependencies": {

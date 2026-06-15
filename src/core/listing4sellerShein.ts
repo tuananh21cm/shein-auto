@@ -1,4 +1,5 @@
 import fs from "fs";
+import path from "path";
 import { chromium } from "playwright-core";
 import { configCookie } from "../utils/configCookie";
 import { genTitleFromShein } from "../services/gemini/genTitleFromShein";
@@ -21,6 +22,7 @@ import {
   uploadDescriptionImages,
 } from "./steps/fillDescription";
 import { fillShippingAndCertification } from "./steps/fillShipping";
+import { fillSourceUrl } from "./steps/fillSourceUrl";
 import { handleSizeChartUpload } from "./steps/handleSizeChart";
 import { detectPublishOutcome, checkPageErrors, captureScreenshot } from "./steps/publishAndDetect";
 import { removeUnavailableVariants } from "./steps/removeUnavailableVariants";
@@ -72,8 +74,7 @@ export const listing4sellerShein = async (
 
   try {
     console.log(`📄 Đọc file: ${jsonFile}`);
-    const pathMod = await import("path");
-    if (!pathMod.isAbsolute(jsonFile)) {
+    if (!path.isAbsolute(jsonFile)) {
       throw new Error(
         `listing4sellerShein chỉ nhận absolute path. Nhận được: "${jsonFile}"`
       );
@@ -161,7 +162,8 @@ export const listing4sellerShein = async (
     await handleSizeChartUpload(page, { size_chart: data.size_chart });
     await assertNoErrors(page, "fillShipping+sizeChart");
 
-    // KHÔNG điền URL Shein gốc — tránh TikTok detect nguồn dropshipping.
+    // Điền Source URL vào mục "4Seller set" (metadata nội bộ 4Seller, KHÔNG lên TikTok)
+    await fillSourceUrl(page, data.url);
     await page.waitForTimeout(3000);
 
     // Click Save & Publish + detect outcome

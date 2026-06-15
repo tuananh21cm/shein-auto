@@ -22,9 +22,10 @@ export async function mapCategoryToTikTok(
 
         **RULES:**
         1. **Leaf Category Only:** You must choose exactly one path from the provided TikTok list.
-        2. **Analyze Core Components:** have 2 main category is cloth and shoe.
-        3. **Specific Sub-categories:** - If it's has boots in title, it from Shoe category".
-        4. **Confidence Score:** - 1.0: Perfect match.
+        2. **Whole-List Coverage:** The master list spans MANY departments — not just apparel. It includes womenswear, menswear, underwear, shoes, and Sports & Outdoor (swimwear/beachwear). Map to the closest leaf based on the product's real nature, never restrict yourself to clothing/shoes.
+        3. **Swimwear & Beachwear:** Bikinis, swimsuits, tankinis, swimdresses, beach cover-ups and similar belong under the "Sports & Outdoor / Swimwear, Surfwear & Wetsuits" branch, NOT under generic tops/bottoms/underwear. For a bikini SET pick "Bikinis Set"; for a standalone bikini top/bottom pick the matching "Bikinis Tops"/"Bikinis Bottoms".
+        4. **Activewear / Sportswear:** Activewear, sportswear, athletic/gym/yoga items belong under the "Sports & Outdoor / Sport & Outdoor Clothing" branch, NOT under generic Womenswear/Menswear. In particular, an ACTIVE / SPORT DRESS (e.g. SHEIN "Women Active Dresses", tennis/golf/athletic dress) MUST map to "Sports & Outdoor / Sport & Outdoor Clothing / Sports Dresses", NOT to "Women's Dresses / Casual Dresses".
+        5. **Confidence Score:** - 1.0: Perfect match.
            - 0.5 - 0.9: Close match but requires some inference.
            - < 0.5: Highly uncertain.
     `;
@@ -60,10 +61,45 @@ export async function mapCategoryToTikTok(
       },
     });
 
-    const result = await retryGemini(() => model.generateContent(prompt));
-    return JSON.parse(result.response.text()) as CategoryMap;
-  } catch (error) {
+    // Parse nằm TRONG retry: response rỗng / non-JSON (do quá tải, bị cắt token,
+    // safety block) được coi là retryable thay vì fail luôn.
+    return await retryGemini(async () => {
+      const result = await model.generateContent(prompt);
+      const resp = result.response;
+      const finishReason = resp.candidates?.[0]?.finishReason;
+
+      let text = "";
+      try {
+        text = resp.text() ?? "";
+      } catch (e: any) {
+        const err: any = new Error(
+          `Gemini response.text() failed (finishReason=${finishReason}): ${e?.message}`
+        );
+        err.retryable = true;
+        throw err;
+      }
+
+      if (!text.trim()) {
+        const err: any = new Error(`Gemini empty response (finishReason=${finishReason})`);
+        err.retryable = true;
+        throw err;
+      }
+
+      try {
+        return JSON.parse(text) as CategoryMap;
+      } catch {
+        const err: any = new Error(
+          `Gemini returned non-JSON (finishReason=${finishReason}): ${text.slice(0, 150)}`
+        );
+        err.retryable = true;
+        throw err;
+      }
+    });
+  } catch (error: any) {
+    // KHÔNG nuốt lỗi: ném kèm nguyên nhân thật để log/screenshot fatal thấy được lý do.
     console.error("mapCategoryToTikTok failed:", error);
-    return null;
+    throw new Error(
+      `mapCategoryToTikTok lỗi cho "${thirdPartyInput.slice(0, 80)}...": ${error?.message ?? error}`
+    );
   }
 }

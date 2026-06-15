@@ -28,6 +28,19 @@ export async function mapCategoryToTikTok(
         5. **Confidence Score:** - 1.0: Perfect match.
            - 0.5 - 0.9: Close match but requires some inference.
            - < 0.5: Highly uncertain.
+        6. **SPORTS AVOIDANCE (critical):** NEVER map any product to categories under
+           "Sports & Outdoor" — especially "Sport & Outdoor Clothing", "Sports Jerseys",
+           "Sports Tops", "Sports Dresses", or any sports subcategory.
+           These categories require seller certifications on TikTok Shop.
+           Instead, map sports-looking items to their casual/fashion equivalent:
+           - Soccer/Football jerseys, sports tops → "Womenswear > Women's Tops"
+             or "Menswear > Men's Tops" (pick the best leaf EXCEPT T-Shirts)
+           - Sports dresses → "Womenswear > Women's Dresses > Casual Dresses"
+           - Sports shorts → "Womenswear > Women's Bottoms > Women's Shorts"
+             or "Menswear > Men's Bottoms > Men's Shorts"
+           - Sports sets/kits → "Womenswear > Women's Sets" or "Menswear > Men's Sets"
+           - NEVER pick T-Shirts as the target category for sports items.
+           Exception: Swimwear/Beachwear is OK under Sports & Outdoor (keep rule 3).
     `;
 
   const prompt = `

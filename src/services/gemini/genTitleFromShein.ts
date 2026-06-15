@@ -38,6 +38,22 @@ export async function genTitleFromShein(title: string): Promise<string> {
         - NO punctuation between keyword segments (use single spaces).
         - If the original title is in German or French, return the title in that language.
         - Return ONLY the final title string, no explanation.
+        - SPORTS PRODUCT DISGUISE (critical — TikTok Shop requires certifications for sports items):
+          • This product must NOT look like sportswear. Convert all sports-related terms to casual/fashion equivalents:
+            "Jersey" → "Top" or "Tee", "Football/Soccer Jersey" → "Mesh Top" or "Graphic Tee",
+            "Soccer Shirt" → "Graphic Shirt", "Football Kit" → "Outfit Set" or "Matching Set",
+            "Soccer Uniform" → "Matching Set", "Football Shorts" → "Athletic Shorts" or "Active Shorts",
+            "Training Pants/Shorts" → "Active Pants/Shorts", "Soccer Dress" → "Mesh Dress" or "Casual Dress".
+          • REMOVE: FIFA, UEFA, World Cup → use "Tournament" or "Cup Match",
+            Champions League → "Championship", Premier League / La Liga / Bundesliga / Serie A / Ligue 1 → drop entirely,
+            Euro Cup / Copa America → "Tournament".
+          • REMOVE all club names (Barcelona, Real Madrid, Manchester, Liverpool, Arsenal, Chelsea,
+            Bayern, PSG, Juventus, AC Milan, Inter Milan, etc.) and player names (Messi, Ronaldo,
+            Neymar, Mbappé, Haaland, Salah, etc.).
+          • KEEP country names (Brazil, Argentina, France, Germany, England, etc.) — they are NOT trademarked.
+          • For replica jerseys with numbers: keep the number but remove player association.
+            E.g. "Messi #10 Argentina Jersey" → "Number 10 Argentina Graphic Tee".
+          • The final title should read like a FASHION / CASUAL item, not a sports item.
     `;
 
   const prompt = `Original Title: ${title}`;

@@ -320,6 +320,7 @@
                 variant_price: [],
                 listing_variations: { colors: [], sizes: initialSizes },
                 available_matrix: {},  // {colorName: [size1, size2, ...]}
+                oos_matrix: {},  // {colorName: [oosSize1, oosSize2, ...]}
                 attributes,
                 product_images: productImages,
                 url: location.href,
@@ -354,9 +355,8 @@
                     soldSizes.forEach((s) => allSizesSet.add(s));
 
                     if (availSizes.length === 0) {
-                        console.warn(`[SHEIN-SCRAPER] Màu "${finalColorName}" hết tất cả size, bỏ qua.`);
+                        console.warn(`[SHEIN-SCRAPER] Màu "${finalColorName}" hết tất cả size → qty sẽ = 0.`);
                         oosColors.push(finalColorName);
-                        continue;
                     }
 
                     // Variant ID từ URL (cập nhật sau khi click)
@@ -380,6 +380,7 @@
                     data.variant_images.push({ [finalColorName]: variantImages });
                     data.variant_price.push({ [finalColorName]: priceText });
                     data.available_matrix[finalColorName] = availSizes;
+                    if (soldSizes.length > 0) data.oos_matrix[finalColorName] = soldSizes;
 
                     status.innerText = `${i + 1}/${swatches.length} ${finalColorName} (${availSizes.length}s, OOS:${soldSizes.length})`;
                 }
@@ -398,18 +399,9 @@
             // Update sizes union (sau khi đi qua tất cả màu, có thể có size lạ)
             data.listing_variations.sizes = Array.from(allSizesSet);
 
-            // OOS WARNING
+            // OOS INFO (giữ tất cả màu, qty = 0 cho OOS)
             if (oosColors.length > 0) {
-                const proceed = confirm(`⚠️ ${oosColors.length} màu HẾT HOÀN TOÀN (đã bỏ): ${oosColors.join(', ')}\n\nVẫn đăng listing với các màu còn lại?`);
-                if (!proceed) {
-                    overlay.style.display = 'none';
-                    return;
-                }
-            }
-            if (data.listing_variations.colors.length === 0) {
-                alert('Tất cả màu đều hết hàng. Huỷ.');
-                overlay.style.display = 'none';
-                return;
+                console.log(`[SHEIN-SCRAPER] ${oosColors.length} màu OOS 100%: ${oosColors.join(', ')} → qty = 0`);
             }
 
             // 6. SIZE CHART

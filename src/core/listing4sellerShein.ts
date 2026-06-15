@@ -25,7 +25,7 @@ import { fillShippingAndCertification } from "./steps/fillShipping";
 import { fillSourceUrl } from "./steps/fillSourceUrl";
 import { handleSizeChartUpload } from "./steps/handleSizeChart";
 import { detectPublishOutcome, checkPageErrors, captureScreenshot } from "./steps/publishAndDetect";
-import { removeUnavailableVariants } from "./steps/removeUnavailableVariants";
+import { setOosVariantQuantity } from "./steps/removeUnavailableVariants";
 
 export { findCategory, handleBrand, fillVariations, fillTableData };
 export { uploadProductImages, uploadVariantImages };
@@ -133,8 +133,8 @@ export const listing4sellerShein = async (
     // Nếu tampermonkey gửi kèm available_matrix (mỗi màu có set size khác nhau),
     // dọn các (color, size) rows không available do 4Seller mặc định cross-product
     if (data.available_matrix && typeof data.available_matrix === "object") {
-      await removeUnavailableVariants(page, data.available_matrix);
-      await assertNoErrors(page, "removeUnavailableVariants");
+      await setOosVariantQuantity(page, data.available_matrix, data.oos_matrix);
+      await assertNoErrors(page, "setOosVariantQuantity");
     }
 
     await uploadProductImages(page, mergedProductImages);

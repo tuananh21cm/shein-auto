@@ -37,6 +37,17 @@ export const preprocessData = (data: any): { mergedProductImages: string[] } => 
     console.log(`📐 Matrix sizes normalized:`, normalized);
   }
 
+  // Normalize oos_matrix tương tự available_matrix
+  if (data.oos_matrix && typeof data.oos_matrix === "object") {
+    const normalized: Record<string, string[]> = {};
+    for (const [color, sizes] of Object.entries(data.oos_matrix)) {
+      const sizeArr = Array.isArray(sizes) ? sizes : [];
+      normalized[color] = sizeArr.map((s) => normalizeSize(String(s)));
+    }
+    data.oos_matrix = normalized;
+    console.log(`📐 OOS matrix sizes normalized:`, normalized);
+  }
+
   // 2. VARIANT IMAGE DEDUP
   if (data.variant_images && data.variant_images.length > 0) {
     const imageSignatureMap = new Map<string, string>();

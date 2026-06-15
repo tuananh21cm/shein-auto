@@ -45,7 +45,7 @@ const SPORTS_REPLACE: [RegExp, string][] = [
 
   // Cụm "Football/Soccer + loại đồ" → casual equivalent
   [/\b(?:Soccer|Football)\s*Jersey\b/gi, "Mesh Top"],
-  [/\b(?:Soccer|Football)\s*Shirt\b/gi, "Graphic Shirt"],
+  [/\b(?:Soccer|Football)\s*Shirt\b/gi, "Camisole"],
   [/\b(?:Soccer|Football)\s*Kit\b/gi, "Outfit Set"],
   [/\b(?:Soccer|Football)\s*Uniform\b/gi, "Matching Set"],
   [/\b(?:Soccer|Football)\s*Dress\b/gi, "Mesh Dress"],
@@ -61,8 +61,8 @@ const SPORTS_REPLACE: [RegExp, string][] = [
   [/#(\d{1,2})\b/g, "Number $1"],
 
   // Từ "Football" / "Soccer" đơn lẻ còn sót (sau khi đã xử lý cụm trên)
-  [/\bFootball\b/gi, "Graphic"],
-  [/\bSoccer\b/gi, "Graphic"],
+  [/\bFootball\b/gi, "Sport"],
+  [/\bSoccer\b/gi, "Sport"],
 ];
 
 const sanitizeSportsTitle = (title: string): string => {

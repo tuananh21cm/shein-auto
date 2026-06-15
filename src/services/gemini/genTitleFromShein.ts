@@ -41,9 +41,11 @@ export async function genTitleFromShein(title: string): Promise<string> {
         - SPORTS PRODUCT DISGUISE (critical — TikTok Shop requires certifications for sports items):
           • This product must NOT look like sportswear. Convert all sports-related terms to casual/fashion equivalents:
             "Jersey" → "Top" or "Tee", "Football/Soccer Jersey" → "Mesh Top" or "Graphic Tee",
-            "Soccer Shirt" → "Graphic Shirt", "Football Kit" → "Outfit Set" or "Matching Set",
+            "Soccer Shirt" / "Football Shirt" → "Graphic Shirt" or "Camisole",
+            "Football Kit" → "Outfit Set" or "Matching Set",
             "Soccer Uniform" → "Matching Set", "Football Shorts" → "Athletic Shorts" or "Active Shorts",
             "Training Pants/Shorts" → "Active Pants/Shorts", "Soccer Dress" → "Mesh Dress" or "Casual Dress".
+          • Standalone "Football" or "Soccer" (not part of a compound above) → "Sport" or "Graphic".
           • REMOVE: FIFA, UEFA, World Cup → use "Tournament" or "Cup Match",
             Champions League → "Championship", Premier League / La Liga / Bundesliga / Serie A / Ligue 1 → drop entirely,
             Euro Cup / Copa America → "Tournament".

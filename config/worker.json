@@ -1,8 +1,8 @@
 {
   "_comment": "concurrency: số browser chạy song song. 1 = sequential như cũ. autoCron: bật/tắt cron tự động.",
   "autoCron": true,
-  "concurrency": 2,
-  "headless": false,
+  "concurrency": 3,
+  "headless": true,
   "fileRouterCron": "*/30 * * * * *",
   "queueManagerCron": "*/1 * * * *",
   "imageUploadWaitPerImageMs": 7000,

@@ -213,10 +213,29 @@ export const uploadVariantImages = async (
       localPaths.push(...downloaded);
       console.log(`⬇️ Variant "${searchColor}": download ${imageUrls.length} ảnh mất ${Math.round((Date.now() - tDl) / 1000)}s`);
 
-      const targetBox = variantContainer.first();
+      // Chọn ĐÚNG ô lá của màu: trong các container khớp hasText, lấy cái có ĐÚNG
+      // 1 input upload. Tránh bắt nhầm container CHA bọc nhiều màu (text cha chứa
+      // mọi tên màu → hasText khớp, .first() ra cha → nhiều input → setInputFiles
+      // lỗi strict-mode → mọi màu fail). Ưu tiên leaf có nhãn trùng khớp tên màu.
+      const norm = (t: string) => t.replace(/\*/g, "").replace(/\s+/g, " ").trim().toLowerCase();
+      const matchN = await variantContainer.count();
+      const leaves: { box: any; label: string }[] = [];
+      for (let i = 0; i < matchN; i++) {
+        const box = variantContainer.nth(i);
+        if ((await box.locator("input.file_upload__input").count()) !== 1) continue; // bỏ container cha
+        leaves.push({ box, label: norm(await box.innerText().catch(() => "")) });
+      }
+      const targetBox =
+        leaves.find((l) => l.label === searchColor.toLowerCase())?.box ?? leaves[0]?.box ?? null;
+      if (!targetBox) {
+        console.error(`❌ "${searchColor}": không có ô lá (1 input) trong ${matchN} container khớp.`);
+        failedColors.push(searchColor);
+        continue;
+      }
+      console.log(`🎯 "${searchColor}": ${matchN} container khớp, ${leaves.length} ô lá → chọn 1.`);
       await targetBox.scrollIntoViewIfNeeded();
 
-      const fileInput = targetBox.locator("input.file_upload__input");
+      const fileInput = targetBox.locator("input.file_upload__input").first();
       await fileInput.waitFor({ state: "attached" });
 
       const imgsBefore = await targetBox.locator("img").count();

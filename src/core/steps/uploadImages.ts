@@ -140,10 +140,13 @@ export const uploadVariantImages = async (
 ): Promise<void> => {
   console.log("--- Bắt đầu Upload ảnh Variant (Bản Multi-Image US/DE/FR) ---");
 
+  // Mỗi màu CHỈ upload 1 ảnh chính (ảnh đầu) — nhanh hơn nhiều và tránh việc
+  // 4Seller render thumbnail chậm khi upload nhiều ảnh × nhiều màu (false-fail).
   const imageMap: { [key: string]: string[] } = {};
   for (const item of variantImages) {
     for (const [key, value] of Object.entries(item)) {
-      imageMap[key] = Array.isArray(value) ? value : [value];
+      const arr = Array.isArray(value) ? value : [value];
+      imageMap[key] = arr.slice(0, 1); // chỉ ảnh chính
     }
   }
   const colorCount = Object.keys(imageMap).length;

@@ -24,8 +24,7 @@ export async function mapCategoryToTikTok(
         1. **Leaf Category Only:** You must choose exactly one path from the provided TikTok list.
         2. **Whole-List Coverage:** The master list spans MANY departments — not just apparel. It includes womenswear, menswear, underwear, shoes, swimwear/beachwear, and sports/outdoor. Map to the closest leaf based on the product's real nature, never restrict yourself to a single department.
         3. **Swimwear & Beachwear:** Bikinis, swimsuits, tankinis, swimdresses, beach cover-ups and similar belong under the "Sports & Outdoor / Swimwear, Surfwear & Wetsuits" branch, NOT under generic tops/bottoms/underwear. For a bikini SET pick "Bikinis Set"; for a standalone bikini top/bottom pick the matching "Bikinis Tops"/"Bikinis Bottoms".
-        4. **Activewear / Sportswear:** Activewear, sportswear, athletic, gym, yoga, football, soccer items should be mapped to the most accurate "Sports & Outdoor / Sport & Outdoor Clothing" subcategory when one fits. Use casual fashion categories only if no sports subcategory matches.
-        5. **Confidence Score:** - 1.0: Perfect match.
+        4. **Confidence Score:** - 1.0: Perfect match.
            - 0.5 - 0.9: Close match but requires some inference.
            - < 0.5: Highly uncertain.
     `;

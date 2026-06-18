@@ -278,6 +278,26 @@ export const uploadVariantImages = async (
   safeCleanupDir(tempDir, `variant_${uniqueId}`);
 
   if (failedColors.length > 0) {
+    // DEBUG: dump cấu trúc DOM thật của vùng variant-image để khớp selector chính xác.
+    try {
+      const counts = await page.evaluate(() => {
+        const n = (s: string) => document.querySelectorAll(s).length;
+        return {
+          ".variant_imgs": n(".variant_imgs"),
+          ".variant_imgs li": n(".variant_imgs li"),
+          ".variant_multiple_imgs": n(".variant_multiple_imgs"),
+          ".variant_multiple_imgs .flex.column": n(".variant_multiple_imgs .flex.column"),
+          "input.file_upload__input": n("input.file_upload__input"),
+          ".file_upload__index": n(".file_upload__index"),
+        };
+      });
+      console.error("🔎 [variant-debug] selector counts:", JSON.stringify(counts));
+      const dbgPath = path.join(process.cwd(), "data", `debug-variant-${Date.now()}.html`);
+      fs.writeFileSync(dbgPath, await page.content());
+      console.error(`🔎 [variant-debug] đã dump HTML trang vào: ${dbgPath}`);
+    } catch (e: any) {
+      console.error("🔎 [variant-debug] dump lỗi:", e?.message ?? e);
+    }
     throw new Error(
       `Upload variant images thất bại cho ${failedColors.length} màu: ${failedColors.join(", ")}`
     );

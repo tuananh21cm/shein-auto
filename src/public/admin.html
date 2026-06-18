@@ -454,7 +454,8 @@
           <h1>Cookie 4Seller</h1>
           <div class="subtitle" id="cookieSubtitle">Mỗi user có cookie 4Seller riêng (data/cookies/&lt;user&gt;.json)</div>
         </div>
-        <div style="display:flex; gap:8px;">
+        <div style="display:flex; gap:8px; align-items:center;">
+          <select id="cookieUserSelect" style="display:none;" onchange="loadCookieStatus()" title="Quản lý cookie cho user"></select>
           <button class="btn btn-ghost" onclick="testCookie()">Test cookie</button>
           <button class="btn btn-primary" onclick="saveCookie()">Lưu cookie</button>
         </div>
@@ -1272,6 +1273,36 @@ async function loadConfig() {
   }
 }
 
+async function copyUserToken(username) {
+  const u = (state.config.users || []).find((x) => x.username === username);
+  if (!u || !u.apiToken) return toast("User chưa có token", "error");
+  try {
+    await navigator.clipboard.writeText(u.apiToken);
+    toast(`Đã copy token của ${username}`);
+  } catch {
+    toast("Không copy được (clipboard bị chặn)", "error");
+  }
+}
+
+async function regenUserToken(username) {
+  if (!confirm(`Tạo/đổi API token cho user "${username}"?\nToken cũ (nếu có) sẽ ngừng hoạt động.`)) return;
+  try {
+    const res = await fetch("/admin/api/user-token/regen", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+    const u = (state.config.users || []).find((x) => x.username === username);
+    if (u) u.apiToken = data.token;
+    renderUsers();
+    toast(`Đã tạo token mới cho ${username}`);
+  } catch (err) {
+    toast(err.message, "error");
+  }
+}
+
 function renderUsers() {
   const users = state.config.users || [];
   const isAdmin = state.user.role === "admin";
@@ -1370,16 +1401,16 @@ function renderUsers() {
         </div>
       </div>
       ${
-        u.username === state.user.username
+        (isAdmin || u.username === state.user.username)
           ? `<div style="margin-top: 6px; padding: 12px; background: var(--bg-card); border: 1px dashed var(--accent); border-radius: 10px;">
               <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
-                <strong>🔑 API Token <span style="color:var(--text-mute); font-weight:400;">(dùng cho Tampermonkey scraper)</span></strong>
+                <strong>🔑 API Token <span style="color:var(--text-mute); font-weight:400;">(Tampermonkey scraper của <code>${escapeHtml(u.username)}</code>)</span></strong>
                 <div style="display:flex; gap:6px;">
-                  <button class="btn btn-ghost" onclick="copyMyToken()">📋 Copy</button>
-                  <button class="btn btn-ghost" onclick="regenMyToken()">🔄 Regen</button>
+                  <button class="btn btn-ghost" onclick="copyUserToken('${escapeHtml(u.username)}')" ${u.apiToken?'':'disabled'}>📋 Copy</button>
+                  <button class="btn btn-ghost" onclick="regenUserToken('${escapeHtml(u.username)}')" ${canEdit?'':'disabled'}>${u.apiToken?'🔄 Đổi token':'➕ Tạo token'}</button>
                 </div>
               </div>
-              <input id="myApiToken" readonly value="(đang tải...)" style="font-family:'JetBrains Mono', monospace; font-size: 0.78rem;" />
+              <input readonly value="${escapeHtml(u.apiToken||'')}" placeholder="(chưa có — bấm Tạo token)" style="font-family:'JetBrains Mono', monospace; font-size: 0.78rem; width:100%;" />
             </div>`
           : ''
       }
@@ -1788,9 +1819,37 @@ async function saveBrands() {
 }
 
 // ─── Cookie (per-user) ────────────────────────────────
+// Admin có thể quản lý cookie cho user khác qua dropdown; non-admin → chính mình.
+function cookieTargetUser() {
+  const sel = $("#cookieUserSelect");
+  if (state.user.role === "admin" && sel && sel.value) return sel.value;
+  return state.user.username;
+}
+
+async function populateCookieUserSelect() {
+  const sel = $("#cookieUserSelect");
+  if (!sel) return;
+  if (state.user.role !== "admin") { sel.style.display = "none"; return; }
+  // Đảm bảo có danh sách user (load config nếu chưa)
+  if (!state.config || !state.config.users) {
+    try {
+      const r = await fetch("/admin/api/config");
+      if (r.ok) state.config = await r.json();
+    } catch {}
+  }
+  const users = (state.config && state.config.users) || [];
+  if (users.length === 0) { sel.style.display = "none"; return; }
+  const prev = sel.value || state.user.username;
+  sel.innerHTML = users
+    .map((u) => `<option value="${escapeHtml(u.username)}" ${u.username === prev ? "selected" : ""}>👤 ${escapeHtml(u.username)}</option>`)
+    .join("");
+  sel.style.display = "";
+}
+
 async function loadCookieStatus() {
   try {
-    const res = await fetch("/admin/api/cookie/status");
+    await populateCookieUserSelect();
+    const res = await fetch("/admin/api/cookie/status?username=" + encodeURIComponent(cookieTargetUser()));
     const data = await res.json();
     if (!res.ok) throw new Error(data.error);
     const c = data.userCookie;
@@ -1823,14 +1882,15 @@ async function saveCookie() {
     if (!raw) throw new Error("Cookie rỗng");
     const arr = JSON.parse(raw);
     if (!Array.isArray(arr)) throw new Error("Cookie phải là JSON array");
+    const target = cookieTargetUser();
     const res = await fetch("/admin/api/cookie", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ cookie: arr }),
+      body: JSON.stringify({ cookie: arr, username: target }),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error);
-    toast(`Đã lưu ${data.count} cookie cho user ${state.user.username}`);
+    toast(`Đã lưu ${data.count} cookie cho user ${data.username || target}`);
     $("#cookieJson").value = "";
     loadCookieStatus();
   } catch (err) {
@@ -1841,7 +1901,11 @@ async function saveCookie() {
 async function testCookie() {
   $("#cookieTestResult").innerHTML = '<div style="color:var(--text-mute);margin-top:10px;">Đang test (mở Chromium headless)…</div>';
   try {
-    const res = await fetch("/admin/api/cookie/test", { method: "POST" });
+    const res = await fetch("/admin/api/cookie/test", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username: cookieTargetUser() }),
+    });
     const data = await res.json();
     if (data.ok) {
       $("#cookieTestResult").innerHTML = `<div style="margin-top:10px;"><span class="badge badge-success">✓ Cookie hợp lệ</span> <span style="color:var(--text-mute);">(${escapeHtml(data.finalUrl)})</span></div>`;

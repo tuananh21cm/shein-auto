@@ -34,6 +34,7 @@ const sanitizeUserForUi = (user: AdminUser) => ({
   username: user.username,
   password: "",
   role: user.role,
+  apiToken: user.apiToken ?? "",
   profiles: user.profiles,
   downloadDir: user.downloadDir ?? "",
   baseSheinAutoDir: user.baseSheinAutoDir ?? "",
@@ -416,6 +417,9 @@ export const startAdminServer = async () => {
             username: u.username,
             password: u.password ? hashPassword(u.password) : existing?.password ?? "",
             role: u.role,
+            // GIỮ token cũ — tránh bug wipe token mỗi lần admin lưu config.
+            // Token chỉ đổi qua route regen riêng.
+            apiToken: existing?.apiToken ?? u.apiToken ?? "",
             profiles: Array.isArray(u.profiles) ? u.profiles : [],
             downloadDir: typeof u.downloadDir === "string" ? u.downloadDir : existing?.downloadDir ?? "",
             baseSheinAutoDir:
@@ -1051,11 +1055,36 @@ export const startAdminServer = async () => {
   });
 
   // ── Cookie 4Seller (per-user) ─────────────────────────
-  // GET: cho UI biết user hiện tại đã upload cookie chưa
+  // Resolve user đích cho thao tác cookie. Admin có thể nhắm user bất kỳ (phải
+  // tồn tại — chống path traversal); non-admin bị ép về chính mình.
+  // Trả về { error, status } nếu không hợp lệ; ngược lại { target }.
+  const resolveCookieTarget = async (
+    sessionUser: SessionUser,
+    requested?: string
+  ): Promise<{ target?: string; error?: string; status?: number }> => {
+    if (!requested || requested === sessionUser.username) {
+      return { target: sessionUser.username };
+    }
+    if (sessionUser.role !== "admin") {
+      return { error: "Chỉ admin mới thao tác cookie cho user khác", status: 403 };
+    }
+    const cfg = await loadAdminConfig();
+    if (!cfg.users.some((u) => u.username === requested)) {
+      return { error: `User "${requested}" không tồn tại`, status: 400 };
+    }
+    return { target: requested };
+  };
+
+  // GET: cho UI biết user (mình hoặc — nếu admin — user được chọn) đã upload cookie chưa
   app.get("/admin/api/cookie/status", async (req, res) => {
     try {
       const sessionUser = (req.session as any).user as SessionUser;
-      const file = userCookiePath(sessionUser.username);
+      const { target, error, status } = await resolveCookieTarget(
+        sessionUser,
+        (req.query.username as string | undefined)?.trim() || undefined
+      );
+      if (!target) return res.status(status ?? 400).json({ error });
+      const file = userCookiePath(target);
       const exists = await fs.pathExists(file);
       let count = 0;
       let mtime: number | null = null;
@@ -1072,7 +1101,7 @@ export const startAdminServer = async () => {
         }
       }
       res.json({
-        username: sessionUser.username,
+        username: target,
         userCookie: { exists, count, mtime, path: file },
       });
     } catch (err: any) {
@@ -1085,15 +1114,20 @@ export const startAdminServer = async () => {
       const sessionUser = (req.session as any).user as SessionUser;
       if (sessionUser.role === "viewer") return res.status(403).json({ error: "Viewer không thể upload cookie" });
 
-      const body = req.body as { cookie: any[] };
+      const body = req.body as { cookie: any[]; username?: string };
       if (!Array.isArray(body.cookie)) {
         return res.status(400).json({ error: "Body phải có field 'cookie' là array" });
       }
+      const { target, error, status } = await resolveCookieTarget(
+        sessionUser,
+        body.username?.trim() || undefined
+      );
+      if (!target) return res.status(status ?? 400).json({ error });
       // Mỗi user lưu vào file riêng — không ghi đè user khác
-      const targetFile = userCookiePath(sessionUser.username);
+      const targetFile = userCookiePath(target);
       await fs.ensureDir(path.dirname(targetFile));
       await fs.writeFile(targetFile, JSON.stringify(body.cookie, null, 2), "utf-8");
-      res.json({ ok: true, count: body.cookie.length, savedTo: targetFile });
+      res.json({ ok: true, count: body.cookie.length, username: target, savedTo: targetFile });
     } catch (err: any) {
       res.status(500).json({ error: err?.message ?? "Lỗi lưu cookie" });
     }
@@ -1103,8 +1137,13 @@ export const startAdminServer = async () => {
     let browser: any = null;
     try {
       const sessionUser = (req.session as any).user as SessionUser;
-      // Test cookie của user đang đăng nhập (fallback global nếu chưa upload riêng)
-      const cookie = await configCookie(sessionUser.username);
+      const { target, error, status } = await resolveCookieTarget(
+        sessionUser,
+        (req.body?.username as string | undefined)?.trim() || undefined
+      );
+      if (!target) return res.status(status ?? 400).json({ ok: false, error });
+      // Test cookie của user đích (admin có thể test hộ user khác)
+      const cookie = await configCookie(target);
       browser = await chromium.launch({ headless: true });
       const ctx = await browser.newContext();
       await ctx.addCookies(cookie);
@@ -1116,11 +1155,32 @@ export const startAdminServer = async () => {
       const finalUrl = page.url();
       const ok = !!resp && resp.status() < 400 && !finalUrl.includes("login");
       await ctx.close();
-      res.json({ ok, finalUrl, status: resp?.status() ?? null, source: sessionUser.username });
+      res.json({ ok, finalUrl, status: resp?.status() ?? null, source: target });
     } catch (err: any) {
       res.status(500).json({ ok: false, error: err?.message ?? "Lỗi test cookie" });
     } finally {
       if (browser) await browser.close().catch(() => {});
+    }
+  });
+
+  // Tạo/đổi API token cho 1 user (admin: bất kỳ; non-admin: chính mình)
+  app.post("/admin/api/user-token/regen", async (req, res) => {
+    try {
+      const sessionUser = (req.session as any).user as SessionUser;
+      if (sessionUser.role === "viewer") return res.status(403).json({ error: "Viewer không thể tạo token" });
+      const { target, error, status } = await resolveCookieTarget(
+        sessionUser,
+        (req.body?.username as string | undefined)?.trim() || undefined
+      );
+      if (!target) return res.status(status ?? 400).json({ error });
+      const cfg = await loadAdminConfig();
+      const u = cfg.users.find((x) => x.username === target);
+      if (!u) return res.status(404).json({ error: "Không tìm thấy user" });
+      u.apiToken = generateApiToken();
+      await saveAdminConfig(cfg);
+      res.json({ username: target, token: u.apiToken });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? "Lỗi tạo token" });
     }
   });
 

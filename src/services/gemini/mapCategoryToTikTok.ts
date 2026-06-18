@@ -22,25 +22,12 @@ export async function mapCategoryToTikTok(
 
         **RULES:**
         1. **Leaf Category Only:** You must choose exactly one path from the provided TikTok list.
-        2. **Whole-List Coverage:** The master list spans MANY departments — not just apparel. It includes womenswear, menswear, underwear, shoes, and swimwear/beachwear. Map to the closest leaf based on the product's real nature, never restrict yourself to clothing/shoes. IMPORTANT: Do NOT use any "Sports & Outdoor" subcategory except for Swimwear (see Rule 3 and Rule 6).
-        3. **Swimwear & Beachwear:** Bikinis, swimsuits, tankinis, swimdresses, beach cover-ups and similar belong under the "Sports & Outdoor / Swimwear, Surfwear & Wetsuits" branch, NOT under generic tops/bottoms/underwear. For a bikini SET pick "Bikinis Set"; for a standalone bikini top/bottom pick the matching "Bikinis Tops"/"Bikinis Bottoms". This is the ONLY allowed use of "Sports & Outdoor".
-        4. **Activewear / Sportswear:** ALL activewear, sportswear, athletic, gym, yoga, football, soccer items (except Swimwear) MUST be mapped to casual fashion equivalents per Rule 6. NEVER place them under any "Sports & Outdoor" subcategory.
+        2. **Whole-List Coverage:** The master list spans MANY departments — not just apparel. It includes womenswear, menswear, underwear, shoes, swimwear/beachwear, and sports/outdoor. Map to the closest leaf based on the product's real nature, never restrict yourself to a single department.
+        3. **Swimwear & Beachwear:** Bikinis, swimsuits, tankinis, swimdresses, beach cover-ups and similar belong under the "Sports & Outdoor / Swimwear, Surfwear & Wetsuits" branch, NOT under generic tops/bottoms/underwear. For a bikini SET pick "Bikinis Set"; for a standalone bikini top/bottom pick the matching "Bikinis Tops"/"Bikinis Bottoms".
+        4. **Activewear / Sportswear:** Activewear, sportswear, athletic, gym, yoga, football, soccer items should be mapped to the most accurate "Sports & Outdoor / Sport & Outdoor Clothing" subcategory when one fits. Use casual fashion categories only if no sports subcategory matches.
         5. **Confidence Score:** - 1.0: Perfect match.
            - 0.5 - 0.9: Close match but requires some inference.
            - < 0.5: Highly uncertain.
-        6. **SPORTS AVOIDANCE (critical):** NEVER map any product to categories under
-           "Sports & Outdoor" — especially "Sport & Outdoor Clothing", "Sports Jerseys",
-           "Sports Tops", "Sports Dresses", or any sports subcategory.
-           These categories require seller certifications on TikTok Shop.
-           Instead, map sports-looking items to their casual/fashion equivalent:
-           - Soccer/Football jerseys, sports tops → "Womenswear > Women's Tops"
-             or "Menswear > Men's Tops" (pick the best leaf EXCEPT T-Shirts)
-           - Sports dresses → "Womenswear > Women's Dresses > Casual Dresses"
-           - Sports shorts → "Womenswear > Women's Bottoms > Women's Shorts"
-             or "Menswear > Men's Bottoms > Men's Shorts"
-           - Sports sets/kits → "Womenswear > Women's Sets" or "Menswear > Men's Sets"
-           - NEVER pick T-Shirts as the target category for sports items.
-           Exception: Swimwear/Beachwear is OK under Sports & Outdoor (keep rule 3).
     `;
 
   const prompt = `

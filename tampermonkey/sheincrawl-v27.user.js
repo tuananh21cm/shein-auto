@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SHEIN Scraper v27 - Direct API + SSE + Background
 // @namespace    http://tampermonkey.net/
-// @version      27.0.0
+// @version      28.0.0
 // @description  Cào SHEIN → POST thẳng lên shein-auto worker. Sync profile từ server. Realtime SSE. Detect out-of-stock per (color × size). Background tab vẫn cào nhờ silent audio.
 // @author       shein-auto
 // @match        *://*.shein.com/*
@@ -248,6 +248,7 @@
         const selectedShops = Array.from(document.querySelectorAll('.tm-acc-checkbox:checked')).map((cb) => cb.value);
         if (selectedShops.length === 0) { alert('Chọn ít nhất 1 shop!'); return; }
         const isDivide4 = document.getElementById('tm-divide-4').checked;
+        const isSingleColor = document.getElementById('tm-single-color')?.checked;
 
         const productId = getProductIdFromUrl();
         overlay.style.display = 'flex';
@@ -333,7 +334,7 @@
             const colorCounter = {};
             const oosColors = [];
 
-            if (swatches.length > 0) {
+            if (swatches.length > 0 && !isSingleColor) {
                 for (let i = 0; i < swatches.length; i++) {
                     const prevName = document.querySelector(SELECTORS.colorNameLabel)?.innerText.trim() ?? '';
                     await forceClick(swatches[i]);
@@ -385,15 +386,40 @@
                     status.innerText = `${i + 1}/${swatches.length} ${finalColorName} (${availSizes.length}s, OOS:${soldSizes.length})`;
                 }
             } else {
-                // No color swatches — single color
-                const colorKey = Object.keys(attributes).find((k) => ['Color', 'Farbe', 'Couleur'].includes(k));
-                const fallbackColor = attributes[colorKey] || 'Default';
-                const { available: availSizes } = getAvailableSizesForCurrentColor();
-                data.listing_variations.colors.push(fallbackColor);
-                data.variant_ids.push({ [fallbackColor]: getProductIdFromUrl() ?? 'Unknown' });
-                data.variant_images.push({ [fallbackColor]: [...productImages] });
-                data.variant_price.push({ [fallbackColor]: document.querySelector(SELECTORS.price)?.innerText.trim() ?? '0' });
-                data.available_matrix[fallbackColor] = availSizes.length > 0 ? availSizes : initialSizes;
+                // CHỈ lấy màu ĐANG HIỂN THỊ — gộp 2 trường hợp:
+                //  (a) bật "Chỉ cào màu đang hiển thị" trên sản phẩm nhiều màu, hoặc
+                //  (b) sản phẩm vốn 1 màu (không có swatch).
+                // KHÔNG click swatch nào → giữ nguyên ảnh/giá/size của màu đang chọn.
+                const attrColorKey = Object.keys(attributes).find((k) => ['Color', 'Farbe', 'Couleur'].includes(k));
+                const rawColorName =
+                    document.querySelector(SELECTORS.colorNameLabel)?.innerText.trim()
+                    || document.querySelector(SELECTORS.colorSwatches + ' img')?.getAttribute('alt')?.trim()
+                    || (attrColorKey ? attributes[attrColorKey] : '')
+                    || 'Default';
+
+                const { available: availSizes, sold: soldSizes } = getAvailableSizesForCurrentColor();
+                availSizes.forEach((s) => allSizesSet.add(s));
+                soldSizes.forEach((s) => allSizesSet.add(s));
+
+                let priceText = document.querySelector(SELECTORS.price)?.innerText.trim() || '0';
+                if (isDivide4) {
+                    const n = parseFloat(priceText.replace(/[^0-9.]/g, ''));
+                    if (!isNaN(n)) priceText = (n / 4).toFixed(2);
+                }
+
+                const variantImages = Array.from(new Set(
+                    Array.from(document.querySelectorAll(SELECTORS.allProductImages))
+                        .map((img) => getOriginalImageUrl(img.src || img.getAttribute('data-src') || img.dataset.src)),
+                )).filter(Boolean);
+
+                data.listing_variations.colors.push(rawColorName);
+                data.variant_ids.push({ [rawColorName]: getProductIdFromUrl() ?? 'Unknown' });
+                data.variant_images.push({ [rawColorName]: variantImages.length ? variantImages : [...productImages] });
+                data.variant_price.push({ [rawColorName]: priceText });
+                data.available_matrix[rawColorName] = availSizes.length ? availSizes : initialSizes;
+                if (soldSizes.length) data.oos_matrix[rawColorName] = soldSizes;
+
+                if (isSingleColor) console.log(`[SHEIN-SCRAPER] Chế độ 1 màu: chỉ cào "${rawColorName}".`);
             }
 
             // Update sizes union (sau khi đi qua tất cả màu, có thể có size lạ)
@@ -494,11 +520,14 @@
         panel.id = 'tm-panel';
         panel.innerHTML = `
             <div class="head">
-                <span>SHEIN SCRAPER v27</span>
+                <span>SHEIN SCRAPER v28</span>
                 <span class="settings" title="Settings">⚙</span>
             </div>
             <label class="tm-acc-item" style="background:#fff5f5;padding:5px;border:1px dashed #ae122a;border-radius:4px;">
                 <input type="checkbox" id="tm-divide-4"> Price divider (/4)
+            </label>
+            <label class="tm-acc-item" style="background:#fff5f5;padding:5px;border:1px dashed #ae122a;border-radius:4px;">
+                <input type="checkbox" id="tm-single-color"> Chỉ cào màu đang hiển thị
             </label>
             <div id="tm-shops" class="tm-grid"></div>
             <button class="tm-btn-pro" id="tm-start">📤 SCRAPE & UPLOAD</button>

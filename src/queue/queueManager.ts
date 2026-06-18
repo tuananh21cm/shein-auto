@@ -7,7 +7,7 @@ import { workerState } from "../state/workerState";
 import { refreshQueueSnapshot } from "../state/queueState";
 import { historyStore } from "../state/historyStore";
 import { notifyFail } from "../services/notification/telegram";
-import { getAllUsersForCron, UserDirs, getEffectiveSettings } from "../state/userDirs";
+import { getAllUsersForCron, getAllUserDirs, UserDirs, getEffectiveSettings } from "../state/userDirs";
 import { loadAdminConfig } from "../adminConfig";
 
 const LAST_FOLDER_FILE_NAME = ".last_folder.txt";
@@ -94,9 +94,18 @@ export const processFile = async (
   const absJsonPath = path.join(accountPath, fileName);
   const successDir = path.join(accountPath, "Success");
   const failDir = path.join(accountPath, "Fail");
-
-  if (!(await fs.pathExists(absJsonPath))) {
-    console.warn(`⚠️ [${owner}/${folderName}] File không còn ở pending: ${fileName}`);
+  // CLAIM ATOMIC (in-place): đổi tên file NGAY TRONG folder shop sang đuôi
+  // ".processing" — giữ nguyên thư mục cha để suy ra profile đúng, và
+  // getOldestJsonFile (lọc đuôi .json) sẽ bỏ qua file đang xử lý.
+  // fs.move overwrite:false là rename nguyên tử: nếu tiến trình khác đã claim
+  // (file gốc biến mất) → ném lỗi → skip, KHÔNG publish trùng.
+  const claimedPath = absJsonPath + ".processing";
+  try {
+    await fs.move(absJsonPath, claimedPath, { overwrite: false });
+  } catch {
+    console.warn(
+      `⏭️ [${owner}/${folderName}] Không claim được "${fileName}" (đã bị tiến trình khác xử lý hoặc đã move). Skip.`
+    );
     folderLocks.delete(key);
     runningCount--;
     return false;
@@ -117,7 +126,7 @@ export const processFile = async (
       // Owner có thể dạng "userA,userB" do dedup baseDir → lấy user đầu.
       const primaryOwner = owner.split(",")[0];
       const effective = await getEffectiveSettings(primaryOwner);
-      await listing4sellerShein(absJsonPath, {
+      await listing4sellerShein(claimedPath, {
         cookieUser: primaryOwner,
         headless: effective.headless,
         pricing: effective.pricing,
@@ -133,8 +142,8 @@ export const processFile = async (
       // (user click Retry/Delete trên UI giữa chừng), KHÔNG đảo ngược success.
       try {
         await fs.ensureDir(successDir);
-        if (await fs.pathExists(absJsonPath)) {
-          await fs.move(absJsonPath, path.join(successDir, fileName), { overwrite: true });
+        if (await fs.pathExists(claimedPath)) {
+          await fs.move(claimedPath, path.join(successDir, fileName), { overwrite: true });
         } else {
           console.warn(
             `⚠️ [${owner}/${folderName}] File "${fileName}" đã bị move/delete bên ngoài trong khi worker chạy. Publish vẫn OK, skip move.`
@@ -165,8 +174,8 @@ export const processFile = async (
       console.error(`❌ [${owner}/${folderName}] Lỗi khi đăng ${fileName}:`, publishError);
       try {
         await fs.ensureDir(failDir);
-        if (await fs.pathExists(absJsonPath)) {
-          await fs.move(absJsonPath, path.join(failDir, fileName), { overwrite: true });
+        if (await fs.pathExists(claimedPath)) {
+          await fs.move(claimedPath, path.join(failDir, fileName), { overwrite: true });
           await fs.writeFile(
             path.join(failDir, `${fileName}.error.log`),
             `${new Date().toISOString()}\n\n${errorMessage}\n\n${publishError?.stack ?? ""}`,
@@ -309,3 +318,67 @@ export const runQueueManagerOnce = async (): Promise<void> => {
 
 /** Status getter cho adminServer/dashboard. */
 export const queueRunningCount = (): number => runningCount;
+
+/**
+ * Khôi phục file kẹt trong .processing (do worker crash giữa chừng) về lại pending.
+ * Gọi LÚC KHỞI ĐỘNG (single instance) trước khi cron chạy → tránh mất file.
+ */
+export const recoverOrphanedProcessing = async (): Promise<void> => {
+  const dirs = await getAllUserDirs();
+  const SUFFIX = ".processing";
+  let recovered = 0;
+  for (const d of dirs) {
+    const base = d.baseSheinAutoDir;
+    if (!base || !(await fs.pathExists(base))) continue;
+    let folders: string[] = [];
+    try {
+      folders = await fs.readdir(base);
+    } catch {
+      continue;
+    }
+    for (const folder of folders) {
+      if (folder === "Success" || folder === "Fail" || folder.startsWith(".")) continue;
+      const shopDir = path.join(base, folder);
+
+      // (1) File claim in-place: "X.json.processing" → đổi lại "X.json"
+      let entries: string[] = [];
+      try {
+        entries = await fs.readdir(shopDir);
+      } catch {
+        continue;
+      }
+      for (const e of entries) {
+        if (!e.toLowerCase().endsWith(".json" + SUFFIX)) continue;
+        const orig = e.slice(0, -SUFFIX.length); // bỏ đuôi ".processing"
+        try {
+          await fs.move(path.join(shopDir, e), path.join(shopDir, orig), { overwrite: false });
+          console.warn(`♻️ Khôi phục file kẹt → pending: ${folder}/${orig}`);
+          recovered++;
+        } catch {
+          // pending cùng tên đã tồn tại → bỏ qua
+        }
+      }
+
+      // (2) Tương thích bản cũ: file kẹt trong subdir ".processing/"
+      const procDir = path.join(shopDir, ".processing");
+      if (await fs.pathExists(procDir)) {
+        let files: string[] = [];
+        try {
+          files = (await fs.readdir(procDir)).filter((f) => f.toLowerCase().endsWith(".json"));
+        } catch {
+          files = [];
+        }
+        for (const f of files) {
+          try {
+            await fs.move(path.join(procDir, f), path.join(shopDir, f), { overwrite: false });
+            console.warn(`♻️ Khôi phục file kẹt (.processing/) → pending: ${folder}/${f}`);
+            recovered++;
+          } catch {
+            // bỏ qua
+          }
+        }
+      }
+    }
+  }
+  if (recovered > 0) console.log(`♻️ Đã khôi phục ${recovered} file kẹt.`);
+};

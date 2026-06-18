@@ -1185,7 +1185,19 @@ export const startAdminServer = async () => {
   });
 
   const port = Number(process.env.ADMIN_PORT ?? 3000);
-  app.listen(port, () => {
-    console.log(`🌐 Admin UI đang chạy tại http://localhost:${port}/admin`);
+  // Bind port là "single-instance guard": nếu instance khác đã chiếm port →
+  // reject (EADDRINUSE) để index.ts thoát hẳn, KHÔNG cho chạy cron song song.
+  await new Promise<void>((resolve, reject) => {
+    const server = app.listen(port, () => {
+      console.log(`🌐 Admin UI đang chạy tại http://localhost:${port}/admin`);
+      resolve();
+    });
+    server.on("error", (err: any) => {
+      if (err?.code === "EADDRINUSE") {
+        reject(new Error(`Port ${port} đã bị chiếm — có instance worker khác đang chạy. Thoát.`));
+      } else {
+        reject(err);
+      }
+    });
   });
 };

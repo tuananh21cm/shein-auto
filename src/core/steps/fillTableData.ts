@@ -36,11 +36,13 @@ export const fillTableData = async (
   variantIds?: Array<{ [color: string]: string }>,
   priceOverride?: PriceOverride
 ): Promise<void> => {
+  // Ép cent về .99 (charm pricing): vd 28.82 → 28.99, 33.10 → 33.99.
+  const roundTo99 = (p: number): number => Math.floor(p) + 0.99;
   const calcPrice = (numericPrice: number): number => {
-    if (priceOverride) {
-      return (numericPrice + priceOverride.shipFee) * priceOverride.multiplier + priceOverride.extraAdd;
-    }
-    return computeFinalPrice(numericPrice);
+    const base = priceOverride
+      ? (numericPrice + priceOverride.shipFee) * priceOverride.multiplier + priceOverride.extraAdd
+      : computeFinalPrice(numericPrice);
+    return roundTo99(base);
   };
   console.log("--- Bắt đầu điền dữ liệu bảng (Price, SKU, Qty) ---");
 

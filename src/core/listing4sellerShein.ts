@@ -2,31 +2,40 @@ import fs from "fs";
 import { chromium } from "playwright-core";
 import { configCookie } from "../utils/configCookie";
 import { genTitleFromShein } from "../services/gemini/genTitleFromShein";
-import { cleanTitle } from "../utils/cleanTitle";
+import { generatePodTitle } from "../services/gemini/generatePodTitle";
+import { analyzeFitForSize, renderFitGuideHtml } from "../services/gemini/analyzeFitForSize";
+import { processMeasureGuideImage } from "./steps/measureGuideImage";
+import { generateRichDescription, composeRichHtml } from "../services/gemini/generateRichDescription";
+import { buildBannerFile, diverseImagesFromVariants } from "./steps/marketingBanner";
+import { uploadToImgbb } from "../utils/uploadToImgbb";
+import { config } from "../config";
+import { cleanTitle, toTitleCase } from "../utils/cleanTitle";
 import { workerConfig } from "../config/appConfig";
 import { resolveBrandForUser } from "../state/userDirs";
 
-import { getProfileNameFromFolder } from "./steps/randomUtils";
+import { getProfileNameFromFolder, normalizeShopName } from "./steps/randomUtils";
 import { findCategory } from "./steps/findCategory";
 import { preprocessData } from "./steps/preprocessData";
 import { selectProfile, selectCategory } from "./steps/selectProfile";
 import { fillVariations } from "./steps/fillVariations";
 import { fillTableData } from "./steps/fillTableData";
-import { uploadProductImages, uploadVariantImages } from "./steps/uploadImages";
+import { uploadProductImages, uploadVariantImages, setVariantImageEnabled } from "./steps/uploadImages";
 import { handleBrand } from "./steps/handleBrand";
 import {
   fillDescription,
   generateDescriptionHtml,
+  generateMeasureGuideHtml,
   selectDescriptionImages,
   uploadDescriptionImages,
 } from "./steps/fillDescription";
-import { processMeasureGuideImage } from "./steps/measureGuideImage";
+import { fillSpecifics } from "./steps/fillSpecifics";
 import { fillShippingAndCertification } from "./steps/fillShipping";
 import {
   handleSizeChartUpload,
   extractSizeChartSections,
   buildSizeGuideImageFile,
 } from "./steps/handleSizeChart";
+import { buildColorShowcaseImageFile } from "./steps/colorShowcase";
 import { detectPublishOutcome, checkPageErrors, captureScreenshot } from "./steps/publishAndDetect";
 import { removeUnavailableVariants } from "./steps/removeUnavailableVariants";
 
@@ -90,7 +99,10 @@ export const listing4sellerShein = async (
     // KICK OFF Gemini calls NGAY ĐẦU — chạy song song với toàn bộ page setup
     // (goto, waitLoad, selectProfile ~7-10s). Đến khi cần fill title, Gemini
     // gần như đã xong, đặc biệt khi cache hit (instant).
-    const titlePromise = genTitleFromShein(data.product_name);
+    // POD: giữ key chính (tên file) + AI mix key t-shirt. Thường: viết lại toàn bộ title.
+    const titlePromise = data._pod
+      ? generatePodTitle(data.product_name)
+      : genTitleFromShein(data.product_name);
     const categoryPromise = findCategory(data.category);
 
     await page.goto("https://www.4seller.com/web/listing/tiktok/create.html?status=draft", {
@@ -112,7 +124,9 @@ export const listing4sellerShein = async (
     // Brand resolve chỉ theo user/shop (đã bỏ global). Rỗng = không brand.
     const brand = await resolveBrandForUser(opts?.cookieUser, targetProfile);
     console.log({ targetProfile, brand });
-    const finalTitle = cleanTitle(aiTitle, brand);
+    // POD: KHÔNG prepend brand/shop name vào title (giữ nguyên title AI). Thường: ghép brand đầu title.
+    // Title Case: viết hoa ký tự đầu mỗi từ trước khi list lên 4Seller.
+    const finalTitle = toTitleCase(data._pod ? String(aiTitle).trim() : cleanTitle(aiTitle, brand));
     console.log(finalTitle);
     await page.fill("#productInfo .el-input.mr_8 .el-input__inner", finalTitle);
     await page.waitForTimeout(2000);
@@ -131,7 +145,30 @@ export const listing4sellerShein = async (
     await fillVariations(page, data.listing_variations);
     await assertNoErrors(page, "fillVariations");
 
-    await fillTableData(page, data.variant_price, data.attributes.SKU, 5, data.variant_ids, opts?.pricing);
+    // POD: giá CUỐI cố định → bỏ qua công thức (price+ship)*mult+extra bằng override identity.
+    const priceOverride =
+      data._pod && data._podPriceFinal ? { shipFee: 0, multiplier: 1, extraAdd: 0 } : opts?.pricing;
+    // POD: SKU = TA-ddmm-{shopname} (vd TA-1606-AESS). shopSuffix="" để không append lần 2.
+    // shopname = brand code (vd AESS); chưa map brand thì fallback tên folder shop.
+    const shopCode = normalizeShopName(brand) || normalizeShopName(targetProfile);
+    let skuValue = data.attributes.SKU;
+    let skuSuffix = shopCode;
+    if (data._pod) {
+      const n = new Date();
+      const ddmm = `${String(n.getDate()).padStart(2, "0")}${String(n.getMonth() + 1).padStart(2, "0")}`;
+      skuValue = `TA-${ddmm}-${shopCode}`;
+      skuSuffix = "";
+    }
+    await fillTableData(
+      page,
+      data.variant_price,
+      skuValue,
+      5,
+      data.variant_ids,
+      priceOverride,
+      skuSuffix,
+      data._pod ? data._podSizeSurcharge : undefined // POD: phụ giá theo size (XXL+2, 3XL+4)
+    );
     await assertNoErrors(page, "fillTableData");
 
     // Nếu tampermonkey gửi kèm available_matrix (mỗi màu có set size khác nhau),
@@ -141,51 +178,139 @@ export const listing4sellerShein = async (
       await assertNoErrors(page, "removeUnavailableVariants");
     }
 
-    // Ảnh GỘP Size Guide (bảng size + How To Measure) → chèn vào gallery, ngay sau ảnh main.
-    let sizeGuidePath: string | null = null;
-    try {
-      const guideSections = extractSizeChartSections(data.size_chart);
-      if (guideSections.length > 0) {
-        const mgImage = await processMeasureGuideImage(data.measure_guide?.image); // che watermark SHEIN
-        const measureGuide = data.measure_guide
-          ? { items: data.measure_guide.items, image: mgImage }
-          : undefined;
-        sizeGuidePath = await buildSizeGuideImageFile(
-          guideSections,
-          measureGuide,
-          data.size_chart?.unit || "inch"
-        );
-      }
-    } catch (e: any) {
-      console.warn("⚠️ Không tạo được ảnh Size Guide gallery, bỏ qua:", e?.message);
-    }
-
-    await uploadProductImages(page, mergedProductImages, targetProfile, {
-      insertAfterMainPath: sizeGuidePath,
-    });
-    if (sizeGuidePath) {
+    // Ảnh GỘP Size Guide giờ chèn vào MÔ TẢ (ảnh đầu), không còn vào gallery.
+    // Ảnh "nhiều màu" làm ảnh main (nếu bật + sản phẩm có ≥2 màu).
+    let colorShowcasePath: string | null = null;
+    const csCfg = workerConfig().colorShowcase;
+    if (csCfg?.enabled && !data._pod) {
+      // POD: mọi màu chung 1 ảnh → collage nhiều màu vô nghĩa, skip.
       try {
-        fs.unlinkSync(sizeGuidePath);
+        colorShowcasePath = await buildColorShowcaseImageFile(
+          data.product_images,
+          data.variant_images,
+          csCfg.style || "C"
+        );
+      } catch (e: any) {
+        console.warn("⚠️ Không tạo được ảnh nhiều màu:", e?.message);
+      }
+    }
+    // MD5 unique theo TỪNG listing: seed remake = shop + salt từ tên file JSON (unique mỗi
+    // listing, ổn định khi chạy lại cùng file). Ảnh tái dùng (material POD / nguồn SHEIN chung)
+    // ra MD5 KHÁC nhau mỗi listing → tránh bị TikTok quét trùng ảnh.
+    const remakeSalt = (jsonFile.split(/[\\/]/).pop() || "rnd").replace(/\.json$/i, "");
+    const remakeSeed = `${targetProfile}:${remakeSalt}`;
+    await uploadProductImages(page, mergedProductImages, remakeSeed, {
+      prependLocalPath: colorShowcasePath,
+    });
+    if (colorShowcasePath) {
+      try {
+        fs.unlinkSync(colorShowcasePath);
       } catch {
         /* ignore */
       }
     }
-    await uploadVariantImages(page, data.variant_images, targetProfile);
+    if (data._pod) {
+      // POD: 1 ảnh design dùng chung → TẮT toggle "Variant Image", không điền ảnh từng màu.
+      await setVariantImageEnabled(page, false);
+    } else {
+      await uploadVariantImages(page, data.variant_images, remakeSeed);
+    }
     await assertNoErrors(page, "uploadImages");
 
     await handleBrand(page, data.brand_name);
 
-    const colorList = data.listing_variations?.colors || [];
-    // How To Measure đã nằm trong ảnh GỘP Size Guide ở gallery → mô tả chỉ còn attributes.
-    const descHtml = generateDescriptionHtml(
-      data.product_name,
-      data.attributes,
-      data.sizes_available,
-      colorList
-    );
+    // Điền Specifics (Optional): map SHEIN attributes → dropdown 4Seller. Mặc định TẮT —
+    // bật bằng "fillSpecifics": true trong config/worker.json sau khi verify trên 4Seller.
+    if (workerConfig().fillSpecifics) {
+      await fillSpecifics(page, data.attributes || {});
+    }
+
+    // Mô tả: [Rich marketing bullets + banner đan xen] → [Size Recommendation] → [How To Measure].
+    const [rich, fitGuide] = await Promise.all([
+      generateRichDescription(data.product_name, data.attributes),
+      analyzeFitForSize(data.product_name, data.fit_reviews, data.size_chart),
+    ]);
+    let richHtml = "";
+    if (rich) {
+      const bannerUrls: (string | null)[] = [];
+      // Ảnh banner lấy ĐA MÀU (round-robin variant_images) → khoe nhiều màu. Fallback product_images.
+      const diverse = diverseImagesFromVariants(data.variant_images);
+      const bannerImgs = diverse.length >= 2 ? diverse : data.product_images;
+      // Build banner + host imgbb (chỉ khi có IMGBB_API_KEY) → URL public chèn vào mô tả.
+      if (config.imgbbApiKey) {
+        for (const style of ["collage", "feature"] as const) {
+          let bp: string | null = null;
+          try {
+            bp = await buildBannerFile(
+              bannerImgs,
+              style,
+              rich.bannerTitle,
+              rich.bannerTagline,
+              rich.highlights
+            );
+            bannerUrls.push(bp ? await uploadToImgbb(bp) : null);
+          } catch (e: any) {
+            console.warn("⚠️ banner lỗi:", e?.message);
+            bannerUrls.push(null);
+          } finally {
+            if (bp) {
+              try {
+                fs.unlinkSync(bp);
+              } catch {
+                /* ignore */
+              }
+            }
+          }
+        }
+      }
+      richHtml = composeRichHtml(rich, bannerUrls);
+    }
+    // Ảnh GỘP Size Guide (size chart + How To Measure + Size Suggestion) → imgbb → chèn mô tả.
+    let sizeGuideHtml = "";
+    const guideSections = extractSizeChartSections(data.size_chart);
+    if (config.imgbbApiKey && guideSections.length > 0) {
+      let gf: string | null = null;
+      try {
+        const mgImg = await processMeasureGuideImage(data.measure_guide?.image); // che watermark
+        const mg = data.measure_guide ? { items: data.measure_guide.items, image: mgImg } : undefined;
+        gf = await buildSizeGuideImageFile(guideSections, mg, data.size_chart?.unit || "inch", fitGuide || undefined);
+        const url = gf ? await uploadToImgbb(gf) : null;
+        if (url) sizeGuideHtml = `<p><br></p><figure class="image"><img src="${url}" alt="Size Guide"></figure><p><br></p>`;
+      } catch (e: any) {
+        console.warn("⚠️ ảnh Size Guide lỗi:", e?.message);
+      } finally {
+        if (gf) {
+          try {
+            fs.unlinkSync(gf);
+          } catch {
+            /* ignore */
+          }
+        }
+      }
+    }
+    // Fallback text nếu không tạo được ảnh (không có imgbb key / size_chart).
+    if (!sizeGuideHtml) {
+      sizeGuideHtml =
+        (fitGuide ? renderFitGuideHtml(fitGuide) : "") +
+        generateMeasureGuideHtml(
+          data.measure_guide ? { items: data.measure_guide.items, image: null } : undefined
+        );
+    }
+    // POD: chèn template mô tả cố định lên đầu (trước rich/banner AI).
+    if (data._pod && data._podDescriptionTemplate) {
+      richHtml = data._podDescriptionTemplate + richHtml;
+    }
+    const descHtml = richHtml + sizeGuideHtml;
     await fillDescription(page, descHtml);
 
-    if (data.variant_images && data.variant_images.length > 0) {
+    if (data._pod) {
+      // POD: chỉ có 1 ảnh gốc → mô tả chỉ cần đúng ảnh design đó.
+      const designImg = (data.product_images || [])[0];
+      if (designImg) {
+        console.log(`📸 POD: dùng 1 ảnh design cho mô tả`);
+        await uploadDescriptionImages(page, [designImg]);
+      }
+    } else if (data.variant_images && data.variant_images.length > 0) {
       const descImages = selectDescriptionImages(data.variant_images);
       console.log(`📸 Đã chọn ${descImages.length} ảnh cho mô tả từ ${data.variant_images.length} variants`);
       await uploadDescriptionImages(page, descImages);
@@ -198,8 +323,10 @@ export const listing4sellerShein = async (
     // KHÔNG điền URL Shein gốc — tránh TikTok detect nguồn dropshipping.
     await page.waitForTimeout(3000);
 
-    // Click Save & Publish + detect outcome
-    const outcome = await detectPublishOutcome(page, { dryRun: opts?.dryRun });
+    // Click Save & Publish (hoặc Save/lưu nháp nếu saveDraftOnly) + detect outcome
+    const saveDraft = workerConfig().saveDraftOnly === true;
+    if (saveDraft) console.log("📝 saveDraftOnly=true → sẽ click Save (lưu NHÁP), không đăng live");
+    const outcome = await detectPublishOutcome(page, { dryRun: opts?.dryRun, saveDraft });
     console.log(`📊 Publish outcome:`, outcome);
 
     if (!outcome.ok) {
@@ -208,6 +335,12 @@ export const listing4sellerShein = async (
     }
 
     console.log(`✅ Hoàn thành đăng sản phẩm. ${outcome.reason}`);
+
+    // Dry-run + headed: giữ browser mở 200s để check tay (mô tả, Specifics, ảnh...).
+    if (opts?.dryRun && !headless) {
+      console.log("🐛 [DEBUG] Dry-run xong → giữ browser mở 200s để bạn check manual...");
+      await page.waitForTimeout(200_000).catch(() => {});
+    }
   } catch (error: any) {
     // Chụp screenshot final + đính path vào error message để UI hiển thị
     try {

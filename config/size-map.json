@@ -1,18 +1,19 @@
 {
-  "_comment": "Normalize size từ SHEIN sang TikTok US standard. Key lowercase, value giữ nguyên case.",
+  "_comment": "Chuẩn hoá case/dedup size SHEIN, GIỮ NGUYÊN số US ('2 (XS)'). Key lowercase, value = label hiển thị trên listing.",
   "map": {
-    "0 (xxs)": "XXS",
-    "2 (xs)": "XS",
-    "4 (s)": "S",
-    "6 (m)": "M",
-    "8/10 (l)": "L",
-    "8 (l)": "L",
-    "10 (l)": "L",
-    "12 (xl)": "XL",
-    "14 (xxl)": "XXL",
-    "16 (3xl)": "3XL",
-    "curve": "2XL",
-    "plus": "2XL",
+    "0 (xxs)": "0 (XXS)",
+    "2 (xs)": "2 (XS)",
+    "4 (s)": "4 (S)",
+    "6 (m)": "6 (M)",
+    "8/10 (l)": "8/10 (L)",
+    "8 (l)": "8 (L)",
+    "10 (l)": "10 (L)",
+    "12 (xl)": "12 (XL)",
+    "14 (xxl)": "14 (XXL)",
+    "16 (3xl)": "16 (3XL)",
+    "16/18 (xxl)": "16/18 (XXL)",
+    "curve": "Curve",
+    "plus": "Plus",
     "one size": "One Size"
   }
 }

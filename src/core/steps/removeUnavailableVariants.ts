@@ -30,19 +30,28 @@ export const removeUnavailableVariants = async (
   // Duyệt ngược từ dưới lên để khỏi lệch index khi xóa
   for (let i = rowCount - 1; i >= 0; i--) {
     const row = rows.nth(i);
+    // 4Seller chèn cột checkbox đầu → KHÔNG ép "td:first-child". Ô variant là ô DUY NHẤT có
+    // div.line_ellipsis[title] → locate trực tiếp, bền với việc lệch cột.
     const fullTitle = await row
-      .locator("td:first-child div.line_ellipsis")
+      .locator("div.line_ellipsis")
+      .first()
       .getAttribute("title");
     if (!fullTitle) continue;
 
-    // Format: "Color/Size" hoặc "Color/Size/Width"
-    const parts = fullTitle.split("/").map((p: string) => p.trim());
-    if (parts.length < 2) continue;
-    const color = parts[0].toLowerCase();
-    const size = parts[1].toLowerCase();
+    // Format title: "Color/Size" (hoặc "Color/Size/Width"). LƯU Ý: SIZE có thể CHỨA
+    // "/" (vd US "8/10 (L)") → KHÔNG split cứng cả chuỗi (sẽ tách nhầm → xoá oan size L).
+    // Cách đúng: color = đoạn trước "/" đầu tiên; phần còn lại match theo matrix.
+    const firstSlash = fullTitle.indexOf("/");
+    if (firstSlash < 0) continue;
+    const color = fullTitle.slice(0, firstSlash).trim().toLowerCase();
+    const rest = fullTitle.slice(firstSlash + 1).trim().toLowerCase();
 
     const allowedSizes = matrix[color];
-    if (!allowedSizes || !allowedSizes.has(size)) {
+    // Còn hàng nếu rest == 1 size cho phép, hoặc bắt đầu bằng "size/" (khi có thêm
+    // attr Width phía sau). Dùng matrix làm chuẩn → "8/10 (l)" khớp đúng, không vỡ.
+    const sizeOk =
+      !!allowedSizes && [...allowedSizes].some((sz) => rest === sz || rest.startsWith(sz + "/"));
+    if (!sizeOk) {
       console.log(`🗑️ Xoá variant không có trong matrix: ${fullTitle}`);
       const removeBtn = row.locator("svg.icon_remove");
       try {

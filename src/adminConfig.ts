@@ -13,15 +13,8 @@ export interface AdminUser {
   downloadDir?: string;
   baseSheinAutoDir?: string;
   apiToken?: string;
-  /** Override autoCron: null = inherit global worker.json, true/false = override */
-  autoCronOverride?: boolean | null;
-  /** Override headless: null = inherit global worker.json, true/false = override */
-  headlessOverride?: boolean | null;
-  /** Override pricing: null = inherit global pricing.json */
-  shipFeeOverride?: number | null;
-  multiplierOverride?: number | null;
-  extraAddOverride?: number | null;
-  /** Brand mapping của user này (đã bỏ global). null/rỗng = không brand. */
+  /** Brand mapping của user này (đã bỏ global). null/rỗng = không brand.
+   *  (autoCron/headless/pricing đã gộp về Settings global — không còn override per-user.) */
   brandProfilesOverride?: { default?: string; profiles?: Record<string, string> } | null;
 }
 
@@ -55,24 +48,10 @@ interface UserRow {
   download_dir: string;
   base_shein_auto_dir: string;
   api_token: string;
-  auto_cron_override: number | null;
-  headless_override: number | null;
-  ship_fee_override: number | null;
-  multiplier_override: number | null;
-  extra_add_override: number | null;
   brand_profiles_override: string | null;
   created_at: number;
   updated_at: number;
 }
-
-const intToBoolOrNull = (v: number | null): boolean | null => {
-  if (v === null || v === undefined) return null;
-  return v === 1;
-};
-const boolOrNullToInt = (v: boolean | null | undefined): number | null => {
-  if (v === null || v === undefined) return null;
-  return v ? 1 : 0;
-};
 
 const rowToUser = (row: UserRow): AdminUser => ({
   username: row.username,
@@ -84,11 +63,6 @@ const rowToUser = (row: UserRow): AdminUser => ({
   downloadDir: row.download_dir || "",
   baseSheinAutoDir: row.base_shein_auto_dir || "",
   apiToken: row.api_token || "",
-  autoCronOverride: intToBoolOrNull(row.auto_cron_override),
-  headlessOverride: intToBoolOrNull(row.headless_override),
-  shipFeeOverride: row.ship_fee_override,
-  multiplierOverride: row.multiplier_override,
-  extraAddOverride: row.extra_add_override,
   brandProfilesOverride: (() => {
     if (!row.brand_profiles_override) return null;
     try { return JSON.parse(row.brand_profiles_override); } catch { return null; }
@@ -103,10 +77,9 @@ const ensureDefaultAdmin = (): void => {
   db.prepare(`
     INSERT INTO users (
       username, password_hash, role, profiles, download_dir, base_shein_auto_dir, api_token,
-      auto_cron_override, headless_override, ship_fee_override, multiplier_override, extra_add_override,
       brand_profiles_override, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run("admin", hash("admin"), "admin", "[]", "", "", "", null, null, null, null, null, null, now, now);
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run("admin", hash("admin"), "admin", "[]", "", "", "", null, now, now);
   console.log("👤 Tạo user admin/admin mặc định (đổi password ngay sau khi đăng nhập)");
 };
 
@@ -140,9 +113,8 @@ export const saveAdminConfig = async (config: AdminConfig): Promise<AdminConfig>
   const upsert = db.prepare(`
     INSERT INTO users (
       username, password_hash, role, profiles, download_dir, base_shein_auto_dir, api_token,
-      auto_cron_override, headless_override, ship_fee_override, multiplier_override, extra_add_override,
       brand_profiles_override, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(username) DO UPDATE SET
       password_hash = excluded.password_hash,
       role          = excluded.role,
@@ -150,11 +122,6 @@ export const saveAdminConfig = async (config: AdminConfig): Promise<AdminConfig>
       download_dir  = excluded.download_dir,
       base_shein_auto_dir = excluded.base_shein_auto_dir,
       api_token     = excluded.api_token,
-      auto_cron_override   = excluded.auto_cron_override,
-      headless_override    = excluded.headless_override,
-      ship_fee_override    = excluded.ship_fee_override,
-      multiplier_override  = excluded.multiplier_override,
-      extra_add_override   = excluded.extra_add_override,
       brand_profiles_override = excluded.brand_profiles_override,
       updated_at    = excluded.updated_at
   `);
@@ -185,11 +152,6 @@ export const saveAdminConfig = async (config: AdminConfig): Promise<AdminConfig>
         u.downloadDir ?? "",
         u.baseSheinAutoDir ?? "",
         u.apiToken ?? "",
-        boolOrNullToInt(u.autoCronOverride ?? null),
-        boolOrNullToInt(u.headlessOverride ?? null),
-        typeof u.shipFeeOverride === "number" ? u.shipFeeOverride : null,
-        typeof u.multiplierOverride === "number" ? u.multiplierOverride : null,
-        typeof u.extraAddOverride === "number" ? u.extraAddOverride : null,
         u.brandProfilesOverride ? JSON.stringify(u.brandProfilesOverride) : null,
         existed?.created_at ?? now,
         now

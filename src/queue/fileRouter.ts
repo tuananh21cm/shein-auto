@@ -1,7 +1,7 @@
 import * as fs from "fs-extra";
 import * as path from "path";
 import { getAllUsersForCron, getEffectiveSettings } from "../state/userDirs";
-import { workerConfig } from "../config/appConfig";
+import { workerConfig, reloadAppConfig } from "../config/appConfig";
 
 const FILE_PATTERN = /^(P\d-\d{3}(?:_[A-Z]{2})?).*\.json$/i;
 
@@ -12,6 +12,7 @@ const FILE_PATTERN = /^(P\d-\d{3}(?:_[A-Z]{2})?).*\.json$/i;
  * Nếu file thuộc 1 shop trong profiles của user → move. Nếu profiles rỗng → move tất cả.
  */
 export async function runFileRouterOnce(): Promise<void> {
+  reloadAppConfig(); // đọc lại worker.json TƯƠI mỗi tick → sửa config có hiệu lực ngay
   if (!workerConfig().autoCron) return; // user đã tắt auto cron
   try {
     console.log(`\n--- [${new Date().toLocaleTimeString()}] QUÉT FILE DOWNLOADS SHEIN ---`);
@@ -27,8 +28,8 @@ export async function runFileRouterOnce(): Promise<void> {
     for (const dirs of userDirs) {
       const { username, downloadDir, baseSheinAutoDir, profiles } = dirs;
 
-      // Per-user autoCron — file router cũng phải tôn trọng preference
-      const effective = await getEffectiveSettings(username);
+      // autoCron global (đã bỏ override per-user) — tắt thì file router không pick file nào.
+      const effective = await getEffectiveSettings();
       if (!effective.autoCron) continue;
 
       if (!(await fs.pathExists(downloadDir))) continue;

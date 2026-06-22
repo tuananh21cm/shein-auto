@@ -81,8 +81,14 @@ export function attachDetailCapture(page: Page): DetailCapture {
       try { j = JSON.parse(text); } catch { return; }
       const info = j?.info ?? j;
 
-      // realtime_data → shipping / mall / return
+      // realtime_data → shipping / mall / return / fit
       if (/realtime_data/.test(url)) {
+        // percent_overall_fit = {true_size:"90%", large:"8%", small:"2%"} — chuẩn hơn regex text
+        const fit = deepFind(info, "percent_overall_fit");
+        if (fit && typeof fit === "object") {
+          const ts = parseFloat(String(fit.true_size ?? fit.trueSize ?? "").replace("%", ""));
+          if (Number.isFinite(ts) && ts > 0 && ts <= 100) signals.trueToSize = ts;
+        }
         if (/Shipped by sea/i.test(text)) signals.seaShipping = true;
         const quick = deepFind(info, "isSupportQuickShip");
         if (quick === "1" || quick === 1) signals.quickShip = true;

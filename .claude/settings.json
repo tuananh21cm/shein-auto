@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(echo \"tc:$?\")",
+      "Bash(npx vitest *)",
+      "Bash(git commit -q -m 'feat\\(tiktok\\): SQLite db layer \\(runs/metrics/alerts/reports\\) *)",
+      "Bash(git commit -q -m 'feat\\(tiktok\\): homepage + compass overview extractors *)",
+      "Bash(git commit -q -m 'feat\\(tiktok\\): claude client + snapshot analysis *)",
+      "Bash(git commit -q -m 'feat\\(tiktok\\): markdown report renderer *)",
+      "Bash(git commit -q -m 'feat\\(tiktok\\): crawl orchestrator \\(1 session, per-route\\) *)",
+      "Bash(git commit -q -m 'feat\\(tiktok\\): config file + appConfig getter *)",
+      "Bash(git commit -q -m 'feat\\(tiktok\\): daily cron job + wiring *)",
+      "Bash(npm test *)",
+      "Bash(git commit -q -m 'feat\\(tiktok\\): manual crawl script \\(--discover/--no-ai\\) *)"
+    ]
+  }
+}

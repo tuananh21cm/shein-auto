@@ -18,7 +18,13 @@
     { "key": "denim-shorts",   "group": "bottoms",   "query": "denim shorts women" },
     { "key": "bikini",         "group": "beachwear", "query": "bikini set" },
     { "key": "one-piece-swim", "group": "beachwear", "query": "one piece swimsuit" },
-    { "key": "shapewear",      "group": "underwear", "query": "shapewear bodysuit" }
+    { "key": "shapewear",      "group": "underwear", "query": "shapewear bodysuit" },
+    { "key": "lingerie",           "group": "underwear",   "query": "lingerie set lace" },
+    { "key": "pajamas-loungewear", "group": "underwear",   "query": "pajama set women" },
+    { "key": "bralettes",          "group": "underwear",   "query": "lace bralette" },
+    { "key": "panties",            "group": "underwear",   "query": "seamless panties women" },
+    { "key": "underwear-sets",     "group": "underwear",   "query": "bra panty set" },
+    { "key": "soccer-jersey",      "group": "tops",        "query": "football jersey" }
   ],
 
   "_comment_weights": "Trọng số opportunityScore (0-1). demandFit hiện trung tính 50 vì chưa có Kalodata.",
@@ -54,6 +60,16 @@
     "deepDiscountPct": 75,
     "minUgcForContent": 1,
     "ipBrands": ["disney","marvel","nba","nfl","mlb","nhl","pokemon","pikachu","sanrio","hello kitty","barbie","harry potter","looney tunes","batman","superman","spongebob","care bears","tom and jerry","minecraft","stitch","mickey","snoopy","betty boop","garfield","scooby","powerpuff","star wars","naruto","sailor moon","kuromi","stranger things","squid game","taylor swift"]
+  },
+
+  "_comment_dropscore": "Chấm 'ngách ngon cho dropship': rẻ (stock kho) + trend + ít refund. groupSimplicity = độ đơn giản theo nhóm (cao=ít cầu kỳ→ít refund). cheap theo GIÁ GỐC SHEIN (cost/đơn vị).",
+  "dropScore": {
+    "weights": { "trend": 0.3, "cheap": 0.25, "refundSafe": 0.3, "supply": 0.15 },
+    "cheap": { "idealCost": 8, "maxCost": 25 },
+    "refund": { "fitMin": 80, "ratingMin": 4.5 },
+    "groupSimplicity": {
+      "tops": 82, "dresses": 70, "bottoms": 60, "sets": 42, "beachwear": 55, "underwear": 50
+    }
   },
 
   "_comment_cron": "Tự chạy research hằng sáng. schedule = cron 5 trường (giờ server). autoEnrich cần Kiki online + enrichProfileId → mặc định TẮT (bán tự động: research auto, enrich/đăng do người).",

@@ -1,10 +1,32 @@
 import { sizeMap, workerConfig } from "../../config/appConfig";
+import { fixInflatedVariantPrices } from "./fixVariantPrices";
 
 interface VariantImageParam {
   [color: string]: string | string[];
 }
 
 const normalizeSize = (s: string): string => sizeMap()[s.toLowerCase().trim()] ?? s;
+
+/**
+ * SHEIN trả size 2 dạng cho cùng 1 size: dạng CHỮ ("S") đọc TRƯỚC khi chọn màu, và
+ * dạng SỐ ("4 (S)") đọc SAU khi chọn màu → bị trùng (chọn thừa size trên 4Seller).
+ * Gộp về 1: cùng "letter" trong ngoặc → ưu tiên giữ dạng CÓ SỐ ("4 (S)"), bỏ dạng chữ trơn.
+ * (available_matrix dùng dạng số → giữ số để khớp, tránh removeUnavailableVariants xoá nhầm.)
+ */
+const dedupeSizeForms = (sizes: string[]): string[] => {
+  const byKey = new Map<string, string>();
+  const order: string[] = [];
+  const hasNum = (s: string) => /\d/.test(s) || /\(/.test(s); // "4 (S)" / "8/10 (L)"
+  for (const s of sizes) {
+    if (!s) continue;
+    const m = s.match(/\(([^)]+)\)\s*$/);          // "(S)" → S
+    const key = (m ? m[1] : s).toLowerCase().trim();
+    const cur = byKey.get(key);
+    if (!cur) { byKey.set(key, s); order.push(key); }
+    else if (hasNum(s) && !hasNum(cur)) byKey.set(key, s); // ưu tiên dạng có số
+  }
+  return order.map((k) => byKey.get(k)!);
+};
 
 /**
  * Pre-process JSON data trước khi đẩy lên 4Seller:
@@ -16,11 +38,18 @@ const normalizeSize = (s: string): string => sizeMap()[s.toLowerCase().trim()] ?
  * Trả về object data đã mutate + mergedProductImages.
  */
 export const preprocessData = (data: any): { mergedProductImages: string[] } => {
-  // 1. SIZE NORMALIZATION
+  // POD: mọi màu CỐ Ý dùng chung 1 ảnh design → KHÔNG dedup (sẽ xoá hết trừ 1 màu).
+  const isPod = data._pod === true;
+
+  // 0. FIX GIÁ THỔI — SHEIN thổi giá x3-x4 một số variant khi nghi crawler → chia về
+  //    gần giá gốc (variant giá thường giữ nguyên). Chạy TRƯỚC dedup/filter.
+  fixInflatedVariantPrices(data.variant_price, { onLog: (m) => console.log(m) });
+
+  // 1. SIZE NORMALIZATION + DEDUP DẠNG TRÙNG
   if (data.listing_variations?.sizes) {
     const before = [...data.listing_variations.sizes];
-    data.listing_variations.sizes = data.listing_variations.sizes.map(normalizeSize);
-    data.sizes_available = (data.sizes_available || []).map(normalizeSize);
+    data.listing_variations.sizes = dedupeSizeForms(data.listing_variations.sizes.map(normalizeSize));
+    data.sizes_available = dedupeSizeForms((data.sizes_available || []).map(normalizeSize));
     console.log(`📐 Size normalized: ${before.join(", ")} → ${data.listing_variations.sizes.join(", ")}`);
   }
 
@@ -37,8 +66,8 @@ export const preprocessData = (data: any): { mergedProductImages: string[] } => 
     console.log(`📐 Matrix sizes normalized:`, normalized);
   }
 
-  // 2. VARIANT IMAGE DEDUP
-  if (data.variant_images && data.variant_images.length > 0) {
+  // 2. VARIANT IMAGE DEDUP (bỏ qua cho POD — mọi màu chung 1 ảnh là cố ý)
+  if (!isPod && data.variant_images && data.variant_images.length > 0) {
     const imageSignatureMap = new Map<string, string>();
     const deduped: VariantImageParam[] = [];
     const removedColors = new Set<string>();
@@ -75,8 +104,14 @@ export const preprocessData = (data: any): { mergedProductImages: string[] } => 
     }
   }
 
-  // 2b. FILTER COLORS WITHOUT IMAGES
-  if (data.variant_images && data.variant_images.length > 0 && data.listing_variations?.colors) {
+  // 2b. FILTER COLORS WITHOUT IMAGES — kể cả màu có entry nhưng MẢNG RỖNG (vd màu
+  //     load ảnh chậm bị cào rỗng) → tránh variant trống ảnh trên 4Seller.
+  if (!isPod && data.variant_images && data.variant_images.length > 0 && data.listing_variations?.colors) {
+    const hasImgs = (item: VariantImageParam): boolean => {
+      const v = Object.values(item)[0];
+      return Array.isArray(v) ? v.length > 0 : !!v;
+    };
+    data.variant_images = data.variant_images.filter(hasImgs); // bỏ entry ảnh rỗng
     const colorsWithImages = new Set<string>(
       data.variant_images.map((item: VariantImageParam) => Object.keys(item)[0])
     );
@@ -95,25 +130,38 @@ export const preprocessData = (data: any): { mergedProductImages: string[] } => 
     }
   }
 
-  // 3. MERGE PRODUCT IMAGES với hero shot từ mỗi variant
-  const allVariantUrls: string[] = [];
-  const usedUrls = new Set<string>((data.product_images || []) as string[]);
+  // 3. MERGE PRODUCT IMAGES — LẤP ĐỦ tới target (mặc định imageUploadMaxImages = 9).
+  //    Khi ảnh main cào về ít (vd 4), bù thêm ảnh từ variant cho đủ 9.
+  //    Ưu tiên hero shot (ảnh ĐẦU mỗi màu) để khoe đa màu, rồi mới tới ảnh phụ của variant.
+  const target = workerConfig().imageUploadMaxImages;
+  const baseImages = (data.product_images || []) as string[];
+  const mergedProductImages: string[] = [...baseImages];
+  const usedUrls = new Set<string>(baseImages);
+
+  const heroUrls: string[] = []; // ảnh đầu mỗi màu (đa dạng màu)
+  const extraUrls: string[] = []; // ảnh phụ còn lại của từng màu
   for (const item of data.variant_images || []) {
     for (const urls of Object.values(item)) {
       const urlList = Array.isArray(urls) ? urls : [urls as string];
-      const firstUrl = urlList[0];
-      if (firstUrl && !usedUrls.has(firstUrl)) {
-        allVariantUrls.push(firstUrl);
-        usedUrls.add(firstUrl);
-      }
+      urlList.forEach((u, idx) => {
+        if (!u) return;
+        (idx === 0 ? heroUrls : extraUrls).push(u);
+      });
     }
   }
-  const maxImages = workerConfig().imageUploadMaxImages;
-  const mergedProductImages = [...(data.product_images || []), ...allVariantUrls].slice(0, maxImages);
-  if (mergedProductImages.length > (data.product_images || []).length) {
+  for (const u of [...heroUrls, ...extraUrls]) {
+    if (mergedProductImages.length >= target) break;
+    if (!usedUrls.has(u)) {
+      mergedProductImages.push(u);
+      usedUrls.add(u);
+    }
+  }
+  if (mergedProductImages.length > baseImages.length) {
     console.log(
-      `🖼️ Product images: ${(data.product_images || []).length} gốc + ${allVariantUrls.length} từ variants → ${mergedProductImages.length} tổng`
+      `🖼️ Ảnh main: ${baseImages.length} ảnh gốc → bù từ variant lên ${mergedProductImages.length}/${target} ảnh`
     );
+  } else if (mergedProductImages.length < target) {
+    console.log(`🖼️ Ảnh main: ${mergedProductImages.length}/${target} (không đủ ảnh variant để bù thêm)`);
   }
 
   return { mergedProductImages };

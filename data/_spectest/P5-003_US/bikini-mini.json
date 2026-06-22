@@ -1,0 +1,127 @@
+{
+  "product_name": "Swim Glamine Sweet Cherry Plaid Bikini Set",
+  "category": "Home / Women Apparel / Women Clothing / Women Beachwear / Women Tankinis / Swim Glamine Sweet Cherry Plaid Bikini Set",
+  "sizes_available": [
+    "2 (XS)",
+    "4 (S)",
+    "6 (M)",
+    "8/10 (L)",
+    "12 (XL)",
+    "Curve"
+  ],
+  "variant_images": [
+    {
+      "Black": [
+        "https://img.ltwebstatic.com/v4/j/pi/2025/12/18/48/176604401035cd12203356aca6a52e3eca061725a8.webp"
+      ]
+    }
+  ],
+  "variant_price": [
+    {
+      "Black": "$10.40"
+    }
+  ],
+  "listing_variations": {
+    "colors": [
+      "Black"
+    ],
+    "sizes": [
+      "2 (XS)",
+      "4 (S)"
+    ]
+  },
+  "attributes": {
+    "Details": "Backless, Knot, Tie Back",
+    "Neckline": "Halter",
+    "Pattern Type": "Plants",
+    "Waist Line": "Ultra Low Waist",
+    "Occasion": "Vacation",
+    "Cup Type": "3/4 Cup",
+    "Bikini Bottoms Length": "Short",
+    "Festivals": "Pride Month, St. Patrick's Day",
+    "Bikini Bottoms Sleeve Length": "Sleeveless",
+    "Color": "Black",
+    "Style": "Elegant",
+    "Bottom Type": "Tie Side",
+    "Bra Type": "Wireless Bra",
+    "Fabric Elasticity": "High Stretch",
+    "Care Instructions": "Hand wash,do not dry clean",
+    "Chest pad": "Removable Padding",
+    "Sheer": "No",
+    "Bikini Bottoms Material": "Fabric",
+    "Bikini Bottoms&Bikini Tops Composition": "82% Polyester,18% Elastane",
+    "SKU": "sz25041853370091184"
+  },
+  "product_images": [
+    "https://img.ltwebstatic.com/v4/j/pi/2025/12/18/48/176604401035cd12203356aca6a52e3eca061725a8.webp",
+    "https://img.ltwebstatic.com/v4/j/pi/2025/12/18/a3/17660440129be85436e54d0109c9b0db845edba75e.webp"
+  ],
+  "url": "https://us.shein.com/Swim-Glamine-Sweet-Cherry-Plaid-Bikini-Set-p-328781052.html?src_identifier=on%3Dstore%60cn%3DSwim+Glamine%60hz%3D0%60ps%3D1_1%60jc%3DthirdPartyStoreHome_7859241198&src_module=DetailBrand&src_tab_page_id=page_goods_detail1777024839593&mallCode=1&pageListType=4&main_attr=27_140",
+  "scraped_at": "2026-04-24T10:02:05.085Z",
+  "size_chart": {
+    "unit": "cm",
+    "data": [
+      {
+        "US": "2",
+        "Size": "XS",
+        "Waist Size": "25.2",
+        "Length": "9.4"
+      },
+      {
+        "US": "4",
+        "Size": "S",
+        "Waist Size": "26.8",
+        "Length": "9.8"
+      },
+      {
+        "US": "6",
+        "Size": "M",
+        "Waist Size": "28.7",
+        "Length": "10.2"
+      },
+      {
+        "US": "8/10",
+        "Size": "L",
+        "Waist Size": "30.7",
+        "Length": "10.6"
+      },
+      {
+        "US": "12",
+        "Size": "XL",
+        "Waist Size": "32.7",
+        "Length": "11"
+      }
+    ]
+  },
+  "available_matrix": {
+    "Black": [
+      "2 (XS)",
+      "4 (S)"
+    ]
+  },
+  "measure_guide": {
+    "image": "https://img.ltwebstatic.com/images3_pi/2021/11/30/1638225033b01c5e87ff2ae468d326bf85b43f5af3.jpg",
+    "items": [
+      {
+        "index": "1",
+        "name": "Bust",
+        "desc": "Measure from the stitches below the armpits on one side to another."
+      },
+      {
+        "index": "2",
+        "name": "Waist",
+        "desc": "Measure straight across the narrowest waist line from edge to edge."
+      },
+      {
+        "index": "3",
+        "name": "Hips",
+        "desc": "Measure straight across the widest hip line from edge to edge."
+      },
+      {
+        "index": "4",
+        "name": "Length",
+        "desc": "Measure from where the shoulder seam meets the collar to the hem."
+      }
+    ]
+  }
+}

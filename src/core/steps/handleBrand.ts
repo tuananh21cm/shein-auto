@@ -6,12 +6,24 @@ export const handleBrand = async (page: any, brandName: string): Promise<void> =
   );
   await brandTrigger.click();
 
-  const popper = page.locator(".el-select__popper.create_select_box");
+  // 4Seller render NHIỀU popper (1 đang mở aria-hidden="false" + 1 cũ ẩn aria-hidden="true"
+  // data-popper-escaped) → selector khớp 2 element → strict mode lỗi. Chỉ nhắm popper ĐANG HIỆN.
+  const popper = page.locator(".el-select__popper.create_select_box").filter({ visible: true }).first();
   await popper.waitFor({ state: "visible", timeout: 5000 });
 
   if (!brandName || brandName.trim() === "") {
-    const noBrandItem = popper.locator(".search_product_item").filter({ hasText: /^No Brand$/i });
+    // Dropdown load list async → chờ render. Match "No Brand" bằng string (chuẩn hoá whitespace,
+    // case-insensitive) — KHÔNG dùng regex neo ^...$ (dễ trượt do whitespace/icon → click treo).
+    let noBrandItem = popper.locator(".search_product_item", { hasText: "No Brand" }).first();
+    try {
+      await noBrandItem.waitFor({ state: "visible", timeout: 10000 });
+    } catch {
+      // Fallback: bắt theo text bất kỳ phần tử trong popper.
+      noBrandItem = popper.getByText("No Brand", { exact: false }).first();
+      await noBrandItem.waitFor({ state: "visible", timeout: 8000 });
+    }
     await noBrandItem.click();
+    await page.waitForTimeout(400);
     console.log("✅ Đã chọn No Brand");
     return;
   }

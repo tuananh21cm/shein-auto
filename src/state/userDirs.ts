@@ -52,9 +52,14 @@ export const getAllUserDirs = async (): Promise<UserDirs[]> => {
     if (!dirs.baseSheinAutoDir) continue;
     const existing = map.get(dirs.baseSheinAutoDir);
     if (existing) {
-      // Merge profiles
-      const merged = Array.from(new Set([...existing.profiles, ...dirs.profiles]));
-      existing.profiles = merged;
+      // Merge profiles. profiles=[] = CATCH-ALL (xem TẤT CẢ shop trong baseDir).
+      // Nếu MỘT user dùng chung baseDir là catch-all → kết quả phải catch-all,
+      // KHÔNG được narrow xuống list của user explicit (union sai ở đây).
+      if (existing.profiles.length === 0 || dirs.profiles.length === 0) {
+        existing.profiles = [];
+      } else {
+        existing.profiles = Array.from(new Set([...existing.profiles, ...dirs.profiles]));
+      }
       existing.username += `,${dirs.username}`;
     } else {
       map.set(dirs.baseSheinAutoDir, { ...dirs });
@@ -83,13 +88,37 @@ export const resolveBrandForUser = async (
   username: string | undefined | null,
   profileName: string
 ): Promise<string> => {
-  if (!username) return "";
   const cfg = await loadAdminConfig();
-  const u = cfg.users.find((x) => x.username === username);
-  const override = u?.brandProfilesOverride;
-  if (override) {
-    if (override.profiles && override.profiles[profileName]) return override.profiles[profileName];
-    if (override.default) return override.default;
+  // Chuẩn hoá để so khớp profile: bỏ space + MỌI loại gạch (hyphen "-", en "–", em "—") + lowercase.
+  // → "TA Scan 227 — Energetic Flags_US" (key brand) khớp "TA Scan 227-Energetic Flags_US" (folder thật).
+  const norm = (s: string): string => (s || "").toLowerCase().replace(/[\s—–-]+/g, "");
+  const np = norm(profileName);
+
+  const matchInUser = (u: any): string => {
+    const ov = u?.brandProfilesOverride;
+    if (!ov?.profiles) return "";
+    if (ov.profiles[profileName]) return ov.profiles[profileName]; // exact
+    for (const [k, v] of Object.entries(ov.profiles)) {
+      if (v && norm(k) === np) return v as string; // chuẩn hoá dấu/space
+    }
+    return "";
+  };
+
+  // 1. User chỉ định (cookie owner) — ưu tiên brand của chính họ cho shop này.
+  if (username) {
+    const u = cfg.users.find((x) => x.username === username);
+    const b = matchInUser(u);
+    if (b) return b;
+  }
+  // 2. Brand GẮN VỚI SHOP, không phụ thuộc cookie user → tìm shop ở MỌI user (vd map set ở 'admin').
+  for (const u of cfg.users) {
+    const b = matchInUser(u);
+    if (b) return b;
+  }
+  // 3. Default brand của user chỉ định (nếu có).
+  if (username) {
+    const u = cfg.users.find((x) => x.username === username);
+    if (u?.brandProfilesOverride?.default) return u.brandProfilesOverride.default;
   }
   return "";
 };
@@ -105,8 +134,13 @@ export const resolveBrandForUser = async (
  */
 export const getShopOwner = async (shop: string): Promise<string | null> => {
   const cfg = await loadAdminConfig();
+  // Chuẩn hoá để khớp: bỏ space + MỌI loại gạch (hyphen "-", en "–", em "—") + lowercase.
+  // → profile "TA Scan 227 — Energetic Flags_US" khớp folder "TA Scan 227-Energetic Flags_US".
+  // (Trước đây so khớp CHÍNH XÁC → em-dash ≠ hyphen → rơi về catch-all → dùng nhầm cookie user khác.)
+  const norm = (s: string): string => (s || "").toLowerCase().replace(/[\s—–-]+/g, "");
+  const ns = norm(shop);
   for (const u of cfg.users) {
-    if ((u.profiles ?? []).includes(shop)) return u.username;
+    if ((u.profiles ?? []).some((p) => norm(p) === ns)) return u.username;
   }
   const catchAlls = cfg.users
     .filter((u) => (u.profiles ?? []).length === 0)
@@ -115,13 +149,11 @@ export const getShopOwner = async (shop: string): Promise<string | null> => {
 };
 
 /**
- * Resolve effective settings cho 1 user: override của user → global default.
- *
- * Bao gồm:
+ * Effective settings cho worker — GỘP VỀ GLOBAL (đã bỏ per-user override).
  *  - autoCron, headless (từ worker.json)
  *  - pricing (shipFee, multiplier, extraAdd — từ pricing.json)
  */
-export const getEffectiveSettings = async (username: string): Promise<{
+export const getEffectiveSettings = async (): Promise<{
   autoCron: boolean;
   headless: boolean;
   pricing: { shipFee: number; multiplier: number; extraAdd: number };
@@ -129,15 +161,13 @@ export const getEffectiveSettings = async (username: string): Promise<{
   const { workerConfig, pricing: pricingGlobal } = await import("../config/appConfig");
   const w = workerConfig();
   const p = pricingGlobal();
-  const cfg = await loadAdminConfig();
-  const u = cfg.users.find((x) => x.username === username);
   return {
-    autoCron: u?.autoCronOverride ?? w.autoCron,
-    headless: u?.headlessOverride ?? w.headless,
+    autoCron: w.autoCron,
+    headless: w.headless,
     pricing: {
-      shipFee:    u?.shipFeeOverride    ?? p.shipFee    ?? 0,
-      multiplier: u?.multiplierOverride ?? p.multiplier ?? 1,
-      extraAdd:   u?.extraAddOverride   ?? p.extraAdd   ?? 0,
+      shipFee:    p.shipFee    ?? 0,
+      multiplier: p.multiplier ?? 1,
+      extraAdd:   p.extraAdd   ?? 0,
     },
   };
 };

@@ -1,6 +1,6 @@
 {
   "_comment": "concurrency: số browser chạy song song. 1 = sequential như cũ. autoCron: bật/tắt cron tự động.",
-  "autoCron": true,
+  "autoCron": false,
   "concurrency": 1,
   "headless": false,
   "fileRouterCron": "*/30 * * * * *",
@@ -9,6 +9,13 @@
   "imageUploadMaxImages": 9,
   "descriptionImagesCount": 8,
   "descriptionMaxAttributes": 8,
+  "sizeGuideGalleryImage": false,
+  "fillSpecifics": true,
+  "saveDraftOnly": true,
+  "colorShowcase": {
+    "enabled": true,
+    "style": "B"
+  },
   "imageRemake": {
     "enabled": true,
     "preset": "standard",

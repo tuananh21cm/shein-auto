@@ -21,6 +21,7 @@ export interface ValidateParams {
   profileId: string;
   day?: string;
   limit?: number;
+  niche?: string;          // chỉ validate sp 1 ngách (Soi ngách)
   captcha?: CaptchaOptions;
   onLog?: (msg: string) => void;
 }
@@ -60,7 +61,7 @@ export async function validateCandidates(params: ValidateParams): Promise<Valida
   const log = params.onLog ?? (() => {});
   const profileId = params.profileId;
 
-  const candidates = researchStore.listUnvalidated(day, limit);
+  const candidates = researchStore.listUnvalidated(day, limit, params.niche);
   if (!candidates.length) {
     log("Không có candidate cần kiểm định (đã validate hết hoặc chưa có).");
     return { day, validated: 0, pass: 0, watch: 0, reject: 0, results: [] };

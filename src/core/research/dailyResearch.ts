@@ -16,6 +16,8 @@ import { searchProducts } from "../../services/shein/client";
 import { scoreWin, type WinScored } from "../winScore";
 import { rollupNiche, type NicheRollup } from "./nicheScore";
 import { scoreOpportunity } from "./opportunityScore";
+import { matchNicheDemand } from "./demandFit";
+import { kalodataStore } from "../../state/kalodataStore";
 import {
   researchStore,
   today,
@@ -70,6 +72,12 @@ export async function runDailyResearch(opts: DailyResearchOptions = {}): Promise
   const nicheSnapshots: NicheSnapshot[] = [];
   const errors: { niche: string; error: string }[] = [];
 
+  // Demand TikTok (Kalodata) — dùng cho demandFit. Rỗng = chưa collect → fallback 50.
+  const kaloDay = kalodataStore.latestDay();
+  const kaloCategories = kaloDay ? kalodataStore.listCategories(kaloDay) : [];
+  if (kaloDay) log(`📈 Demand Kalodata ${kaloDay}: ${kaloCategories.length} category`);
+  else log("📈 Chưa có demand Kalodata → demandFit trung tính 50 (chạy collect demand trước để chính xác hơn)");
+
   for (const niche of cfg.niches) {
     try {
       log(`🔎 [${niche.key}] search "${niche.query}"…`);
@@ -79,9 +87,10 @@ export async function runDailyResearch(opts: DailyResearchOptions = {}): Promise
       });
       const wins: WinScored[] = res.products.map(scoreWin);
       const rollup = rollupNiche(wins);
+      const dm = matchNicheDemand(niche, kaloCategories);
 
       const scored: ScoredProduct[] = wins.map((w) => {
-        const opp = scoreOpportunity({ win: w, nicheHeat: rollup.heatScore });
+        const opp = scoreOpportunity({ win: w, nicheHeat: rollup.heatScore, demandFit: dm.demandFit });
         return {
           ...w,
           nicheKey: niche.key,
@@ -104,7 +113,7 @@ export async function runDailyResearch(opts: DailyResearchOptions = {}): Promise
         marginBand: rollup.marginBand,
         heatScore: rollup.heatScore,
       });
-      log(`   ✓ ${scored.length} sp · nhiệt ngách ${rollup.heatScore} · hot ${rollup.hotShare}%`);
+      log(`   ✓ ${scored.length} sp · nhiệt ${rollup.heatScore} · hot ${rollup.hotShare}% · demand ${dm.demandFit}${dm.matchedName ? ` (${dm.matchedName})` : ""}`);
     } catch (e: any) {
       const msg = e?.message ?? String(e);
       errors.push({ niche: niche.key, error: msg });

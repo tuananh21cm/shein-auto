@@ -19,9 +19,9 @@ export const generateDescriptionHtml = (
 };
 
 /**
- * HTML khối "How To Measure" để chèn vào mô tả listing (trước phần ảnh sản phẩm).
- * Bố cục: tiêu đề → ảnh sơ đồ → danh sách số đo đánh số. Dùng tag cơ bản để
- * CKEditor/TikTok render ổn định (không phụ thuộc CSS phức tạp).
+ * HTML khối "How To Measure" để chèn vào mô tả listing.
+ * Bố cục: tiêu đề → danh sách số đo (TEXT trước) → ảnh sơ đồ (CUỐI). Đặt ảnh base64
+ * lớn ở cuối để nếu CKEditor cắt paste sau ảnh thì cũng không mất phần text quan trọng.
  */
 export const generateMeasureGuideHtml = (measureGuide?: {
   items: { index?: string; name: string; desc: string }[];
@@ -34,35 +34,148 @@ export const generateMeasureGuideHtml = (measureGuide?: {
   const list = measureGuide.items
     .map((it, i) => `<p><strong>${it.index || i + 1}. ${it.name}:</strong> ${it.desc}</p>`)
     .join("");
-  return `<p><br></p><p style="font-size:16px;"><strong>📏 How To Measure</strong></p>${img}${list}`;
+  return `<p><strong>📏 How To Measure</strong></p>${list}${img}`;
+};
+
+/**
+ * Upload 1 ảnh (file PNG local) vào CKEditor qua nút ảnh của toolbar → 4Seller host ảnh
+ * (render được, khác hẳn base64/blob bị editor bỏ qua). atStart=true → ảnh ĐẦU mô tả.
+ */
+export const uploadImageToEditor = async (
+  page: any,
+  filePath: string,
+  atStart = true
+): Promise<void> => {
+  try {
+    const editor = page.locator(".ck-editor__editable_inline").first();
+    await editor.scrollIntoViewIfNeeded();
+    await editor.click();
+    await page.keyboard.press(atStart ? "Control+Home" : "Control+End");
+    await page.waitForTimeout(200);
+
+    // DEBUG: liệt kê MỌI button trong toolbar (gồm .fullscreen-wrapper__toolbar) + tooltip
+    const ctrls = await page
+      .locator(".ck-toolbar button, .fullscreen-wrapper__toolbar button")
+      .evaluateAll((els: any[]) =>
+        els.map((e, i) => ({
+          i,
+          t:
+            e.getAttribute("data-cke-tooltip-text") ||
+            e.getAttribute("aria-label") ||
+            e.getAttribute("title") ||
+            "",
+          c: (e.className || "").replace(/\bck-/g, "").replace(/\s+/g, " ").trim(),
+        }))
+      );
+    console.log(`🔎 [IMG] buttons: ${JSON.stringify(ctrls)}`);
+
+    const tryFC = async (clickFn: () => Promise<void>): Promise<boolean> => {
+      const fcP = page.waitForEvent("filechooser", { timeout: 5000 }).catch(() => null);
+      await clickFn();
+      const fc = await fcP;
+      if (fc) {
+        await fc.setFiles(filePath);
+        return true;
+      }
+      return false;
+    };
+
+    let done = false;
+    // 1. Dropdown ảnh trong toolbar (dropdown không phải Heading)
+    const imgDd = page.locator(".ck-toolbar .ck-dropdown:not(.ck-heading-dropdown)").first();
+    if ((await imgDd.count()) > 0) {
+      done = await tryFC(async () => {
+        await imgDd.locator("button").first().click();
+      });
+      if (!done) {
+        await page.waitForTimeout(300);
+        const panelTexts = await page
+          .locator(".ck-dropdown__panel button, .ck-dropdown__panel .ck-button, .ck-balloon-panel button")
+          .evaluateAll((els: any[]) =>
+            [...new Set(els.map((e) => (e.getAttribute("aria-label") || e.textContent || "").trim()).filter(Boolean))]
+          );
+        console.log(`🔎 [IMG] panel options: ${JSON.stringify(panelTexts)}`);
+        const upBtn = page
+          .locator(".ck-dropdown__panel button, .ck-balloon-panel button, .ck-dropdown__panel .ck-button")
+          .filter({ hasText: /upload|computer|file|máy/i })
+          .first();
+        if ((await upBtn.count()) > 0) done = await tryFC(async () => await upBtn.click());
+      }
+    }
+    // 2. Fallback: button toolbar có aria-label chứa "image"
+    if (!done) {
+      const imgBtn = page.locator('.ck-toolbar button[aria-label*="image" i]').first();
+      if ((await imgBtn.count()) > 0) done = await tryFC(async () => await imgBtn.click());
+    }
+
+    if (done) {
+      await page.waitForTimeout(4000); // chờ 4Seller upload xong
+      const imgs = await editor.locator("img").count();
+      console.log(`🖼️ Upload ảnh Size Guide vào mô tả (atStart=${atStart}) → editor có ${imgs} ảnh`);
+    } else {
+      console.warn("⚠️ Không kích hoạt được file dialog upload ảnh trong editor.");
+    }
+  } catch (e: any) {
+    console.warn("⚠️ uploadImageToEditor lỗi:", e?.message);
+  }
 };
 
 export const fillDescription = async (page: any, text: string): Promise<void> => {
-  const editor = page.locator(".ck-editor__editable_inline");
+  const editor = page.locator(".ck-editor__editable_inline").first();
+  const html = `<div style="font-family: Arial;">${text}</div>`;
 
   try {
-    console.log("--- Đang dán mô tả sản phẩm qua Clipboard ---");
+    console.log("--- Đang điền mô tả sản phẩm ---");
     await editor.scrollIntoViewIfNeeded();
     await editor.click();
     await page.waitForTimeout(200);
 
-    await page.evaluate(async (val: string) => {
-      const type = "text/html";
-      const blob = new Blob([val], { type });
-      const data = [new ClipboardItem({ [type]: blob })];
-      await navigator.clipboard.write(data);
-    }, `<div style="font-family: Arial;">${text}</div>`);
+    // CÁCH 1 (bền): set thẳng qua CKEditor 5 instance API (DOM editable có .ckeditorInstance).
+    //   Clipboard paste (cách cũ) hay fail headless/perm/focus → mô tả rỗng dù log "thành công".
+    const method = await page.evaluate((h: string) => {
+      const el = document.querySelector(".ck-editor__editable_inline") as any;
+      const inst = el && el.ckeditorInstance;
+      if (inst && typeof inst.setData === "function") {
+        inst.setData(h);
+        return "api";
+      }
+      if (el) {
+        el.innerHTML = h;
+        el.dispatchEvent(new InputEvent("input", { bubbles: true }));
+        return "innerHTML";
+      }
+      return "none";
+    }, html);
 
-    await page.keyboard.press("Control+A");
-    await page.keyboard.press("Backspace");
-    await page.keyboard.press("Control+V");
-    console.log("✅ Đã dán nội dung thành công vào CKEditor.");
+    await page.waitForTimeout(300);
+    let len = ((await editor.innerText().catch(() => "")) || "").trim().length;
 
-    // Kích hoạt validate để mất thông báo "Can not be empty"
-    await page.keyboard.press("Enter");
+    // CÁCH 2 (fallback): clipboard paste nếu setData không vào.
+    if (len === 0) {
+      console.warn(`⚠️ setData (${method}) không vào → thử clipboard paste…`);
+      await editor.click();
+      await page.evaluate(async (val: string) => {
+        const type = "text/html";
+        const blob = new Blob([val], { type });
+        await navigator.clipboard.write([new ClipboardItem({ [type]: blob })]);
+      }, html);
+      await page.keyboard.press("Control+A");
+      await page.keyboard.press("Delete");
+      await page.keyboard.press("Control+V");
+      await page.waitForTimeout(400);
+      len = ((await editor.innerText().catch(() => "")) || "").trim().length;
+    }
+
+    // Kích hoạt validate (mất "Can not be empty"): gõ 1 space ở cuối rồi xoá → fire input thật.
+    await editor.click();
+    await page.keyboard.press("Control+End");
+    await page.keyboard.type(" ");
     await page.keyboard.press("Backspace");
+
+    if (len > 0) console.log(`✅ Mô tả đã điền (${method}, ${len} ký tự).`);
+    else console.error("❌ Mô tả VẪN rỗng sau cả setData + clipboard — cần soi tay.");
   } catch (error) {
-    console.error("❌ Lỗi khi dán nội dung Clipboard:", error);
+    console.error("❌ Lỗi điền mô tả:", error);
   }
 };
 
@@ -111,10 +224,10 @@ export const uploadDescriptionImages = async (page: any, imageUrls: string[]): P
   if (!imageUrls || imageUrls.length === 0) return;
 
   console.log(`--- Bắt đầu chèn ${imageUrls.length} ảnh vào mô tả sản phẩm ---`);
-  const editor = page.locator(".ck-editor__editable_inline");
+  const editor = page.locator(".ck-editor__editable_inline").first();
 
   const imgHtml =
-    "<br><br>" +
+    "<p></p>" +
     imageUrls
       .map(
         (url, i) =>
@@ -123,19 +236,31 @@ export const uploadDescriptionImages = async (page: any, imageUrls: string[]): P
       .join("");
 
   await editor.click();
-  await page.keyboard.press("Control+End");
-  await page.waitForTimeout(300);
 
-  await page.evaluate(async (html: string) => {
-    const type = "text/html";
-    const blob = new Blob([html], { type });
-    const data = [new ClipboardItem({ [type]: blob })];
-    await navigator.clipboard.write(data);
+  // APPEND qua CKEditor instance API (giữ mô tả text đã có + nối ảnh). Bền hơn clipboard paste.
+  const method = await page.evaluate((h: string) => {
+    const el = document.querySelector(".ck-editor__editable_inline") as any;
+    const inst = el && el.ckeditorInstance;
+    if (inst && typeof inst.setData === "function" && typeof inst.getData === "function") {
+      inst.setData(inst.getData() + h);
+      return "api";
+    }
+    if (el) {
+      el.innerHTML += h;
+      el.dispatchEvent(new InputEvent("input", { bubbles: true }));
+      return "innerHTML";
+    }
+    return "none";
   }, imgHtml);
 
-  await page.keyboard.press("Control+V");
-  await page.waitForTimeout(3000);
+  await page.waitForTimeout(1500);
+
+  // trigger validate
+  await editor.click();
+  await page.keyboard.press("Control+End");
+  await page.keyboard.type(" ");
+  await page.keyboard.press("Backspace");
 
   const imgCount = await editor.locator("img").count();
-  console.log(`✅ Đã chèn ${imgCount} ảnh vào mô tả`);
+  console.log(`✅ Mô tả giờ có ${imgCount} ảnh (${method}).`);
 };

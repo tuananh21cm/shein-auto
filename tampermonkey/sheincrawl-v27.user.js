@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SHEIN Scraper v27 - Direct API + SSE + Background
 // @namespace    http://tampermonkey.net/
-// @version      27.0.0
+// @version      27.1.0
 // @description  Cào SHEIN → POST thẳng lên shein-auto worker. Sync profile từ server. Realtime SSE. Detect out-of-stock per (color × size). Background tab vẫn cào nhờ silent audio.
 // @author       shein-auto
 // @match        *://*.shein.com/*
@@ -70,10 +70,20 @@
      *   "Curve"    → "Curve"  (giữ nguyên nếu không có dạng "(...)")
      *   "One Size" → "One Size"
      */
-    const normalizeShein = (raw) => {
-        if (!raw) return raw;
-        const m = raw.trim().match(/\(([^)]+)\)\s*$/);
-        return m ? m[1].trim() : raw.trim();
+    // GIỮ NGUYÊN label US đầy đủ ("2 (XS)", "8/10 (L)") — KHÔNG cắt còn chữ.
+    // (size-map.json chuẩn hoá case/dedup ở worker, vẫn giữ số US.)
+    const normalizeShein = (raw) => (raw ? raw.trim().replace(/\s+/g, ' ') : raw);
+
+    // Nút companion (Curve/Maternity/Plus Size...) là LINK sang sản phẩm KHÁC, không phải size.
+    // Nhận diện: có mũi tên điều hướng (›/>/→) HOẶC label thuộc nhóm companion → LOẠI khỏi size.
+    const COMPANION_LABEL = /^\s*(curve|maternity|plus\s*size|plus|petite|tall|big\s*(?:&|and)?\s*tall|kids|men)\s*$/i;
+    const isCompanionButton = (btn) => {
+        if (!btn) return false;
+        const txt = btn.textContent || '';
+        if (/[›>→]/.test(txt)) return true; // mũi tên → điều hướng sản phẩm khác
+        if (COMPANION_LABEL.test(txt.replace(/[›>→]/g, '').trim())) return true;
+        if (btn.querySelector('[class*="arrow"],[class*="chevron"],[class*="jump"]')) return true;
+        return false;
     };
 
     const detectMarket = () => {
@@ -108,6 +118,25 @@
             await wait(150);
         }
         return null;
+    }
+
+    /* ============= CAPTCHA (đợi giải thủ công) ============= */
+    // SHEIN bật captcha (geetest/cloudflare) giữa chừng khi click variant → nếu cứ click tiếp
+    // sẽ cào sai. Phát hiện captcha → ĐỢI user giải xong (script tự pause), rồi mới cào tiếp.
+    const captchaPresent = () =>
+        /risk\/challenge|\/captcha|geetest|verify-?human/i.test(location.href) ||
+        !!document.querySelector(
+            'iframe[src*="captcha" i], iframe[src*="cloudflare" i], iframe[src*="turnstile" i], .geetest_holder, .geetest_panel, .geetest_box, [id*="captcha" i], [class*="turnstile" i]'
+        ) ||
+        /verify you are human|i\s*am\s*human|complete the following actions/i.test(
+            document.body ? document.body.innerText : ''
+        );
+    async function waitWhileCaptcha(statusEl, maxMs = 300000) {
+        if (!captchaPresent()) return;
+        const start = Date.now();
+        if (statusEl) statusEl.innerText = '⚠️ CAPTCHA — hãy giải thủ công, script đang đợi…';
+        while (captchaPresent() && Date.now() - start < maxMs) await wait(2000);
+        await wait(1500); // ổn định lại sau khi giải xong
     }
 
     /* ============= Background tab keep-alive ============= */
@@ -205,24 +234,39 @@
 
     /* ============= OOS / SIZE MATRIX DETECTION ============= */
     /**
+     * SHEIN đánh dấu size HẾT HÀNG ở thẻ BỌC NGOÀI (.product-intro__size-radio),
+     * KHÔNG ở <p> bên trong mà SELECTORS.sizeButtons nhắm tới. Dấu hiệu:
+     *   - class "...size-radio_soldout"  (1 từ "soldout" → regex cũ "sold-out" bỏ sót)
+     *   - aria-disabled="true" / disabled  trên thẻ bọc (không phải <p>)
+     * → leo tối đa 3 cấp cha, gom class + aria-disabled để bắt ĐÚNG size sold out.
+     * Sai cái này = list ra SKU không có hàng → có đơn không drop được.
+     */
+    const isSizeSoldOut = (btn) => {
+        let node = btn, classBlob = '', disabled = false;
+        for (let up = 0; up < 3 && node; up++) {
+            classBlob += ' ' + String(node.className || '');
+            if (node.getAttribute && node.getAttribute('aria-disabled') === 'true') disabled = true;
+            if (node.hasAttribute && node.hasAttribute('disabled')) disabled = true;
+            node = node.parentElement;
+        }
+        return disabled ||
+            /disabled|sold[\s_-]?out|out[\s_-]?of[\s_-]?stock|not[\s_-]?available|unavailable|gray|grey/i.test(classBlob);
+    };
+
+    /**
      * Sau khi click 1 màu xong, đọc các size button hiện tại + xác định sizes
-     * available (button không bị disabled / sold-out). Bỏ qua nếu chưa load xong.
+     * available (không bị disabled / sold-out). Bỏ qua nếu chưa load xong.
      */
     function getAvailableSizesForCurrentColor() {
         const buttons = Array.from(document.querySelectorAll(SELECTORS.sizeButtons));
         const available = [];
         const sold = [];
         for (const btn of buttons) {
+            if (isCompanionButton(btn)) continue;  // bỏ Curve/Maternity/Plus Size...
             const rawText = btn.textContent?.trim();
             if (!rawText) continue;
             const text = normalizeShein(rawText);  // "2 (XS)" → "XS"
-            const cls = btn.className || '';
-            const parentCls = btn.parentElement?.className || '';
-            const isDisabled =
-                /disabled|sold-out|sold_out|out-of-stock|not-available|gray/i.test(cls + ' ' + parentCls) ||
-                btn.hasAttribute('disabled') ||
-                btn.getAttribute('aria-disabled') === 'true';
-            if (isDisabled) sold.push(text);
+            if (isSizeSoldOut(btn)) sold.push(text);
             else available.push(text);
         }
         return { available, sold };
@@ -293,11 +337,12 @@
                     .map((img) => getOriginalImageUrl(img.src || img.getAttribute('data-src') || img.dataset.src)),
             )).filter(Boolean).slice(0, 8);
 
-            // 4. SIZE union — normalize "2 (XS)" → "XS"
-            const initialSizes = Array.from(document.querySelectorAll(SELECTORS.sizeButtons))
-                .map((el) => normalizeShein(el.textContent.trim()))
-                .filter(Boolean);
-            const allSizesSet = new Set(initialSizes);
+            // 4. SIZE union — KHÔNG seed bằng size đọc TRƯỚC khi click màu: SHEIN lúc đó
+            //    trả dạng CHỮ ("S"), sau khi click màu mới ra dạng SỐ ("4 (S)") → gộp cả 2
+            //    gây TRÙNG size. Chỉ gom size đọc SAU khi chọn màu (trong loop). initialSizes
+            //    chỉ làm fallback cho sp 1 màu (không có swatch).
+            const initialSizes = getAvailableSizesForCurrentColor().available;
+            const allSizesSet = new Set();
 
             const data = {
                 product_name: document.querySelector(SELECTORS.productName)?.innerText.trim(),
@@ -316,19 +361,38 @@
             };
 
             // 5. LOOP TỪNG MÀU
+            // 5a. Mở "Show More Colors" để render HẾT màu TRƯỚC khi click (lặp tới khi hết nút).
+            for (let r = 0; r < 6; r++) {
+                const more = Array.from(document.querySelectorAll('div,span,a,button,p')).find((el) => {
+                    const t = (el.innerText || '').trim();
+                    return /^show\s*more\s*colou?rs?/i.test(t) && t.length < 30 && el.offsetParent !== null;
+                });
+                if (!more) break;
+                await forceClick(more);
+                await wait(700);
+            }
+
             const swatches = document.querySelectorAll(SELECTORS.colorSwatches);
+            const expectedColors = swatches.length; // số màu sau Show-More → strict count cuối
             const colorCounter = {};
             const oosColors = [];
+            const stuckColors = []; // click đổi màu nhưng ẢNH không đổi (lỗi SPA)
+            let prevImgSig = '';
+            const sigOf = (arr) => (arr || []).slice(0, 3).join('|');
 
             if (swatches.length > 0) {
                 for (let i = 0; i < swatches.length; i++) {
+                    // Captcha bật giữa chừng → đợi giải xong rồi mới click tiếp (tránh cào sai).
+                    await waitWhileCaptcha(status);
+                    // Re-query swatch theo index (DOM có thể đổi sau show-more/captcha → NodeList cũ stale).
+                    const sw = document.querySelectorAll(SELECTORS.colorSwatches)[i] || swatches[i];
                     const prevName = document.querySelector(SELECTORS.colorNameLabel)?.innerText.trim() ?? '';
-                    await forceClick(swatches[i]);
+                    await forceClick(sw);
 
                     // Đợi tên màu đổi (smart wait, max 2.5s)
                     let rawColorName = await waitForChange(SELECTORS.colorNameLabel, prevName, 2500);
                     if (!rawColorName) {
-                        rawColorName = swatches[i].querySelector('img')?.getAttribute('alt')?.trim() || 'Color' + (i + 1);
+                        rawColorName = sw.querySelector('img')?.getAttribute('alt')?.trim() || 'Color' + (i + 1);
                     }
 
                     // Dedup tên (nếu SHEIN trùng tên màu)
@@ -339,7 +403,7 @@
                     // Available sizes cho màu này
                     const { available: availSizes, sold: soldSizes } = getAvailableSizesForCurrentColor();
                     availSizes.forEach((s) => allSizesSet.add(s));
-                    soldSizes.forEach((s) => allSizesSet.add(s));
+                    // KHÔNG add soldSizes vào union → size hết hàng không lọt vào listing.
 
                     if (availSizes.length === 0) {
                         console.warn(`[SHEIN-SCRAPER] Màu "${finalColorName}" hết tất cả size, bỏ qua.`);
@@ -357,11 +421,29 @@
                         if (!isNaN(n)) priceText = (n / 4).toFixed(2);
                     }
 
-                    // Ảnh variant
-                    const variantImages = Array.from(new Set(
+                    // Ảnh variant — đổi màu NAME đã đổi nhưng ẢNH gallery có thể load
+                    // chậm/lazy → poll tới khi có ảnh, tránh push MẢNG RỖNG (màu không
+                    // có ảnh trên 4Seller như màu "Pink").
+                    const readVariantImages = () => Array.from(new Set(
                         Array.from(document.querySelectorAll(SELECTORS.allProductImages))
                             .map((img) => getOriginalImageUrl(img.src || img.getAttribute('data-src') || img.dataset.src)),
                     )).filter(Boolean);
+                    await wait(300); // cho gallery bắt đầu swap
+                    let variantImages = readVariantImages();
+                    for (let attempt = 0; attempt < 6 && variantImages.length === 0; attempt++) {
+                        await wait(400);
+                        variantImages = readVariantImages();
+                    }
+                    // STUCK: ảnh KHÔNG đổi so với màu trước (SHEIN SPA chỉ đổi URL, gallery chưa swap)
+                    // → poll thêm; vẫn y hệt thì đánh dấu stuck (data màu này có thể sai ảnh).
+                    if (i > 0 && prevImgSig && sigOf(variantImages) === prevImgSig) {
+                        for (let a = 0; a < 6 && sigOf(variantImages) === prevImgSig; a++) {
+                            await wait(500);
+                            variantImages = readVariantImages();
+                        }
+                        if (sigOf(variantImages) === prevImgSig) stuckColors.push(finalColorName);
+                    }
+                    prevImgSig = sigOf(variantImages);
 
                     data.listing_variations.colors.push(finalColorName);
                     data.variant_ids.push({ [finalColorName]: currentId });
@@ -376,6 +458,7 @@
                 const colorKey = Object.keys(attributes).find((k) => ['Color', 'Farbe', 'Couleur'].includes(k));
                 const fallbackColor = attributes[colorKey] || 'Default';
                 const { available: availSizes } = getAvailableSizesForCurrentColor();
+                availSizes.forEach((s) => allSizesSet.add(s));
                 data.listing_variations.colors.push(fallbackColor);
                 data.variant_ids.push({ [fallbackColor]: getProductIdFromUrl() ?? 'Unknown' });
                 data.variant_images.push({ [fallbackColor]: [...productImages] });
@@ -383,8 +466,11 @@
                 data.available_matrix[fallbackColor] = availSizes.length > 0 ? availSizes : initialSizes;
             }
 
-            // Update sizes union (sau khi đi qua tất cả màu, có thể có size lạ)
-            data.listing_variations.sizes = Array.from(allSizesSet);
+            // Union size = size đọc SAU khi chọn màu (dạng số chuẩn). Fallback initialSizes
+            // nếu rỗng (vd sp 1 màu mà đọc hụt). Gán cả sizes_available cho nhất quán.
+            const finalSizes = allSizesSet.size ? Array.from(allSizesSet) : initialSizes;
+            data.listing_variations.sizes = finalSizes;
+            data.sizes_available = finalSizes;
 
             // OOS WARNING
             if (oosColors.length > 0) {
@@ -398,6 +484,29 @@
                 alert('Tất cả màu đều hết hàng. Huỷ.');
                 overlay.style.display = 'none';
                 return;
+            }
+
+            // STRICT COUNT: số màu XỬ LÝ (cào ok + OOS) so với số swatch lúc đầu (sau Show-More).
+            // Thiếu ≥2 → có thể captcha/timing bỏ swatch giữa chừng → cảnh báo trước khi gửi.
+            const processed = data.listing_variations.colors.length + oosColors.length;
+            if (expectedColors >= 2 && processed < expectedColors - 1) {
+                const ok = confirm(
+                    `⚠️ Cào THIẾU variant: xử lý ${processed}/${expectedColors} màu ` +
+                    `(cào ${data.listing_variations.colors.length}${oosColors.length ? ` + ${oosColors.length} OOS` : ''}).\n` +
+                    `Có thể captcha/timing bỏ swatch. Nên cào lại. Vẫn gửi?`
+                );
+                if (!ok) { overlay.style.display = 'none'; return; }
+            }
+            // STUCK WARNING: vài màu click nhưng ảnh không đổi → ảnh có thể sai.
+            if (stuckColors.length > 0) {
+                console.warn(`[SHEIN-SCRAPER] ${stuckColors.length} màu kẹt ảnh: ${stuckColors.join(', ')}`);
+                if (stuckColors.length >= Math.max(3, Math.ceil(data.listing_variations.colors.length * 0.3))) {
+                    const ok = confirm(
+                        `⚠️ ${stuckColors.length} màu ẢNH KHÔNG ĐỔI (kẹt): ${stuckColors.slice(0, 5).join(', ')}.\n` +
+                        `Ảnh các màu này có thể bị trùng/sai. Nên F5 cào lại. Vẫn gửi?`
+                    );
+                    if (!ok) { overlay.style.display = 'none'; return; }
+                }
             }
 
             // 6. SIZE CHART
@@ -468,6 +577,35 @@
                 const mgImgEl = document.querySelector('.bsc-size-measure-guide__image img, .product_guide_img img');
                 const mgImage = mgImgEl ? getOriginalImageUrl(mgImgEl.getAttribute('src') || mgImgEl.src) : null;
                 if (mgItems.length) data.measure_guide = { items: mgItems, image: mgImage };
+
+                // Fit reviews ("How Buyer's Reviewed the Fit"): % fit + bảng buyer (height/weight → size).
+                // → AI phân tích, gợi ý size ở đầu mô tả.
+                try {
+                    // Tỉ lệ fit: regex trên text vùng chứa "True to Size"
+                    const fitBox = Array.from(document.querySelectorAll('div,section'))
+                        .find((el) => /true to size/i.test(el.textContent || '') && (el.textContent || '').length < 500);
+                    const ft = fitBox?.innerText || '';
+                    const pct = (re) => { const m = ft.match(re); return m ? Number(m[1]) : null; };
+                    const fit = {
+                        trueToSizePct: pct(/true to size[:\s]*([\d.]+)\s*%/i),
+                        smallPct: pct(/small[:\s]*([\d.]+)\s*%/i),
+                        largePct: pct(/large[:\s]*([\d.]+)\s*%/i),
+                        buyers: [],
+                    };
+                    // Bảng buyer: header có "Buyer"
+                    const buyerTable = Array.from(document.querySelectorAll('table'))
+                        .find((tb) => /buyer/i.test(tb.querySelector('thead')?.innerText || ''));
+                    if (buyerTable) {
+                        const bh = Array.from(buyerTable.querySelectorAll('thead th, thead td')).map((td) => td.innerText.trim());
+                        fit.buyers = Array.from(buyerTable.querySelectorAll('tbody tr')).map((row) => {
+                            const cells = Array.from(row.querySelectorAll('td')).map((td) => td.innerText.trim());
+                            const obj = {};
+                            bh.forEach((h, i) => { if (h) obj[h] = cells[i]; });
+                            return obj;
+                        }).filter((b) => Object.values(b).some((v) => v && v !== '-' && v !== '-/-'));
+                    }
+                    if (fit.trueToSizePct != null || fit.buyers.length) data.fit_reviews = fit;
+                } catch (e) { console.warn('[SHEIN-SCRAPER] fit_reviews lỗi:', e.message); }
 
                 const closeBtn = document.querySelector('.modal-header__close, .she-close-external, .f-close');
                 if (closeBtn) await forceClick(closeBtn);

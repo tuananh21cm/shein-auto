@@ -9,6 +9,7 @@
  */
 import { getDb } from "./db";
 import { eventBus } from "./eventBus";
+import { researchConfig } from "../config/appConfig";
 
 export type CandidateStatus = "new" | "approved" | "queued" | "dismissed";
 
@@ -128,6 +129,38 @@ const candidateRowToObj = (r: any): Candidate => ({
   validation: (() => { try { return r.validation_json ? JSON.parse(r.validation_json) : null; } catch { return null; } })(),
 });
 
+/** Row research_product → Candidate-shaped (id="prod:<day>:<goodsId>", status=new). */
+const productRowToCandidate = (r: any): Candidate => ({
+  id: `prod:${r.day}:${r.goods_id}`,
+  day: r.day,
+  goodsId: r.goods_id,
+  nicheKey: r.niche_key,
+  nicheGroup: r.niche_group,
+  name: r.name,
+  image: r.image,
+  url: r.url,
+  storeCode: r.store_code ?? null,
+  price: r.price ?? null,
+  finalPrice: r.final_price ?? null,
+  commentNum: r.comment_num ?? 0,
+  rating: r.rating ?? null,
+  soldNum: r.sold_num ?? null,
+  winScore: r.win_score ?? 0,
+  winTier: r.win_tier ?? "weak",
+  opportunityScore: r.opportunity_score ?? 0,
+  reason: "Từ research_product (ngách chưa lọt top candidate)",
+  aiReason: null,
+  status: "new",
+  targetShop: null,
+  soldText: r.sold_text ?? null,
+  rankText: r.rank_text ?? null,
+  enrichedAt: r.enriched_at ?? null,
+  createdAt: r.captured_at ?? 0,
+  updatedAt: r.captured_at ?? 0,
+  validationScore: null, verdict: null, isLocal: null, shipMode: null,
+  trueToSize: null, ugcCount: null, ipRisk: null, validatedAt: null, badges: [], validation: null,
+});
+
 export const researchStore = {
   init(): void {
     getDb();
@@ -245,6 +278,7 @@ export const researchStore = {
   listCandidates(opts?: {
     day?: string;
     status?: CandidateStatus;
+    niche?: string;
     limit?: number;
     offset?: number;
   }): { items: Candidate[]; total: number } {
@@ -253,6 +287,7 @@ export const researchStore = {
     const params: any[] = [];
     if (opts?.day) { where.push("day = ?"); params.push(opts.day); }
     if (opts?.status) { where.push("status = ?"); params.push(opts.status); }
+    if (opts?.niche) { where.push("niche_key = ?"); params.push(opts.niche); }
     const whereSql = where.length ? "WHERE " + where.join(" AND ") : "";
     const total = (db.prepare(`SELECT COUNT(*) c FROM research_candidate ${whereSql}`).get(...params) as { c: number }).c;
     const limit = opts?.limit ?? 100;
@@ -269,6 +304,47 @@ export const researchStore = {
     return row ? candidateRowToObj(row) : null;
   },
 
+  /** research_product (mọi sp ngách, kể cả chưa lọt top candidate) → Candidate-shaped.
+   *  id = "prod:<day>:<goodsId>" để phân biệt với candidate thật. */
+  listProductsAsCandidates(day: string, niche: string, limit = 60): Candidate[] {
+    const rows = getDb().prepare(`
+      SELECT * FROM research_product WHERE day = ? AND niche_key = ?
+      ORDER BY opportunity_score DESC LIMIT ?
+    `).all(day, niche, limit) as any[];
+    return rows.map(productRowToCandidate);
+  },
+
+  findProductCandidate(id: string): Candidate | null {
+    const m = id.match(/^prod:([^:]+):(.+)$/);
+    if (!m) return null;
+    const r = getDb().prepare("SELECT * FROM research_product WHERE day = ? AND goods_id = ? LIMIT 1").get(m[1], m[2]) as any;
+    return r ? productRowToCandidate(r) : null;
+  },
+
+  /** Đăng 1 sp (từ research_product) → tạo/đánh dấu candidate status=queued (để track + listedCount). */
+  markProductQueued(cand: Candidate, shop: string): void {
+    const db = getDb();
+    const now = Date.now();
+    db.prepare(`
+      INSERT INTO research_candidate (
+        id, day, goods_id, niche_key, niche_group, name, image, url, store_code,
+        price, final_price, comment_num, rating, sold_num, win_score, win_tier,
+        opportunity_score, reason, status, target_shop, created_at, updated_at
+      ) VALUES (
+        @id,@day,@goodsId,@nicheKey,@nicheGroup,@name,@image,@url,@storeCode,
+        @price,@finalPrice,@commentNum,@rating,@soldNum,@winScore,@winTier,
+        @opportunityScore,@reason,'queued',@shop,@now,@now
+      )
+      ON CONFLICT(id) DO UPDATE SET status='queued', target_shop=@shop, updated_at=@now
+    `).run({
+      id: `${cand.day}:${cand.goodsId}`, day: cand.day, goodsId: cand.goodsId,
+      nicheKey: cand.nicheKey, nicheGroup: cand.nicheGroup, name: cand.name, image: cand.image,
+      url: cand.url, storeCode: cand.storeCode, price: cand.price, finalPrice: cand.finalPrice,
+      commentNum: cand.commentNum, rating: cand.rating, soldNum: cand.soldNum, winScore: cand.winScore,
+      winTier: cand.winTier, opportunityScore: cand.opportunityScore, reason: cand.reason, shop, now,
+    });
+  },
+
   /** Candidate chưa làm giàu sold (status=new, enriched_at NULL), điểm cao trước. */
   listUnenriched(day: string, limit = 20): Candidate[] {
     const rows = getDb().prepare(`
@@ -280,13 +356,58 @@ export const researchStore = {
   },
 
   /** Candidate chưa kiểm định (status=new, validated_at NULL), điểm cao trước. */
-  listUnvalidated(day: string, limit = 20): Candidate[] {
+  listUnvalidated(day: string, limit = 20, niche?: string): Candidate[] {
+    const w = ["day = ?", "status = 'new'", "validated_at IS NULL"];
+    const p: any[] = [day];
+    if (niche) { w.push("niche_key = ?"); p.push(niche); }
     const rows = getDb().prepare(`
-      SELECT * FROM research_candidate
-      WHERE day = ? AND status = 'new' AND validated_at IS NULL
+      SELECT * FROM research_candidate WHERE ${w.join(" AND ")}
       ORDER BY opportunity_score DESC LIMIT ?
-    `).all(day, limit) as any[];
+    `).all(...p, limit) as any[];
     return rows.map(candidateRowToObj);
+  },
+
+  /** PRE-FILTER + promote top sp 1 ngách (từ research_product) → candidate status=new,
+   *  để Validate. Bỏ rác: rating<minRating, tên dính IP brand, giá gốc > maxCost. */
+  promoteNicheProducts(day: string, niche: string, limit = 15): number {
+    const cfg = researchConfig();
+    const minRating = cfg.validation?.minRating ?? 4.0;
+    const maxCost = cfg.dropScore?.cheap?.maxCost ?? 25;
+    const ipBrands = (cfg.validation?.ipBrands ?? []).map((b) => b.toLowerCase());
+    const db = getDb();
+    const rows = db.prepare(`
+      SELECT * FROM research_product WHERE day = ? AND niche_key = ? ORDER BY opportunity_score DESC
+    `).all(day, niche) as any[];
+    const survivors = rows.filter((r) => {
+      if (r.rating != null && r.rating < minRating) return false;
+      if (r.price != null && r.price > maxCost) return false;
+      const name = (r.name || "").toLowerCase();
+      if (ipBrands.some((b) => b && name.includes(b))) return false;
+      return true;
+    }).slice(0, limit);
+    const now = Date.now();
+    const ins = db.prepare(`
+      INSERT INTO research_candidate (
+        id, day, goods_id, niche_key, niche_group, name, image, url, store_code,
+        price, final_price, comment_num, rating, sold_num, win_score, win_tier,
+        opportunity_score, reason, status, created_at, updated_at
+      ) VALUES (
+        @id,@day,@goodsId,@nicheKey,@nicheGroup,@name,@image,@url,@storeCode,
+        @price,@finalPrice,@commentNum,@rating,@soldNum,@winScore,@winTier,
+        @opportunityScore,@reason,'new',@now,@now
+      ) ON CONFLICT(id) DO NOTHING
+    `);
+    const tx = db.transaction(() => {
+      for (const r of survivors) ins.run({
+        id: `${day}:${r.goods_id}`, day, goodsId: r.goods_id, nicheKey: r.niche_key,
+        nicheGroup: r.niche_group, name: r.name, image: r.image, url: r.url, storeCode: r.store_code,
+        price: r.price, finalPrice: r.final_price, commentNum: r.comment_num, rating: r.rating,
+        soldNum: r.sold_num, winScore: r.win_score, winTier: r.win_tier,
+        opportunityScore: r.opportunity_score, reason: "Soi ngách (pre-filtered)", now,
+      });
+    });
+    tx();
+    return survivors.length;
   },
 
   /** Ghi kết quả Deep Validation Gate vào candidate. */

@@ -20,6 +20,20 @@ export const config = {
   telegramChatId: process.env.TELEGRAM_CHAT_ID ?? "",
   /** RapidAPI key dùng chung cho 2 API SHEIN (shein-data-api + shein-online-data). */
   rapidApiKey: process.env.RAPIDAPI_KEY ?? "",
+  /** imgbb API key — host banner marketing để chèn vào mô tả (URL public). Lấy free tại imgbb.com/api. */
+  imgbbApiKey: process.env.IMGBB_API_KEY ?? "",
+  /** Nhiều key imgbb (xoay vòng né rate limit). Gộp IMGBB_API_KEYS (phẩy) + IMGBB_API_KEY, dedup. */
+  imgbbApiKeys: Array.from(
+    new Set(
+      [process.env.IMGBB_API_KEY ?? "", ...(process.env.IMGBB_API_KEYS ?? "").split(",")]
+        .map((k) => k.trim())
+        .filter(Boolean)
+    )
+  ),
+  /** POD: gốc inbox. Cấu trúc POD_INBOX_DIR/<shop>/<title>.png → 1 ảnh = 1 listing (tên file = title). */
+  podInboxDir: process.env.POD_INBOX_DIR ? path.normalize(process.env.POD_INBOX_DIR.trim()) : "",
+  /** POD: folder ảnh material dùng chung (vải/đường may/chất in) — mỗi listing bốc random vài ảnh. */
+  podMaterialDir: process.env.POD_MATERIAL_DIR ? path.normalize(process.env.POD_MATERIAL_DIR.trim()) : "",
 };
 
 if (!config.geminiApiKey) {

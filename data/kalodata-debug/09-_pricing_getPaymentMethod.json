@@ -1,0 +1,3 @@
+// GET https://www.kalodata.com/pricing/getPaymentMethod
+// REQUEST: 
+{"success":true,"data":[{"title":"Credit/Debit Card","key":"credit","iconCom":"https://d149xzut2sq6e3.cloudfront.net/upload/19037993.png","canSubscribe":true,"disabled":false,"type":"stripe"},{"title":"Other Payment","key":"other","iconCom":"https://d149xzut2sq6e3.cloudfront.net/upload/3a2358fd.png","canSubscribe":false,"disabled":true,"type":"shopline"}],"message":null,"cached":null,"code":null}

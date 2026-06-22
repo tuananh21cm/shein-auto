@@ -102,7 +102,7 @@ export const captureScreenshot = async (page: any, label: string): Promise<strin
  */
 export const detectPublishOutcome = async (
   page: any,
-  opts?: { dryRun?: boolean; timeoutMs?: number }
+  opts?: { dryRun?: boolean; saveDraft?: boolean; timeoutMs?: number }
 ): Promise<PublishOutcome> => {
   const timeoutMs = opts?.timeoutMs ?? 90_000;
 
@@ -112,6 +112,52 @@ export const detectPublishOutcome = async (
       reason: "dryRun=true, không click Save & Publish",
       finalUrl: page.url(),
     };
+  }
+
+  // saveDraft: click nút "Save" (lưu NHÁP) thay vì "Save & Publish" — để test giai
+  // đoạn đầu, không đăng live. Nút Save khác Save&Publish ở chỗ KHÔNG có btn-type=primary
+  // → match theo accessible name "Save" (exact) để khỏi trúng "Save & Publish".
+  if (opts?.saveDraft) {
+    const saveBtn = page.getByRole("button", { name: "Save", exact: true }).first();
+    try {
+      await saveBtn.waitFor({ state: "visible", timeout: 8000 });
+    } catch {
+      const sc = await captureScreenshot(page, "no-save-button");
+      return { ok: false, reason: "Không thấy nút Save (draft)", finalUrl: page.url(), screenshotPath: sc ?? undefined };
+    }
+    const draftDisabled = await saveBtn
+      .evaluate((el: HTMLElement) => el.classList.contains("is-disabled") || (el as HTMLButtonElement).disabled)
+      .catch(() => false);
+    if (draftDisabled) {
+      const sc = await captureScreenshot(page, "save-disabled");
+      return { ok: false, reason: "Nút Save (draft) đang disabled (form chưa hợp lệ)", finalUrl: page.url(), screenshotPath: sc ?? undefined };
+    }
+    await saveBtn.scrollIntoViewIfNeeded();
+    await saveBtn.click();
+    console.log("🖱️ Đã click Save (LƯU NHÁP), đợi outcome...");
+
+    const draftTimeout = opts?.timeoutMs ?? 30_000;
+    const draftStart = Date.now();
+    while (Date.now() - draftStart < draftTimeout) {
+      if (page.isClosed()) return { ok: false, reason: "Page bị đóng sau khi Save", finalUrl: "" };
+      const errMsg = await checkPageErrors(page, true);
+      if (errMsg) {
+        const sc = await captureScreenshot(page, "save-error");
+        return { ok: false, reason: errMsg, finalUrl: page.url(), screenshotPath: sc ?? undefined };
+      }
+      const successToast = page.locator(".el-message--success, .el-notification--success").first();
+      if (await successToast.isVisible({ timeout: 200 }).catch(() => false)) {
+        const txt = ((await successToast.textContent().catch(() => "")) ?? "").trim();
+        console.log(`✅ Đã lưu nháp: ${txt}`);
+        return { ok: true, reason: `Lưu nháp (draft) OK: ${txt}`, finalUrl: page.url() };
+      }
+      if (!page.url().includes("/create.html")) {
+        return { ok: true, reason: `Lưu nháp OK, chuyển ${page.url()}`, finalUrl: page.url() };
+      }
+      await page.waitForTimeout(500);
+    }
+    // Hết timeout mà không lỗi → coi như đã lưu nháp (draft thường chỉ toast nhanh).
+    return { ok: true, reason: "Đã click Save (draft), không thấy lỗi", finalUrl: page.url() };
   }
 
   // 1. Click button. Nếu không thấy/không enabled → fail luôn.

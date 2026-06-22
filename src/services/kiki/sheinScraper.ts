@@ -12,6 +12,8 @@ export interface ScrapeOptions {
   divide4?: boolean;
   /** Giới hạn số màu cào (an toàn). 0 = không giới hạn. */
   maxColors?: number;
+  /** Delay (ms) giữa mỗi lần click variant — click chậm như người để GIẢM kích captcha. Mặc định 1800. */
+  variantDelayMs?: number;
 }
 
 export interface ScrapeResult {
@@ -40,7 +42,23 @@ export interface ScrapeResult {
     items: { index?: string; name: string; desc: string }[];
     image?: string | null;
   };
-  _meta?: { oosColors: string[]; colorCount: number };
+  /** Fit reviews ("How Buyer's Reviewed the Fit"): % fit + bảng buyer height/weight → size. */
+  fit_reviews?: {
+    trueToSizePct: number | null;
+    smallPct: number | null;
+    largePct: number | null;
+    buyers: Record<string, string>[];
+  };
+  _meta?: {
+    oosColors: string[];
+    colorCount: number;
+    variantStuck?: boolean;
+    stuckColors?: string[];
+    /** Số swatch màu PHÁT HIỆN sau khi bấm "Show More" (= số variant trang có lúc đầu). */
+    expectedColors?: number;
+    /** Số swatch ĐÃ xử lý xong (scrape ok HOẶC xác định OOS). < expected = loop bị bỏ giữa chừng (captcha/timing). */
+    processedColors?: number;
+  };
   /** Số liệu đánh giá lấy từ BFF (gắn ở scrapeViaKiki): sold/review/rating */
   stats?: {
     soldText: string | null;
@@ -83,10 +101,17 @@ async function inPageScrape(opts: ScrapeOptions): Promise<ScrapeResult> {
     const m = window.location.href.match(/-p-(\d+)\.html/);
     return m ? m[1] : null;
   };
-  const normalizeShein = (raw: string): string => {
-    if (!raw) return raw;
-    const m = raw.trim().match(/\(([^)]+)\)\s*$/);
-    return m ? m[1].trim() : raw.trim();
+  // GIỮ NGUYÊN label US đầy đủ ("2 (XS)", "8/10 (L)") — KHÔNG cắt còn chữ.
+  const normalizeShein = (raw: string): string => (raw ? raw.trim().replace(/\s+/g, " ") : raw);
+  // Nút companion (Curve/Maternity/Plus Size...) = LINK sang sản phẩm khác, không phải size.
+  const COMPANION_LABEL = /^\s*(curve|maternity|plus\s*size|plus|petite|tall|big\s*(?:&|and)?\s*tall|kids|men)\s*$/i;
+  const isCompanionButton = (btn: any): boolean => {
+    if (!btn) return false;
+    const txt = (btn as HTMLElement).textContent || "";
+    if (/[›>→]/.test(txt)) return true;
+    if (COMPANION_LABEL.test(txt.replace(/[›>→]/g, "").trim())) return true;
+    if (btn.querySelector && btn.querySelector('[class*="arrow"],[class*="chevron"],[class*="jump"]')) return true;
+    return false;
   };
   const detectMarket = (): string => {
     const h = window.location.hostname;
@@ -115,21 +140,35 @@ async function inPageScrape(opts: ScrapeOptions): Promise<ScrapeResult> {
     }
     return null;
   };
+  // SHEIN đánh dấu size HẾT HÀNG ở thẻ BỌC NGOÀI (.product-intro__size-radio),
+  // KHÔNG ở <p> bên trong mà selector nhắm tới: class "...size-radio_soldout"
+  // (regex cũ "sold-out" bỏ sót) + aria-disabled="true" trên thẻ bọc. Leo 3 cấp
+  // cha gom class + aria-disabled để bắt đúng → tránh list SKU không có hàng.
+  const isSizeSoldOut = (btn: Element): boolean => {
+    let node: any = btn;
+    let classBlob = "";
+    let disabled = false;
+    for (let up = 0; up < 3 && node; up++) {
+      classBlob += " " + String(node.className || "");
+      if (node.getAttribute && node.getAttribute("aria-disabled") === "true") disabled = true;
+      if (node.hasAttribute && node.hasAttribute("disabled")) disabled = true;
+      node = node.parentElement;
+    }
+    return (
+      disabled ||
+      /disabled|sold[\s_-]?out|out[\s_-]?of[\s_-]?stock|not[\s_-]?available|unavailable|gray|grey/i.test(classBlob)
+    );
+  };
   const getAvailableSizesForCurrentColor = () => {
     const buttons = Array.from(document.querySelectorAll(SELECTORS.sizeButtons));
     const available: string[] = [];
     const sold: string[] = [];
     for (const btn of buttons) {
+      if (isCompanionButton(btn)) continue; // bỏ Curve/Maternity/Plus Size...
       const rawText = (btn as HTMLElement).textContent?.trim();
       if (!rawText) continue;
       const text = normalizeShein(rawText);
-      const cls = (btn as HTMLElement).className || "";
-      const parentCls = (btn.parentElement as HTMLElement)?.className || "";
-      const isDisabled =
-        /disabled|sold-out|sold_out|out-of-stock|not-available|gray/i.test(cls + " " + parentCls) ||
-        (btn as HTMLElement).hasAttribute("disabled") ||
-        btn.getAttribute("aria-disabled") === "true";
-      if (isDisabled) sold.push(text);
+      if (isSizeSoldOut(btn)) sold.push(text);
       else available.push(text);
     }
     return { available, sold };
@@ -156,11 +195,11 @@ async function inPageScrape(opts: ScrapeOptions): Promise<ScrapeResult> {
     )
   ).filter(Boolean).slice(0, 8) as string[];
 
-  // 4. SIZE union
-  const initialSizes = Array.from(document.querySelectorAll(SELECTORS.sizeButtons))
-    .map((el) => normalizeShein((el as HTMLElement).textContent!.trim()))
-    .filter(Boolean);
-  const allSizesSet = new Set<string>(initialSizes);
+  // 4. SIZE union — KHÔNG seed bằng size đọc TRƯỚC click màu (SHEIN trả dạng CHỮ "S";
+  //    sau khi chọn màu mới ra dạng SỐ "4 (S)" → gộp cả 2 gây TRÙNG size). Chỉ gom size
+  //    trong loop màu. initialSizes chỉ fallback cho sp 1 màu.
+  const initialSizes = getAvailableSizesForCurrentColor().available;
+  const allSizesSet = new Set<string>();
 
   const data: ScrapeResult = {
     product_name: (document.querySelector(SELECTORS.productName) as HTMLElement)?.innerText.trim(),
@@ -180,19 +219,48 @@ async function inPageScrape(opts: ScrapeOptions): Promise<ScrapeResult> {
   };
 
   // 5. LOOP TỪNG MÀU
+  //   Captcha GIỮA lúc click variant → KHÔNG dừng/noti, cứ click tiếp (theo yêu cầu — đỡ phải giải tay
+  //   nhiều). Chỉ captcha lúc ĐẦU (entry, trước khi product load) mới noti Telegram + chờ giải, do
+  //   orchestrator (scrapeViaKiki) lo. Bù lại: click CHẬM hơn (variantDelay) để ít kích captcha.
+  const variantDelay = opts.variantDelayMs ?? 1200;
+
+  // — Mở "Show More Colors" để render HẾT màu TRƯỚC khi click variant (lặp tới khi hết nút).
+  for (let r = 0; r < 6; r++) {
+    const more = Array.from(document.querySelectorAll("div,span,a,button,p")).find((el) => {
+      const t = ((el as HTMLElement).innerText || "").trim();
+      return /^show\s*more\s*colou?rs?/i.test(t) && t.length < 30 && (el as HTMLElement).offsetParent !== null;
+    });
+    if (!more) break;
+    await forceClick(more);
+    await wait(700);
+  }
+
   const swatches = Array.from(document.querySelectorAll(SELECTORS.colorSwatches));
   const colorCounter: Record<string, number> = {};
   const oosColors: string[] = [];
+  const stuckColors: string[] = []; // màu mà click ĐỔI URL nhưng ảnh KHÔNG đổi (lỗi SPA)
+  let prevImgSig = ""; // chữ ký ảnh của màu TRƯỚC (để so sánh phát hiện "kẹt")
+  const sigOf = (arr: string[]): string => arr.slice(0, 3).join("|");
   const limit = opts.maxColors && opts.maxColors > 0 ? Math.min(opts.maxColors, swatches.length) : swatches.length;
 
   if (swatches.length > 0) {
     for (let i = 0; i < limit; i++) {
+      // PACING: click chậm như người (delay + jitter ngẫu nhiên) → giảm kích captcha. KHÔNG chờ giải captcha.
+      await wait(variantDelay + Math.floor(Math.random() * 1400));
+      // Re-query swatch theo index (DOM có thể đổi → tránh element cũ "chết").
+      const sw = (document.querySelectorAll(SELECTORS.colorSwatches)[i] as any) || swatches[i];
+      if (!sw) continue;
       const prevName = (document.querySelector(SELECTORS.colorNameLabel) as HTMLElement)?.innerText.trim() ?? "";
-      await forceClick(swatches[i]);
+      await forceClick(sw);
       let rawColorName = await waitForChange(SELECTORS.colorNameLabel, prevName, 2500);
+      // Name chưa đổi (render chậm / captcha che) → thử click lại 1 lần, KHÔNG chờ giải captcha.
+      if (!rawColorName) {
+        await forceClick((document.querySelectorAll(SELECTORS.colorSwatches)[i] as any) || sw);
+        rawColorName = await waitForChange(SELECTORS.colorNameLabel, prevName, 2000);
+      }
       if (!rawColorName) {
         rawColorName =
-          (swatches[i].querySelector("img") as HTMLImageElement)?.getAttribute("alt")?.trim() || "Color" + (i + 1);
+          (sw.querySelector("img") as HTMLImageElement)?.getAttribute("alt")?.trim() || "Color" + (i + 1);
       }
       let finalColorName = rawColorName;
       if (!colorCounter[rawColorName]) colorCounter[rawColorName] = 1;
@@ -203,7 +271,8 @@ async function inPageScrape(opts: ScrapeOptions): Promise<ScrapeResult> {
 
       const { available: availSizes, sold: soldSizes } = getAvailableSizesForCurrentColor();
       availSizes.forEach((s) => allSizesSet.add(s));
-      soldSizes.forEach((s) => allSizesSet.add(s));
+      // KHÔNG add soldSizes vào union → size hết hàng không lọt vào listing.
+      void soldSizes;
 
       if (availSizes.length === 0) {
         oosColors.push(finalColorName);
@@ -216,17 +285,50 @@ async function inPageScrape(opts: ScrapeOptions): Promise<ScrapeResult> {
         const n = parseFloat(priceText.replace(/[^0-9.]/g, ""));
         if (!isNaN(n)) priceText = (n / 4).toFixed(2);
       }
-      const variantImages = Array.from(
-        new Set(
-          Array.from(document.querySelectorAll(SELECTORS.allProductImages)).map((img) =>
-            getOriginalImageUrl((img as HTMLImageElement).src || img.getAttribute("data-src") || (img as any).dataset?.src)
+      // Đổi màu: NAME đã đổi nhưng ẢNH gallery có thể load chậm/lazy → poll tới khi
+      // có ảnh, tránh push MẢNG RỖNG (variant không có ảnh trên 4Seller như màu "Pink").
+      const readVariantImages = (): string[] =>
+        Array.from(
+          new Set(
+            Array.from(document.querySelectorAll(SELECTORS.allProductImages)).map((img) =>
+              getOriginalImageUrl((img as HTMLImageElement).src || img.getAttribute("data-src") || (img as any).dataset?.src)
+            )
           )
-        )
-      ).filter(Boolean) as string[];
+        ).filter(Boolean) as string[];
+      await wait(300); // cho gallery bắt đầu swap
+      let variantImages = readVariantImages();
+      // 🐞 FIX GỐC: gallery swap CHẬM. Code cũ chỉ chờ "có ảnh" → đọc trúng ảnh màu TRƯỚC (stale) → bug
+      //    "đổi URL nhưng ảnh không đổi". Với màu thứ 2+, POLL tới khi chữ ký ảnh KHÁC màu trước (đã swap),
+      //    tối đa ~5.4s. (Màu đầu: chỉ cần chờ có ảnh.)
+      for (let attempt = 0; attempt < 12; attempt++) {
+        const empty = variantImages.length === 0;
+        const stale = i > 0 && !!prevImgSig && variantImages.length > 0 && sigOf(variantImages) === prevImgSig;
+        if (!empty && !stale) break;
+        await wait(450);
+        variantImages = readVariantImages();
+      }
+
+      // Vẫn KẸT (ảnh y hệt màu trước sau khi đã chờ) → ép click lại tối đa 3 lần.
+      if (i > 0 && variantImages.length && sigOf(variantImages) === prevImgSig) {
+        let recovered = false;
+        for (let rc = 0; rc < 3 && !recovered; rc++) {
+          const swR = (document.querySelectorAll(SELECTORS.colorSwatches)[i] as any) || sw;
+          await forceClick(swR);
+          await wait(900);
+          const vi = readVariantImages();
+          if (vi.length && sigOf(vi) !== prevImgSig) {
+            variantImages = vi;
+            recovered = true;
+          }
+        }
+        if (!recovered) stuckColors.push(finalColorName); // vẫn kẹt → orchestrator restart session cào lại
+      }
+      if (variantImages.length) prevImgSig = sigOf(variantImages);
 
       data.listing_variations.colors.push(finalColorName);
       data.variant_ids.push({ [finalColorName]: currentId });
-      data.variant_images.push({ [finalColorName]: variantImages });
+      // Cap 9 ảnh/màu (giới hạn 4Seller/TikTok) — SHEIN có màu 10-11 ảnh → tránh "Exceeding image count".
+      data.variant_images.push({ [finalColorName]: variantImages.slice(0, 9) });
       data.variant_price.push({ [finalColorName]: priceText });
       data.available_matrix[finalColorName] = availSizes;
     }
@@ -234,6 +336,7 @@ async function inPageScrape(opts: ScrapeOptions): Promise<ScrapeResult> {
     const colorKey = Object.keys(attributes).find((k) => ["Color", "Farbe", "Couleur"].includes(k));
     const fallbackColor = (colorKey && attributes[colorKey]) || "Default";
     const { available: availSizes } = getAvailableSizesForCurrentColor();
+    availSizes.forEach((s) => allSizesSet.add(s));
     data.listing_variations.colors.push(fallbackColor);
     data.variant_ids.push({ [fallbackColor]: getProductIdFromUrl() ?? "Unknown" });
     data.variant_images.push({ [fallbackColor]: [...productImages] });
@@ -243,18 +346,50 @@ async function inPageScrape(opts: ScrapeOptions): Promise<ScrapeResult> {
     data.available_matrix[fallbackColor] = availSizes.length > 0 ? availSizes : initialSizes;
   }
 
-  data.listing_variations.sizes = Array.from(allSizesSet);
-  data._meta = { oosColors, colorCount: data.listing_variations.colors.length };
+  // Union = size đọc SAU khi chọn màu (dạng số chuẩn). Fallback initialSizes nếu rỗng.
+  const finalSizes = allSizesSet.size ? Array.from(allSizesSet) : initialSizes;
+  data.listing_variations.sizes = finalSizes;
+  data.sizes_available = finalSizes;
+  data._meta = {
+    oosColors,
+    colorCount: data.listing_variations.colors.length,
+    variantStuck: stuckColors.length > 0,
+    stuckColors,
+    // STRICT COUNT: `limit` = số swatch cần xử lý (= swatches.length sau Show-More, hoặc maxColors nếu
+    // chủ động giới hạn). processed = số màu cào được + số màu OOS. Nếu processed < limit nghĩa là loop
+    // bị bỏ swatch giữa chừng (captcha/timing) → orchestrator coi là CRAWL FAIL.
+    expectedColors: limit,
+    processedColors: data.listing_variations.colors.length + oosColors.length,
+  };
 
   // 6. SIZE CHART
+  // ƯU TIÊN đúng nút trigger `.product-intro__size-guide` (đã verify click mở drawer). OR-selector cũ
+  //   `querySelector(a, b, c)` trả element ĐẦU DOM khớp BẤT KỲ → vớ nhầm `[class*="size-guide"]`
+  //   không phải nút bấm → click không mở drawer → mất size_chart.
   const sizeBtn =
-    document.querySelector(SELECTORS.sizeGuideBtn) ||
-    Array.from(document.querySelectorAll("div, span, p, a, button")).find((el) =>
-      /Size Guide|Größentabelle|Guide des tailles/i.test((el as HTMLElement).innerText || el.textContent || "")
-    );
+    document.querySelector(".product-intro__size-guide-new") ||
+    document.querySelector(".product-intro__size-guide") ||
+    document.querySelector(".size-guide-tag") ||
+    Array.from(document.querySelectorAll("div, span, p, a, button")).find((el) => {
+      const t = ((el as HTMLElement).innerText || el.textContent || "").trim();
+      return /^(size guide|size chart|größentabelle|guide des tailles)$/i.test(t);
+    }) ||
+    document.querySelector('[class*="size-guide"]') ||
+    document.querySelector('[class*="size-chart"]');
   if (sizeBtn) {
     await forceClick(sizeBtn);
-    await wait(1500);
+    // Drawer Size Guide load ASYNC → POLL chờ NỘI DUNG (bảng / measure-guide / unit-toggle), tối đa ~8s.
+    //   KHÔNG click lại để "thử mở": click lần 2 TOGGLE ĐÓNG drawer → đọc rỗng. Nếu sau 8s vẫn trống
+    //   thường là SHEIN ẨN size chart (nghi bot) → size_chart=null → orchestrator cho vào hàng đợi cào lại.
+    const drawerReady = (): boolean =>
+      !!document.querySelector(
+        ".bsc-common-size-table__content_inner-table tbody tr, .bsc-size-measure-guide__desc, .bsc-size-unit-switch"
+      );
+    for (let w = 0; w < 27; w++) {
+      if (drawerReady()) break;
+      await wait(300);
+    }
+    await wait(400);
 
     // Ép đơn vị về INCH. Toggle SHEIN: ul.bsc-size-unit-switch > li, active = .unit-active.
     const ensureInch = async (): Promise<boolean> => {
@@ -272,9 +407,13 @@ async function inPageScrape(opts: ScrapeOptions): Promise<ScrapeResult> {
     };
     // Đọc bảng đang hiển thị → { headers, data }
     const readSizeTable = () => {
-      const table = document.querySelector(
-        ".bsc-common-size-table__content_inner-table, table, [class*='size-table']"
-      );
+      // Ưu tiên bảng bsc của drawer (tránh querySelector OR vớ nhầm table khác trên trang
+      //   như bảng fit-reviews, do querySelector chọn theo THỨ TỰ DOM không theo thứ tự selector).
+      const table =
+        document.querySelector(".bsc-common-size-table__content_inner-table") ||
+        document.querySelector("[class*='size-table'] table") ||
+        document.querySelector(".bsc-size-table") ||
+        document.querySelector(".she-drawer table, .modal table");
       if (!table) return null;
       const headers = Array.from(table.querySelectorAll("thead td, thead th")).map((td) =>
         (td as HTMLElement).innerText.trim()
@@ -335,6 +474,45 @@ async function inPageScrape(opts: ScrapeOptions): Promise<ScrapeResult> {
     ) as HTMLImageElement | null;
     const mgImage = mgImgEl ? getOriginalImageUrl(mgImgEl.getAttribute("src") || mgImgEl.src) : null;
     if (mgItems.length) data.measure_guide = { items: mgItems, image: mgImage };
+
+    // Fit reviews ("How Buyer's Reviewed the Fit"): % fit + bảng buyer (height/weight → size).
+    try {
+      const fitBox = Array.from(document.querySelectorAll("div,section")).find(
+        (el) => /true to size/i.test((el as HTMLElement).textContent || "") && ((el as HTMLElement).textContent || "").length < 500
+      ) as HTMLElement | undefined;
+      const ft = fitBox?.innerText || "";
+      const pct = (re: RegExp) => {
+        const m = ft.match(re);
+        return m ? Number(m[1]) : null;
+      };
+      const fit: any = {
+        trueToSizePct: pct(/true to size[:\s]*([\d.]+)\s*%/i),
+        smallPct: pct(/small[:\s]*([\d.]+)\s*%/i),
+        largePct: pct(/large[:\s]*([\d.]+)\s*%/i),
+        buyers: [] as Record<string, string>[],
+      };
+      const buyerTable = Array.from(document.querySelectorAll("table")).find((tb) =>
+        /buyer/i.test((tb.querySelector("thead") as HTMLElement)?.innerText || "")
+      );
+      if (buyerTable) {
+        const bh = Array.from(buyerTable.querySelectorAll("thead th, thead td")).map((td) =>
+          (td as HTMLElement).innerText.trim()
+        );
+        fit.buyers = Array.from(buyerTable.querySelectorAll("tbody tr"))
+          .map((row) => {
+            const cells = Array.from(row.querySelectorAll("td")).map((td) => (td as HTMLElement).innerText.trim());
+            const obj: Record<string, string> = {};
+            bh.forEach((h, i) => {
+              if (h) obj[h] = cells[i];
+            });
+            return obj;
+          })
+          .filter((b) => Object.values(b).some((v) => v && v !== "-" && v !== "-/-"));
+      }
+      if (fit.trueToSizePct != null || fit.buyers.length) data.fit_reviews = fit;
+    } catch {
+      /* ignore */
+    }
 
     const closeBtn = document.querySelector(".modal-header__close, .she-close-external, .f-close");
     if (closeBtn) await forceClick(closeBtn);

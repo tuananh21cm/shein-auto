@@ -201,6 +201,15 @@
     <div class="nav-item" data-view="listings">
       <span class="ico">🛍️</span><span>Listings</span>
     </div>
+    <div class="nav-item" data-view="pod">
+      <span class="ico">🎨</span><span>POD Tee</span>
+    </div>
+    <div class="nav-item" data-view="crawl">
+      <span class="ico">🖼️</span><span>Cào ảnh</span>
+    </div>
+    <div class="nav-item" data-view="uncrawled">
+      <span class="ico">🔗</span><span>Uncrawled</span>
+    </div>
     <div class="nav-item" data-view="history">
       <span class="ico">📜</span><span>History</span>
     </div>
@@ -209,6 +218,9 @@
     </div>
     <div class="nav-item" data-view="research">
       <span class="ico">🧠</span><span>Research Win</span>
+    </div>
+    <div class="nav-item" data-view="nichelab">
+      <span class="ico">🧪</span><span>Niche Lab</span>
     </div>
     <div class="nav-item" data-view="winhunt">
       <span class="ico">🔥</span><span>Săn Win SHEIN</span>
@@ -281,6 +293,7 @@
         </div>
         <div style="display: flex; gap: 8px;">
           <button class="btn btn-primary" id="createShopBtn" onclick="openCreateShop()">+ Tạo shop</button>
+          <button class="btn btn-ghost" id="podScanBtn" onclick="scanPod()">🎨 Quét POD</button>
           <button class="btn btn-ghost" id="listingsRefreshBtn" onclick="loadShopsOrListings()">Refresh</button>
         </div>
       </div>
@@ -309,6 +322,149 @@
         <div class="card">
           <div id="listingsGrid"><div class="empty">Đang tải…</div></div>
         </div>
+      </div>
+    </section>
+
+    <!-- ───── POD TEE ───── -->
+    <section class="view" id="view-pod">
+      <div class="page-head">
+        <div>
+          <h1>POD Tee</h1>
+          <div class="subtitle">Kéo-thả ảnh thiết kế → tạo listing áo thun POD. Size chart / chất liệu / mô tả / màu theo template (config/pod.json).</div>
+        </div>
+        <button class="btn btn-ghost" onclick="scanPod()">📁 Quét folder inbox</button>
+      </div>
+
+      <div class="card">
+        <div class="grid grid-2" style="gap:14px; align-items:end;">
+          <label class="field"><span>🏪 Shop đăng</span>
+            <select id="podShop"><option value="">— Chọn shop —</option></select>
+          </label>
+          <div style="font-size:0.82rem; color:var(--text-mute);">
+            Giá &amp; màu &amp; size lấy từ <code>config/pod.json</code>. Title mặc định = tên file (sửa được bên dưới).
+          </div>
+        </div>
+
+        <div id="podDrop" style="margin-top:14px; border:2px dashed var(--accent); border-radius:12px; padding:34px; text-align:center; cursor:pointer; background:var(--bg-elev); transition:.15s;">
+          <div style="font-size:2rem;">🎨</div>
+          <div style="font-weight:600; margin-top:6px;">Kéo-thả ảnh thiết kế vào đây</div>
+          <div style="color:var(--text-mute); font-size:0.85rem; margin-top:4px;">hoặc bấm để chọn (PNG/JPG/WEBP, nhiều ảnh)</div>
+          <input type="file" id="podFile" accept="image/png,image/jpeg,image/webp" multiple style="display:none;" />
+        </div>
+
+        <div id="podStaged" style="margin-top:14px;"></div>
+
+        <div id="podActions" style="display:none; margin-top:14px; gap:8px;">
+          <button class="btn btn-primary" id="podCreateBtn" onclick="podCreateAll()">▶ Tạo <span id="podCount">0</span> listing</button>
+          <button class="btn btn-ghost" onclick="podClear()">Xoá hết</button>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:18px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+          <h3 style="margin:0;">⚙️ Cấu hình POD <span style="color:var(--text-mute); font-weight:400; font-size:0.85rem;">(áp cho mọi listing POD — config/pod.json)</span></h3>
+          <button class="btn btn-primary" onclick="savePodConfig()">Lưu config</button>
+        </div>
+        <div class="grid grid-2" style="gap:14px;">
+          <label class="field"><span>💲 Giá bán cuối (USD)</span>
+            <input type="number" step="0.01" id="podCfgPrice" placeholder="23.99" />
+          </label>
+          <label class="field"><span>📏 Sizes <span style="color:var(--text-mute);">(phẩy)</span></span>
+            <input id="podCfgSizes" placeholder="S, M, L, XL, XXL" />
+          </label>
+          <label class="field"><span>🌈 Màu áo <span style="color:var(--text-mute);">(phẩy — MỌI listing dùng đúng các màu này)</span></span>
+            <input id="podCfgPalette" placeholder="Black, White, Navy, ..." />
+          </label>
+          <label class="field"><span>📁 Folder material <span style="color:var(--text-mute);">(rỗng = mặc định data/pod-materials)</span></span>
+            <input id="podCfgMaterialDir" placeholder="C:/.../pod-materials" />
+          </label>
+          <label class="field"><span>🖼️ Số ảnh phụ sau ảnh main <span style="color:var(--text-mute);">(bốc random từ material)</span></span>
+            <input type="number" id="podCfgAux" min="0" placeholder="6" />
+          </label>
+        </div>
+        <label class="field" style="margin-top:4px;"><span>🗂️ Ngách (random 1 — mỗi dòng 1 ngách)</span>
+          <textarea id="podCfgCategories" rows="2" style="font-family:'JetBrains Mono',monospace; font-size:0.82rem;" placeholder="Womenswear & Underwear / Women's Tops / Women's T-shirts"></textarea>
+        </label>
+        <div style="margin-top:10px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+            <span style="font-size:0.85rem;">💵 Phụ giá theo size <span style="color:var(--text-mute);">(USD cộng vào giá đi đơn — vd XXL +2, 3XL +4)</span></span>
+            <button class="btn btn-ghost" style="padding:4px 10px; font-size:0.78rem;" onclick="podAddSurRow()">+ Thêm</button>
+          </div>
+          <div id="podCfgSur"></div>
+        </div>
+        <div style="margin-top:10px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+            <span style="font-size:0.85rem;">🏷️ Attributes <span style="color:var(--text-mute);">(≥2)</span></span>
+            <button class="btn btn-ghost" style="padding:4px 10px; font-size:0.78rem;" onclick="podAddAttrRow()">+ Thêm</button>
+          </div>
+          <div id="podCfgAttrs"></div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:18px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+          <h3 style="margin:0;">📁 Ảnh material <span style="color:var(--text-mute); font-weight:400; font-size:0.82rem;">(trộn ngẫu nhiên vào gallery/mô tả mỗi listing)</span></h3>
+          <button class="btn btn-ghost" onclick="loadPodMaterials()">Refresh</button>
+        </div>
+        <div id="podMatDir" style="font-size:0.78rem; color:var(--text-mute); font-family:'JetBrains Mono',monospace; margin-bottom:10px;"></div>
+        <div id="podMatDrop" style="border:2px dashed var(--accent); border-radius:10px; padding:18px; text-align:center; cursor:pointer; background:var(--bg-elev); font-size:0.85rem;">
+          ⬆️ Kéo-thả hoặc bấm để thêm ảnh material (PNG/JPG/WEBP, nhiều ảnh)
+          <input type="file" id="podMatFile" accept="image/png,image/jpeg,image/webp" multiple style="display:none;" />
+        </div>
+        <div id="podMatGrid" style="display:flex; flex-wrap:wrap; gap:10px; margin-top:12px;"></div>
+      </div>
+    </section>
+
+    <!-- ───── CÀO ẢNH ───── -->
+    <section class="view" id="view-crawl">
+      <div class="page-head">
+        <div>
+          <h1>Cào ảnh website</h1>
+          <div class="subtitle">Cào ảnh sản phẩm theo trang (pagination) hoặc nút Load More → lưu theo tên title, nâng width.</div>
+        </div>
+      </div>
+      <div class="card">
+        <label class="field"><span>🔗 URL trang collection/listing</span>
+          <input id="crawlUrl" placeholder="https://orbitalclothingbrand.com/collections/new-arrivals" />
+        </label>
+        <label class="field"><span>📁 Folder lưu ảnh <span style="color:var(--text-mute);">(rỗng = data/crawled-images/&lt;tên trang&gt;)</span></span>
+          <input id="crawlOutDir" placeholder="C:/Users/KBT/Downloads/CrawledImages" />
+        </label>
+        <div class="grid grid-2" style="gap:14px; margin-top:4px;">
+          <label class="field"><span>Chế độ phân trang</span>
+            <select id="crawlMode">
+              <option value="pagination">Pagination (?page=1,2,3…)</option>
+              <option value="loadmore">Load More / cuộn vô tận</option>
+            </select>
+          </label>
+          <label class="field"><span>Width ảnh đích</span>
+            <input type="number" id="crawlWidth" value="1280" />
+          </label>
+          <label class="field"><span>Giới hạn số ảnh <span style="color:var(--text-mute);">(0 = tất cả)</span></span>
+            <input type="number" id="crawlMaxImg" value="0" />
+          </label>
+          <label class="field"><span>Selector nút Load More <span style="color:var(--text-mute);">(tùy chọn)</span></span>
+            <input id="crawlLoadSel" placeholder="tự dò nếu để trống" />
+          </label>
+        </div>
+        <details style="margin-top:10px;">
+          <summary style="cursor:pointer; color:var(--text-mute); font-size:0.85rem;">⚙️ Nâng cao (selector tuỳ chỉnh cho site lạ)</summary>
+          <div class="grid grid-2" style="gap:12px; margin-top:10px;">
+            <label class="field"><span>Regex link sản phẩm</span>
+              <input id="crawlLinkPat" placeholder="/products?/|-p-\d+\.html|/item/" />
+            </label>
+            <label class="field"><span>Selector card sản phẩm</span>
+              <input id="crawlCardSel" placeholder=".product-itm, [class*='product-card'] …" />
+            </label>
+            <label class="field"><span>Selector title trong card</span>
+              <input id="crawlTitleSel" placeholder="vd .product-name (rỗng = tự dò / suy từ URL)" />
+            </label>
+          </div>
+        </details>
+        <div style="margin-top:12px;">
+          <button class="btn btn-primary" id="crawlBtn" onclick="runCrawl()">▶ Bắt đầu cào</button>
+        </div>
+        <pre id="crawlLog" style="margin-top:14px; background:var(--bg-elev); border-radius:8px; padding:12px; font-size:0.78rem; max-height:380px; overflow:auto; white-space:pre-wrap; display:none;"></pre>
       </div>
     </section>
 
@@ -366,7 +522,9 @@
         <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end;">
           <button class="btn" onclick="runResearch()">🚀 Chạy research hôm nay</button>
           <button class="btn btn-ghost" onclick="validateResearch()" title="Mở detail bằng Kiki: sold thật + rank + local/inter + true-to-size → verdict PASS/WATCH/REJECT">🔍 Validate (Kiki)</button>
+          <button class="btn btn-ghost" onclick="validateNiche()" title="Chọn 1 ngách ở dropdown Ngách → pre-filter + validate top sp ngách đó → tìm sp PASS để list">🎯 Soi ngách</button>
           <button class="btn btn-ghost" onclick="aiResearch()" title="Gemini phân tích: briefing + gợi ý ngách + lý do bán cho từng sp">🤖 AI phân tích</button>
+          <button class="btn btn-ghost" onclick="collectDemand()" title="Thu demand TikTok US từ Kalodata (qua Kiki) → demandFit chính xác hơn">📈 Thu demand TikTok</button>
           <div>
             <label style="display:block; font-size:0.8rem; color:var(--text-mute); margin-bottom:4px;">Ngày</label>
             <select id="researchDay" onchange="loadCandidates()" style="padding:9px; border-radius:8px; border:1px solid var(--border); background:var(--bg-elev); color:var(--text);"></select>
@@ -390,6 +548,12 @@
               <option value="none">Chưa validate</option>
             </select>
           </div>
+          <div>
+            <label style="display:block; font-size:0.8rem; color:var(--text-mute); margin-bottom:4px;">Ngách</label>
+            <select id="researchNiche" onchange="loadCandidates()" style="padding:9px; border-radius:8px; border:1px solid var(--border); background:var(--bg-elev); color:var(--text);">
+              <option value="">Tất cả</option>
+            </select>
+          </div>
           <div style="flex:1; min-width:160px;">
             <label style="display:block; font-size:0.8rem; color:var(--text-mute); margin-bottom:4px;">Kiki profile (để duyệt)</label>
             <select id="researchProfile" style="width:100%; padding:9px; border-radius:8px; border:1px solid var(--border); background:var(--bg-elev); color:var(--text);"></select>
@@ -403,10 +567,42 @@
       </div>
 
       <div id="researchBriefing" style="display:none;" class="card"></div>
+      <div id="researchDemand" style="display:none;" class="card"></div>
       <div id="researchMeta" style="color:var(--text-mute); margin-bottom:10px; font-size:0.88rem;"></div>
       <div id="researchGrid" class="grid" style="grid-template-columns:repeat(auto-fill,minmax(230px,1fr)); gap:14px;">
         <div class="empty">Chưa có candidate — bấm "Chạy research hôm nay".</div>
       </div>
+
+      <!-- Drill-down ngách demand: SHEIN supply + Kalodata best-seller -->
+      <div id="drillModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.6); z-index:9999; align-items:flex-start; justify-content:center; overflow-y:auto; padding:24px;">
+        <div style="background:var(--bg-elev); border:1px solid var(--border); border-radius:12px; max-width:1150px; width:96%; padding:18px; margin:auto;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+            <h2 id="drillTitle" style="margin:0; font-size:1.1rem;"></h2>
+            <button class="btn btn-ghost" onclick="document.getElementById('drillModal').style.display='none'">✕ Đóng</button>
+          </div>
+          <div id="drillBody"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ───── NICHE LAB (DropScore) ───── -->
+    <section class="view" id="view-nichelab">
+      <div class="page-head">
+        <div>
+          <h1>🧪 Niche Lab</h1>
+          <div class="subtitle">Sàng ngách "ngon cho dropship" — DropScore = rẻ (stock kho) + trend (TikTok) + ít refund + đủ nguồn. Test ngách điểm cao trước.</div>
+        </div>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <select id="labDay" onchange="loadNicheLab()" style="padding:9px; border-radius:8px; border:1px solid var(--border); background:var(--bg-elev); color:var(--text);"></select>
+          <button class="btn btn-ghost" onclick="loadNicheLab()">Refresh</button>
+        </div>
+      </div>
+      <div id="labMeta" style="color:var(--text-mute); margin-bottom:10px; font-size:0.85rem;"></div>
+      <div id="labTableWrap" class="card"><div class="empty">Đang tải…</div></div>
+
+      <h2 style="margin:22px 0 6px; font-size:1.05rem;">📋 Danh mục ngách theo shop</h2>
+      <div style="color:var(--text-mute); font-size:0.8rem; margin-bottom:10px;">Gán ngách cho từng shop để test. Mỗi ngách hiện DropScore + số sp đã đẩy. Click trạng thái để đổi (testing→scaling→dropped).</div>
+      <div id="portfolioWrap" class="grid" style="grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:14px;"><div class="empty">Đang tải…</div></div>
     </section>
 
     <!-- ───── SĂN WIN SHEIN ───── -->
@@ -644,6 +840,60 @@
       </div>
     </section>
 
+    <!-- ───── UNCRAWLED QUEUE ───── -->
+    <style>
+      #uncPreview { position: fixed; display: none; z-index: 99999; pointer-events: none; background: #fff; border: 2px solid var(--accent, #ae122a); border-radius: 8px; box-shadow: 0 10px 36px rgba(0,0,0,.5); padding: 3px; }
+      #uncPreview img { display: block; width: 320px; height: auto; max-height: 420px; object-fit: contain; border-radius: 5px; }
+      .unc-thumb:hover { outline: 2px solid var(--accent, #ae122a); }
+    </style>
+    <section class="view" id="view-uncrawled">
+      <div class="page-head">
+        <div>
+          <h1>🔗 Uncrawled Queue</h1>
+          <div class="subtitle">Link sản phẩm chờ cào detail (shop_allocation). Lọc theo shop/status, xoá, đưa cào lại, loại trừ. Nguồn: gom link Tampermonkey + research phân bổ.</div>
+        </div>
+        <button class="btn btn-ghost" onclick="loadUncrawled()">↻ Tải lại</button>
+      </div>
+      <div class="card">
+        <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:12px;">
+          <select id="uncShop" onchange="loadUncrawled()" style="min-width:200px;">
+            <option value="">— Tất cả shop —</option>
+          </select>
+          <select id="uncStatus" onchange="loadUncrawled()">
+            <option value="allocated">allocated (chờ cào)</option>
+            <option value="recrawl">recrawl (cào lại)</option>
+            <option value="crawled">crawled (đã cào)</option>
+            <option value="listed">listed (đã đăng)</option>
+            <option value="all">— Tất cả status —</option>
+          </select>
+          <input id="uncQ" placeholder="Tìm tên / goods_id…" oninput="debouncedUnc()" style="flex:1; min-width:160px; padding:8px 10px; border-radius:8px; border:1px solid var(--border); background:var(--bg-elev); color:var(--text);">
+        </div>
+        <div id="uncSummary" style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px;"></div>
+        <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px; align-items:center;">
+          <button class="btn btn-ghost" onclick="uncSelectAll(true)">Chọn tất cả</button>
+          <button class="btn btn-ghost" onclick="uncSelectAll(false)">Bỏ chọn</button>
+          <button class="btn btn-ghost" id="uncChromeBtn" onclick="chromeLaunch()" title="Mở Chrome với cổng debug 9222 (cần cho nút cào)">🟢 Bật Chrome debug</button>
+          <input id="uncCrawlN" type="number" value="10" min="1" max="50" title="Số sp cào (khi không tick chọn)" style="width:58px;padding:7px;border-radius:8px;border:1px solid var(--border);background:var(--bg-elev);color:var(--text);">
+          <button class="btn" id="uncCrawlBtn" onclick="uncCrawl()" style="background:var(--accent,#ae122a);color:#fff;border:none;">▶ Cào Chrome → Listing</button>
+          <span style="flex:1"></span>
+          <button class="btn btn-ghost" onclick="uncAction('requeue')">↻ Cào lại (allocated)</button>
+          <button class="btn btn-ghost" onclick="uncAction('exclude')">🚫 Loại trừ</button>
+          <button class="btn btn-ghost" style="color:#ef4444;border-color:#ef4444" onclick="uncAction('delete')">🗑 Xoá</button>
+        </div>
+        <div style="overflow:auto; max-height:64vh;">
+          <table>
+            <thead><tr>
+              <th style="width:28px"><input type="checkbox" id="uncCheckAll" onchange="uncSelectAll(this.checked)"></th>
+              <th style="width:48px">Ảnh</th><th>Tên</th><th>goods_id</th><th>Shop</th><th>Ngách</th><th>Giá</th><th>Score</th><th>Status</th>
+            </tr></thead>
+            <tbody id="uncRows"><tr><td colspan="9" style="text-align:center;color:var(--text-mute)">…</td></tr></tbody>
+          </table>
+        </div>
+        <div id="uncCount" style="margin-top:8px;color:var(--text-mute);font-size:0.85rem;"></div>
+        <pre id="uncLog" style="display:none;margin-top:12px;max-height:220px;overflow:auto;background:var(--bg-elev);border:1px solid var(--border);border-radius:8px;padding:10px;font-size:0.78rem;white-space:pre-wrap;color:var(--text-dim);"></pre>
+      </div>
+    </section>
+
   </main>
 </div>
 
@@ -712,6 +962,178 @@ const toast = (msg, type = "success") => {
   setTimeout(() => el.classList.remove("show"), 3000);
 };
 
+// ─── Uncrawled queue ──────────────────────────────────
+let _uncTimer;
+const debouncedUnc = () => { clearTimeout(_uncTimer); _uncTimer = setTimeout(loadUncrawled, 350); };
+const uncShortShop = (s) => String(s || "").replace("TA Scan ", "").replace("TA Scan", "").replace("_US", "");
+// Bỏ hậu tố _thumbnail_WxH → URL ảnh gốc (to) để preview.
+const uncFullImg = (u) => String(u || "").replace(/_thumbnail_\d+x\d+/g, "");
+
+// Hover thumbnail → popup ảnh lớn theo con trỏ (bind 1 lần, delegate trên #uncRows).
+function ensureUncPreview() {
+  if (window._uncPrevBound) return;
+  window._uncPrevBound = true;
+  const prev = document.createElement("div");
+  prev.id = "uncPreview";
+  prev.innerHTML = "<img alt=''>";
+  document.body.appendChild(prev);
+  const pimg = prev.querySelector("img");
+  const rows = $("#uncRows");
+  rows.addEventListener("mouseover", (e) => {
+    const t = e.target.closest(".unc-thumb");
+    if (!t) return;
+    pimg.src = t.dataset.full || t.src;
+    prev.style.display = "block";
+  });
+  rows.addEventListener("mousemove", (e) => {
+    if (prev.style.display !== "block") return;
+    const pad = 18, w = 330, h = 440;
+    let x = e.clientX + pad, y = e.clientY + pad;
+    if (x + w > window.innerWidth) x = e.clientX - w - pad;
+    if (y + h > window.innerHeight) y = window.innerHeight - h - 8;
+    if (y < 8) y = 8;
+    prev.style.left = x + "px";
+    prev.style.top = y + "px";
+  });
+  rows.addEventListener("mouseout", (e) => {
+    if (e.target.closest(".unc-thumb")) prev.style.display = "none";
+  });
+}
+
+async function loadUncrawled() {
+  const shop = $("#uncShop").value, status = $("#uncStatus").value, q = $("#uncQ").value.trim();
+  const tb = $("#uncRows");
+  try {
+    const url = `/admin/api/uncrawled?shop=${encodeURIComponent(shop)}&status=${encodeURIComponent(status)}&q=${encodeURIComponent(q)}&limit=500`;
+    const r = await fetch(url);
+    const d = await r.json();
+    if (!r.ok) { toast(d.error || "Lỗi load", "error"); return; }
+
+    // dropdown shop (giữ lựa chọn hiện tại)
+    const sel = $("#uncShop"), cur = sel.value;
+    sel.innerHTML = '<option value="">— Tất cả shop —</option>' +
+      d.shops.map(s => `<option value="${escapeHtml(s.shop)}">${escapeHtml(uncShortShop(s.shop))} (${s.c})</option>`).join("");
+    sel.value = cur;
+
+    // chip summary status
+    $("#uncSummary").innerHTML = d.statusCounts.map(s =>
+      `<span class="badge" style="background:var(--bg-elev);border:1px solid var(--border)">${escapeHtml(s.status)}: <b>${s.c}</b></span>`).join("")
+      || '<span style="color:var(--text-mute)">Trống</span>';
+
+    if (!d.rows.length) {
+      tb.innerHTML = `<tr><td colspan="9" style="text-align:center;color:var(--text-mute)">Không có sản phẩm khớp bộ lọc</td></tr>`;
+    } else {
+      tb.innerHTML = d.rows.map(row => `
+        <tr>
+          <td><input type="checkbox" class="unc-cb" value="${escapeHtml(row.goods_id)}"></td>
+          <td>${row.image ? `<img src="${escapeHtml(row.image)}" data-full="${escapeHtml(uncFullImg(row.image))}" class="unc-thumb" loading="lazy" onclick="window.open(this.dataset.full||this.src,'_blank')" style="width:40px;height:53px;object-fit:cover;border-radius:4px;cursor:zoom-in">` : ""}</td>
+          <td><a href="${escapeHtml(row.url || "#")}" target="_blank" rel="noopener" style="color:var(--text);text-decoration:none">${escapeHtml((row.name || "(không tên)").slice(0, 70))}</a></td>
+          <td style="font-family:monospace;font-size:0.8rem">${escapeHtml(row.goods_id)}</td>
+          <td style="font-size:0.8rem">${escapeHtml(uncShortShop(row.shop))}</td>
+          <td style="font-size:0.8rem;color:var(--text-dim)">${escapeHtml(row.niche_key || "")}</td>
+          <td>${row.price != null ? "$" + row.price : ""}</td>
+          <td style="color:var(--text-dim)">${row.opportunity_score ?? ""}</td>
+          <td><span class="badge" style="background:var(--bg-elev);border:1px solid var(--border)">${escapeHtml(row.status)}</span></td>
+        </tr>`).join("");
+    }
+    $("#uncCheckAll").checked = false;
+    $("#uncCount").textContent = `Hiển thị ${d.rows.length} sản phẩm (giới hạn ${d.limit}). Rê chuột vào ảnh để xem to, click để mở full.`;
+    ensureUncPreview();
+  } catch (e) {
+    toast("Lỗi: " + e.message, "error");
+  }
+}
+
+const uncSelectAll = (on) => document.querySelectorAll(".unc-cb").forEach(cb => cb.checked = on);
+const uncSelected = () => Array.from(document.querySelectorAll(".unc-cb:checked")).map(cb => cb.value);
+
+// Bật Chrome debug (cổng 9222) từ server — khỏi mở tay.
+async function chromeLaunch() {
+  const btn = $("#uncChromeBtn");
+  const old = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = "⏳ Đang bật…";
+  try {
+    const r = await fetch("/admin/api/chrome/launch", { method: "POST" });
+    const d = await r.json();
+    if (!r.ok) toast(d.error || "Lỗi bật Chrome", "error");
+    else toast(d.already ? "Chrome debug đã chạy ở 9222" : "✓ Đã bật Chrome debug 9222");
+  } catch (e) {
+    toast("Lỗi: " + e.message, "error");
+  } finally {
+    btn.disabled = false;
+    btn.textContent = old;
+  }
+}
+
+// Trigger cào Chrome cho shop đang lọc (hoặc các sp đang tick) → ghi JSON → listing queue.
+async function uncCrawl() {
+  const shop = $("#uncShop").value;
+  if (!shop) { toast("Chọn 1 shop cụ thể ở dropdown trước khi cào", "error"); return; }
+  const picked = uncSelected();
+  const n = Math.max(1, Math.min(50, parseInt($("#uncCrawlN").value) || 10));
+  const logEl = $("#uncLog");
+  logEl.style.display = "block";
+  logEl.textContent = "";
+  const append = (s) => { logEl.textContent += s + "\n"; logEl.scrollTop = logEl.scrollHeight; };
+  append(picked.length ? `▶ Cào ${picked.length} sp đã chọn — ${uncShortShop(shop)}…` : `▶ Cào top ${n} sp — ${uncShortShop(shop)}…`);
+  const btn = $("#uncCrawlBtn");
+  btn.disabled = true;
+  try {
+    const body = picked.length ? { shop, goodsIds: picked } : { shop, n };
+    const r = await fetch("/admin/api/uncrawled/crawl", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+    });
+    if (!r.body) { const d = await r.json().catch(() => ({})); append("❌ " + (d.error || "no stream")); return; }
+    const reader = r.body.getReader();
+    const dec = new TextDecoder();
+    let buf = "";
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      const lines = buf.split("\n");
+      buf = lines.pop();
+      for (const line of lines) {
+        if (!line) continue;
+        if (line.startsWith("__RESULT__")) {
+          const res = JSON.parse(line.slice(10));
+          append(`✔ XONG: ${res.ok} OK · ${res.requeued} recrawl · ${res.failed} fail / ${res.total}`);
+          toast(`Cào xong: ${res.ok} OK → listing queue`);
+        } else if (line.startsWith("__ERROR__")) {
+          append("❌ " + line.slice(9));
+          toast(line.slice(9), "error");
+        } else append(line);
+      }
+    }
+    loadUncrawled();
+  } catch (e) {
+    append("❌ " + e.message);
+    toast("Lỗi: " + e.message, "error");
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function uncAction(action) {
+  const ids = uncSelected();
+  if (!ids.length) { toast("Chưa chọn sản phẩm nào", "error"); return; }
+  const labels = { delete: "XOÁ khỏi queue", exclude: "LOẠI TRỪ (+excluded_products)", requeue: "đưa về 'allocated' (cào lại)", recrawl: "đưa về 'recrawl'" };
+  if (!confirm(`${labels[action] || action} ${ids.length} sản phẩm?`)) return;
+  try {
+    const r = await fetch("/admin/api/uncrawled/action", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action, goodsIds: ids }),
+    });
+    const d = await r.json();
+    if (!r.ok) { toast(d.error || "Lỗi", "error"); return; }
+    toast(`✓ ${d.affected} sản phẩm`);
+    loadUncrawled();
+  } catch (e) {
+    toast("Lỗi: " + e.message, "error");
+  }
+}
+
 // ─── Theme ────────────────────────────────────────────
 const setTheme = (theme) => {
   document.documentElement.dataset.theme = theme;
@@ -730,9 +1152,12 @@ document.querySelectorAll(".nav-item").forEach((item) => {
     item.classList.add("active");
     $(`#view-${view}`).classList.add("active");
     if (view === "history") loadHistory();
+    if (view === "uncrawled") loadUncrawled();
     if (view === "listings") loadShopsOrListings();
+    if (view === "pod") initPod();
     if (view === "stats") loadStats();
     if (view === "research") initResearch();
+    if (view === "nichelab") initNicheLab();
     if (view === "winhunt") initWinHunt();
     if (view === "similar") { /* chờ user nhập */ }
     if (view === "kiki") initKiki();
@@ -772,6 +1197,7 @@ async function refreshDashboard() {
   try {
     const res = await fetch("/admin/api/dashboard");
     const data = await res.json();
+    setShopAllowlist(data.shops);
     renderStats(data);
     renderQueue(data.queue);
     renderActive(data.worker);
@@ -780,8 +1206,26 @@ async function refreshDashboard() {
   }
 }
 
+// Allowlist shop 4Seller hiện tại → ẩn folder "lạ" rỗng trên dashboard (KHÔNG xoá data).
+let _shopAllowlist = { set: new Set(), hasAllowlist: false };
+function setShopAllowlist(shops) {
+  const list = (shops && shops.list) || [];
+  const source = shops && shops.source;
+  _shopAllowlist = {
+    set: new Set(list.map((s) => String(s).toLowerCase())),
+    hasAllowlist: source === '4seller' || source === 'explicit',
+  };
+}
+// Folder có pending LUÔN hiện (còn việc). Có allowlist tin cậy → chỉ giữ thêm folder
+// là shop thật. Không có allowlist (chưa upload cookie…) → hiện hết như cũ.
+function filterQueueFolders(folders) {
+  if (!_shopAllowlist.hasAllowlist) return folders || [];
+  return (folders || []).filter((f) => f.pendingCount > 0 || _shopAllowlist.set.has(String(f.name).toLowerCase()));
+}
+
 function renderStats(data) {
-  const totalPending = (data.queue.folders || []).reduce((s, f) => s + f.pendingCount, 0);
+  const folders = filterQueueFolders(data.queue.folders);
+  const totalPending = folders.reduce((s, f) => s + f.pendingCount, 0);
   const activeCount = data.worker.active.length;
   const last = data.worker.lastFinishedAt ? new Date(data.worker.lastFinishedAt).toLocaleTimeString() : "—";
   $("#statsCards").innerHTML = `
@@ -793,7 +1237,7 @@ function renderStats(data) {
     <div class="card">
       <div class="label">File pending</div>
       <div class="stat-num">${totalPending}</div>
-      <div class="stat-sub">${(data.queue.folders||[]).length} folder shop</div>
+      <div class="stat-sub">${folders.length} folder shop</div>
     </div>
     <div class="card">
       <div class="label">Last finished</div>
@@ -809,7 +1253,7 @@ function renderStats(data) {
 }
 
 function renderQueue(queue) {
-  const folders = queue?.folders || [];
+  const folders = filterQueueFolders(queue?.folders || []);
   if (folders.length === 0) {
     $("#queueTableWrap").innerHTML = '<div class="empty">Chưa có folder nào</div>';
     return;
@@ -1886,9 +2330,16 @@ async function initResearch() {
     $("#researchShop").innerHTML = state.research.shops.length
       ? state.research.shops.map((f) => `<option value="${escapeHtml(f)}">${escapeHtml(f)}</option>`).join('')
       : '<option value="">(chưa có shop)</option>';
+    // Dropdown ngách (từ niche snapshot)
+    try {
+      const nd = await (await fetch("/admin/api/research/niches")).json();
+      const keys = (nd.niches || []).map((n) => n.nicheKey);
+      $("#researchNiche").innerHTML = '<option value="">Tất cả</option>' + keys.map((k) => `<option value="${escapeHtml(k)}">${escapeHtml(k)}</option>`).join('');
+    } catch {}
   }
   await loadResearchDays();
   await loadCandidates();
+  loadDemand();
 }
 
 async function loadResearchDays() {
@@ -1908,7 +2359,8 @@ async function loadCandidates() {
   const grid = $("#researchGrid");
   grid.innerHTML = '<div class="empty">⏳ Đang tải…</div>';
   try {
-    const q = new URLSearchParams({ day: day || "", status: status || "" });
+    const niche = ($("#researchNiche") && $("#researchNiche").value) || "";
+    const q = new URLSearchParams({ day: day || "", status: status || "", niche });
     const d = await (await fetch("/admin/api/research/candidates?" + q)).json();
     if (!d.candidates) throw new Error(d.error || "lỗi");
     state.research.candidates = d.candidates;
@@ -2022,6 +2474,211 @@ async function loadBriefing(day) {
   } catch { box.style.display = 'none'; }
 }
 
+// ─── Niche Lab (DropScore) ────────────────────────────
+let _labLoaded = false;
+async function initNicheLab() {
+  if (!_labLoaded) {
+    _labLoaded = true;
+    try {
+      const d = await (await fetch("/admin/api/research/days")).json();
+      const days = (d.days && d.days.length) ? d.days : [d.today];
+      $("#labDay").innerHTML = days.map((x) => `<option value="${x}">${x}</option>`).join('');
+    } catch {}
+  }
+  loadNicheLab();
+  loadPortfolio();
+}
+
+let _portfolio = { shops: [], niches: [], assignments: [] };
+async function loadPortfolio() {
+  const wrap = $("#portfolioWrap");
+  try {
+    _portfolio = await (await fetch("/admin/api/research/shop-niche")).json();
+    renderPortfolio();
+  } catch (err) { wrap.innerHTML = `<div class="empty" style="color:var(--danger)">Lỗi: ${escapeHtml(err.message)}</div>`; }
+}
+const _statusColor = (s) => s === 'scaling' ? '#16a34a' : s === 'dropped' ? '#dc2626' : '#d97706';
+function renderPortfolio() {
+  const wrap = $("#portfolioWrap");
+  const shops = _portfolio.shops || [];
+  if (!shops.length) { wrap.innerHTML = '<div class="empty">Chưa có shop (upload cookie 4Seller).</div>'; return; }
+  const nm = {}; (_portfolio.niches || []).forEach((n) => nm[n.nicheKey] = n);
+  const byShop = {}; (_portfolio.assignments || []).forEach((a) => { (byShop[a.shop] = byShop[a.shop] || []).push(a); });
+  wrap.innerHTML = shops.map((shop) => {
+    const assigned = (byShop[shop] || []).sort((a, b) => (nm[b.nicheKey]?.dropScore || 0) - (nm[a.nicheKey]?.dropScore || 0));
+    const akeys = new Set(assigned.map((a) => a.nicheKey));
+    const avail = (_portfolio.niches || []).filter((n) => !akeys.has(n.nicheKey)).sort((a, b) => b.dropScore - a.dropScore);
+    const totalListed = assigned.reduce((s, a) => s + a.listed, 0);
+    const chips = assigned.map((a) => {
+      const n = nm[a.nicheKey] || {};
+      const sj = JSON.stringify(shop), nj = JSON.stringify(a.nicheKey);
+      return `<div style="display:flex; align-items:center; gap:6px; padding:5px 8px; border:1px solid var(--border); border-radius:8px; font-size:0.76rem;">
+        <b style="flex:1;">${escapeHtml(a.nicheKey)}</b>
+        <span class="badge" style="background:${n.dropScore >= 75 ? '#16a34a' : 'var(--accent)'}; color:#fff;">${n.dropScore ?? '?'}</span>
+        <span style="color:var(--text-mute);">${a.listed}đẩy</span>
+        <span class="badge" style="cursor:pointer; border:1px solid ${_statusColor(a.status)}; color:${_statusColor(a.status)};" onclick='cycleStatus(${sj},${nj},"${a.status}")'>${a.status}</span>
+        <span style="cursor:pointer;" title="Xem sản phẩm ngách này (lọc sẵn + shop đặt sẵn)" onclick='viewNicheProducts(${sj},${nj})'>👁</span>
+        <span style="cursor:pointer; color:var(--danger);" onclick='removeNiche(${sj},${nj})'>✕</span>
+      </div>`;
+    }).join('');
+    const opts = avail.map((n) => `<option value="${escapeHtml(n.nicheKey)}">${escapeHtml(n.nicheKey)} (drop ${n.dropScore})</option>`).join('');
+    return `<div class="card">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+        <b style="font-size:0.82rem;">${escapeHtml(shop)}</b>
+        <span style="color:var(--text-mute); font-size:0.72rem;">${assigned.length} ngách · ${totalListed} đẩy</span>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:6px;">${chips || '<span class="empty" style="padding:4px;">Chưa gán ngách</span>'}</div>
+      <div style="display:flex; gap:6px; margin-top:10px;">
+        <select style="flex:1; padding:6px; border-radius:6px; border:1px solid var(--border); background:var(--bg-elev); color:var(--text); font-size:0.76rem;">${opts || '<option value="">(hết ngách)</option>'}</select>
+        <button class="btn btn-ghost" data-shop="${escapeHtml(shop)}" style="padding:6px 10px;" onclick="assignNiche(this)">+ Gán</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+async function assignNiche(btn) {
+  const shop = btn.dataset.shop;
+  const sel = btn.parentElement.querySelector('select');
+  const nicheKey = sel && sel.value;
+  if (!nicheKey || !shop) { toast("Chọn ngách trước", "error"); return; }
+  try {
+    const res = await fetch("/admin/api/research/shop-niche/assign", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ shop, nicheKey }) });
+    const d = await res.json();
+    if (!res.ok) throw new Error(d.error || res.status);
+    toast(`Đã gán "${nicheKey}" → ${shop}`, "success");
+    loadPortfolio();
+  } catch (err) { toast("Lỗi gán: " + err.message, "error"); }
+}
+async function removeNiche(shop, nicheKey) {
+  await fetch("/admin/api/research/shop-niche/remove", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ shop, nicheKey }) });
+  loadPortfolio();
+}
+async function cycleStatus(shop, nicheKey, cur) {
+  const next = cur === 'testing' ? 'scaling' : cur === 'scaling' ? 'dropped' : 'testing';
+  await fetch("/admin/api/research/shop-niche/status", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ shop, nicheKey, status: next }) });
+  loadPortfolio();
+}
+
+// Từ chip ngách → sang Research Win, lọc sẵn ngách + đặt sẵn shop đích → Đăng 1-click.
+function viewNicheProducts(shop, nicheKey) {
+  document.querySelector('.nav-item[data-view="research"]').click();
+  let tries = 0;
+  const apply = () => {
+    const ns = $("#researchNiche");
+    const ready = ns && [...ns.options].some((o) => o.value === nicheKey);
+    if (ready) {
+      ns.value = nicheKey;
+      const ss = $("#researchShop"); if (ss && [...ss.options].some((o) => o.value === shop)) ss.value = shop;
+      const st = $("#researchStatus"); if (st) st.value = "";
+      loadCandidates();
+      toast(`Lọc ngách "${nicheKey}" · shop đích "${shop}"`, "success");
+    } else if (tries++ < 25) {
+      setTimeout(apply, 150);
+    }
+  };
+  setTimeout(apply, 150);
+}
+
+const _bar = (v, color) => `<div style="background:var(--bg); border-radius:4px; height:14px; width:46px; display:inline-block; vertical-align:middle; overflow:hidden;"><div style="height:100%; width:${Math.max(0,Math.min(100,v))}%; background:${color};"></div></div> <span style="font-size:0.72rem;">${v}</span>`;
+
+async function loadNicheLab() {
+  const day = $("#labDay").value;
+  const wrap = $("#labTableWrap");
+  wrap.innerHTML = '<div class="empty">⏳ Đang tính DropScore…</div>';
+  try {
+    const d = await (await fetch("/admin/api/research/dropscore?day=" + encodeURIComponent(day || ""))).json();
+    const rows = d.niches || [];
+    if (!rows.length) { wrap.innerHTML = '<div class="empty">Chưa có data ngách ngày này — chạy research + thu demand trước.</div>'; return; }
+    $("#labMeta").textContent = `${d.day} · ${rows.length} ngách · xếp theo DropScore (cao = nên test trước)`;
+    wrap.innerHTML = `
+      <table style="width:100%;">
+        <thead><tr>
+          <th>Ngách</th><th>DropScore</th><th>📈 Trend</th><th>💲 Rẻ</th><th>🛡️ Ít refund</th><th>📦 Nguồn</th>
+          <th>Cost SHEIN</th><th>Demand category</th><th>Fit/★/Local</th>
+        </tr></thead>
+        <tbody>
+        ${rows.map((r) => {
+          const dc = r.dropScore >= 75 ? '#16a34a' : r.dropScore >= 65 ? 'var(--accent)' : 'var(--text-mute)';
+          return `<tr>
+            <td><b style="cursor:pointer;" title="Xem sản phẩm ngách này (lọc sẵn ở Research Win)" onclick="viewNicheProducts('', '${escapeHtml(r.nicheKey)}')">👁 ${escapeHtml(r.nicheKey)}</b><br><span style="color:var(--text-mute); font-size:0.7rem;">${escapeHtml(r.group)}</span></td>
+            <td><span class="badge" style="background:${dc}; color:#fff; font-weight:700; font-size:0.9rem;">${r.dropScore}</span></td>
+            <td>${_bar(r.trend, 'var(--accent)')}</td>
+            <td>${_bar(r.cheap, '#16a34a')}</td>
+            <td>${_bar(r.refundSafe, '#d97706')}</td>
+            <td>${_bar(r.supply, 'var(--text-mute)')}</td>
+            <td><b>$${r.medianCost ?? '?'}</b></td>
+            <td style="font-size:0.76rem;">${escapeHtml(r.demandCategory || '-')}</td>
+            <td style="font-size:0.74rem; color:var(--text-mute);">${r.trueToSize != null ? '📏' + r.trueToSize + '%' : '—'} ${r.rating != null ? '★' + r.rating : ''} ${r.pctLocal != null ? '🏠' + Math.round(r.pctLocal * 100) + '%' : ''}${r.validatedCount ? '' : ' <i>(chưa validate)</i>'}</td>
+          </tr>`;
+        }).join('')}
+        </tbody>
+      </table>
+      <div style="margin-top:10px; color:var(--text-mute); font-size:0.76rem;">💡 Rẻ = giá gốc SHEIN thấp (ít vốn stock). Ít refund = true-to-size + rating + %local + độ đơn giản nhóm (set/giày bị trừ). Validate ngách (Kiki) để Fit/Local chính xác hơn.</div>`;
+  } catch (err) {
+    wrap.innerHTML = `<div class="empty" style="color:var(--danger)">Lỗi: ${escapeHtml(err.message)}</div>`;
+  }
+}
+
+async function loadDemand() {
+  const box = $("#researchDemand");
+  try {
+    const d = await (await fetch("/admin/api/research/demand?sort=growth")).json();
+    const cats = d.categories || [];
+    if (!cats.length) { box.style.display = 'none'; return; }
+    box.style.display = '';
+    const chips = cats.slice(0, 14).map((c) => {
+      const g = c.growthRate != null ? Math.round(c.growthRate * 100) : null;
+      const col = g != null && g >= 30 ? '#16a34a' : g != null && g < 0 ? '#dc2626' : 'var(--text-mute)';
+      const t10 = c.top10Ratio != null ? Math.round(c.top10Ratio * 100) : null;
+      return `<span class="badge" style="border:1px solid ${col}; color:${col}; cursor:pointer;" data-name="${escapeHtml(c.name)}" onclick="drillCategory(this.dataset.name)" title="L${c.level} · top10 ${t10}% (thấp=dễ chen) · slope ${c.trendSlope ?? '?'} — click xem sản phẩm SHEIN + Kalodata">${escapeHtml(c.name)} ${g != null ? (g >= 0 ? '+' : '') + g + '%' : ''}</span>`;
+    }).join(' ');
+    box.innerHTML = `<div style="display:flex; gap:8px; align-items:center; margin-bottom:6px;"><b>📈 Demand TikTok US</b><span style="color:var(--text-mute); font-size:0.75rem;">${d.day} · ngách growth cao nhất (xanh=lên, đỏ=xuống)</span></div><div style="display:flex; gap:6px; flex-wrap:wrap;">${chips}</div>`;
+  } catch { box.style.display = 'none'; }
+}
+
+async function drillCategory(name) {
+  const modal = $("#drillModal");
+  modal.style.display = 'flex';
+  $("#drillTitle").textContent = "📦 " + name;
+  $("#drillBody").innerHTML = '<div class="empty">⏳ Đang tải sản phẩm SHEIN + Kalodata…</div>';
+  try {
+    const d = await (await fetch("/admin/api/research/category-drill?name=" + encodeURIComponent(name))).json();
+    if (d.error) throw new Error(d.error);
+    const fmtRev = (r) => r != null ? (r >= 1e9 ? (r / 1e9).toFixed(1) + 'b' : r >= 1e6 ? (r / 1e6).toFixed(0) + 'm' : Math.round(r)) : '?';
+    const kalo = (d.kalodata || []).map((p) => `<div style="display:flex; gap:8px; align-items:center; padding:6px; border-bottom:1px solid var(--border); font-size:0.78rem;">
+        <span>${p.isLocal ? '🏠' : '✈️'}</span>
+        <div style="flex:1;"><b>₫${fmtRev(p.revenue)}</b> · sale ${p.sale ?? '?'} ${p.rating ? '★' + p.rating : ''} ${p.commissionRate != null ? '· hoa hồng ' + Math.round(p.commissionRate * 100) + '%' : ''}<br><span style="color:var(--text-mute);">${escapeHtml((p.title || '').slice(0, 75))}</span></div>
+      </div>`).join('');
+    const shein = (d.shein || []).map((p) => `<a href="${escapeHtml(p.url || '#')}" target="_blank" style="display:block; text-decoration:none; color:inherit; border:1px solid var(--border); border-radius:8px; overflow:hidden;">
+        <img src="${escapeHtml(p.image)}" loading="lazy" style="width:100%; aspect-ratio:3/4; object-fit:cover; background:var(--bg);">
+        <div style="padding:5px; font-size:0.72rem;"><b style="color:var(--accent);">win ${p.winScore}</b> · $${p.price ?? '-'} · ${p.commentNum}rv<br>${escapeHtml((p.name || '').slice(0, 45))}</div>
+      </a>`).join('');
+    $("#drillBody").innerHTML = `
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
+        <div>
+          <h3 style="margin:0 0 8px; color:#16a34a;">🟢 Kalodata — đang bán chạy TikTok (${(d.kalodata || []).length})</h3>
+          ${d.kalodataAvailable ? `<div>${kalo}</div>` : '<div class="empty">Ngách này chưa pre-pull (chỉ top 24 fashion theo growth có sẵn). Bấm "Thu demand TikTok" lại để lấy thêm.</div>'}
+        </div>
+        <div>
+          <h3 style="margin:0 0 8px; color:var(--danger);">🔴 SHEIN — nguồn cung (${(d.shein || []).length}) · search "${escapeHtml(d.query)}"</h3>
+          <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(115px,1fr)); gap:8px;">${shein || '<div class="empty">Không có kết quả SHEIN</div>'}</div>
+        </div>
+      </div>`;
+  } catch (err) {
+    $("#drillBody").innerHTML = `<div class="empty" style="color:var(--danger)">Lỗi: ${escapeHtml(err.message)}</div>`;
+  }
+}
+
+async function collectDemand() {
+  if (!confirm("Thu demand TikTok US từ Kalodata qua Kiki (~1-2 phút, cần Kiki online + cookie kalodata.json)?\nDùng cho demandFit khi chấm opportunityScore.")) return;
+  try {
+    const res = await fetch("/admin/api/research/collect-demand", { method: "POST" });
+    const d = await res.json();
+    if (!res.ok) throw new Error(d.error);
+    toast("Đang thu demand Kalodata — xem live log. Tự refresh sau ~2 phút.", "success");
+    setTimeout(loadDemand, 120000);
+  } catch (err) { toast("Lỗi: " + err.message, "error"); }
+}
+
 async function aiResearch() {
   if (!confirm("Gọi Gemini phân tích danh sách hôm nay (1 lượt, ~5-15s)?")) return;
   try {
@@ -2056,6 +2713,28 @@ async function validateResearch() {
       await loadCandidates();
       if (ticks >= 24) { clearInterval(iv); $("#researchRunBadge").style.display = 'none'; }
     }, 25000);
+  } catch (err) { toast("Lỗi: " + err.message, "error"); }
+}
+
+async function validateNiche() {
+  const profileId = $("#researchProfile").value;
+  const niche = $("#researchNiche") && $("#researchNiche").value;
+  if (!niche) { toast("Chọn 1 ngách ở dropdown 'Ngách' trước (hoặc bấm 👁 từ Niche Lab)", "error"); return; }
+  if (!profileId) { toast("Chọn Kiki profile trước", "error"); return; }
+  if (!confirm(`Soi ngách "${niche}": pre-filter (bỏ rating<4 / giá cao / IP) + validate top ~15 sp bằng Kiki (~3-5 phút).\nXong lọc Verdict=PASS để biết sp nào OK list.`)) return;
+  try {
+    const res = await fetch("/admin/api/research/validate-niche", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ niche, profileId, day: $("#researchDay").value, limit: 15 }),
+    });
+    const d = await res.json();
+    if (!res.ok) throw new Error(d.error);
+    if (d.promoted === 0) { toast(d.note || "Không sp nào qua pre-filter", "error"); return; }
+    $("#researchRunBadge").textContent = `🎯 soi "${niche}" (${d.promoted} sp)…`;
+    $("#researchRunBadge").style.display = '';
+    toast(`Đang soi ${d.promoted} sp ngách "${niche}" — xem live log. Xong lọc Verdict=PASS.`, "success");
+    let ticks = 0;
+    const iv = setInterval(async () => { ticks++; await loadCandidates(); if (ticks >= 24) { clearInterval(iv); $("#researchRunBadge").style.display = 'none'; } }, 25000);
   } catch (err) { toast("Lỗi: " + err.message, "error"); }
 }
 
@@ -2524,6 +3203,319 @@ async function runBatch() {
   }
 }
 
+async function scanPod() {
+  const btn = $("#podScanBtn");
+  const old = btn ? btn.textContent : "";
+  if (btn) { btn.disabled = true; btn.textContent = "⏳ Đang quét…"; }
+  try {
+    const res = await fetch("/admin/api/pod/scan", { method: "POST" });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+    if (data.created === 0 && data.failed === 0) {
+      toast("Không có ảnh POD nào trong inbox");
+    } else {
+      toast(`🎨 Tạo ${data.created} listing POD${data.failed ? ` (lỗi ${data.failed})` : ""}`);
+    }
+    setTimeout(loadShopsOrListings, 1200);
+  } catch (err) {
+    toast(err.message, "error");
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = old; }
+  }
+}
+
+// ─── POD Tee (kéo-thả) ─────────────────────────────────
+state.pod = { staged: [], bound: false };
+
+async function initPod() {
+  // Nạp danh sách shop vào dropdown (tái dùng endpoint shops của Listings)
+  try {
+    const res = await fetch("/admin/api/listings/shops");
+    const data = await res.json();
+    const sel = $("#podShop");
+    const cur = sel.value;
+    sel.innerHTML = '<option value="">— Chọn shop —</option>' +
+      (data.shops || []).map((s) => `<option value="${escapeHtml(s.folder)}">${escapeHtml(s.folder)}</option>`).join("");
+    if (cur) sel.value = cur;
+  } catch { /* ignore */ }
+
+  loadPodConfig();
+  loadPodMaterials();
+
+  if (state.pod.bound) return;
+  state.pod.bound = true;
+
+  // Material drop zone
+  const mdrop = $("#podMatDrop"), mfile = $("#podMatFile");
+  mdrop.onclick = () => mfile.click();
+  mfile.onchange = () => { addPodMaterials(mfile.files); mfile.value = ""; };
+  ["dragenter", "dragover"].forEach((e) => mdrop.addEventListener(e, (ev) => { ev.preventDefault(); mdrop.style.background = "var(--bg-card)"; }));
+  ["dragleave", "drop"].forEach((e) => mdrop.addEventListener(e, (ev) => { ev.preventDefault(); mdrop.style.background = "var(--bg-elev)"; }));
+  mdrop.addEventListener("drop", (ev) => addPodMaterials(ev.dataTransfer.files));
+
+  const drop = $("#podDrop"), input = $("#podFile");
+  drop.onclick = () => input.click();
+  input.onchange = () => { addPodFiles(input.files); input.value = ""; };
+  ["dragenter", "dragover"].forEach((e) => drop.addEventListener(e, (ev) => {
+    ev.preventDefault(); drop.style.background = "var(--bg-card)"; drop.style.borderColor = "var(--success, #4caf50)";
+  }));
+  ["dragleave", "drop"].forEach((e) => drop.addEventListener(e, (ev) => {
+    ev.preventDefault(); drop.style.background = "var(--bg-elev)"; drop.style.borderColor = "var(--accent)";
+  }));
+  drop.addEventListener("drop", (ev) => addPodFiles(ev.dataTransfer.files));
+}
+
+function addPodFiles(fileList) {
+  const files = Array.from(fileList || []).filter((f) => /^image\/(png|jpe?g|webp)$/i.test(f.type));
+  if (!files.length) return;
+  let pending = files.length;
+  files.forEach((f) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      state.pod.staged.push({
+        id: Math.random().toString(36).slice(2),
+        title: f.name.replace(/\.[^.]+$/, "").trim(),
+        fileName: f.name,
+        dataUrl: reader.result,
+      });
+      if (--pending === 0) renderPodStaged();
+    };
+    reader.readAsDataURL(f);
+  });
+}
+
+function renderPodStaged() {
+  const wrap = $("#podStaged");
+  const list = state.pod.staged;
+  $("#podCount").textContent = list.length;
+  $("#podActions").style.display = list.length ? "flex" : "none";
+  if (!list.length) { wrap.innerHTML = ""; return; }
+  wrap.innerHTML = list.map((s) => `
+    <div style="display:flex; align-items:center; gap:12px; padding:8px; border:1px solid var(--border, #333); border-radius:8px; margin-bottom:8px;">
+      <img src="${s.dataUrl}" style="width:56px; height:56px; object-fit:cover; border-radius:6px; flex-shrink:0;" />
+      <input style="flex:1;" value="${escapeHtml(s.title)}" oninput="podSetTitle('${s.id}', this.value)" placeholder="Title listing" />
+      <button class="btn btn-ghost" style="padding:4px 10px;" onclick="podRemove('${s.id}')">🗑</button>
+    </div>`).join("");
+}
+
+function podSetTitle(id, val) { const it = state.pod.staged.find((x) => x.id === id); if (it) it.title = val; }
+function podRemove(id) { state.pod.staged = state.pod.staged.filter((x) => x.id !== id); renderPodStaged(); }
+function podClear() { state.pod.staged = []; renderPodStaged(); }
+
+async function podCreateAll() {
+  const shop = $("#podShop").value;
+  if (!shop) return toast("Chọn shop trước", "error");
+  const list = [...state.pod.staged];
+  if (!list.length) return;
+  const bad = list.find((s) => !s.title.trim());
+  if (bad) return toast("Có listing chưa nhập title", "error");
+
+  const btn = $("#podCreateBtn"); btn.disabled = true;
+  let ok = 0, fail = 0;
+  for (const s of list) {
+    try {
+      const res = await fetch("/admin/api/pod/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ shop, title: s.title.trim(), imageBase64: s.dataUrl }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      ok++;
+      state.pod.staged = state.pod.staged.filter((x) => x.id !== s.id);
+      renderPodStaged();
+    } catch (err) {
+      fail++;
+      console.warn("POD create lỗi:", err.message);
+    }
+  }
+  btn.disabled = false;
+  toast(`🎨 Tạo ${ok} listing POD${fail ? ` (lỗi ${fail})` : ""} → đã vào hàng đợi shop ${shop}`);
+}
+
+// ─── POD config (attributes/giá/màu/size/ngách) ────────
+function podAttrRow(k = "", v = "") {
+  return `<div class="pod-attr-row" style="display:grid; grid-template-columns:1fr 1.5fr auto; gap:6px; margin-bottom:6px;">
+    <input class="pod-attr-k" value="${escapeHtml(k)}" placeholder="Material" />
+    <input class="pod-attr-v" value="${escapeHtml(v)}" placeholder="100% Cotton" />
+    <button class="btn btn-ghost" style="padding:4px 8px;" onclick="this.parentElement.remove()">🗑</button>
+  </div>`;
+}
+function podAddAttrRow() { $("#podCfgAttrs").insertAdjacentHTML("beforeend", podAttrRow()); }
+
+function podSurRow(size = "", amt = "") {
+  return `<div class="pod-sur-row" style="display:grid; grid-template-columns:1fr 1fr auto; gap:6px; margin-bottom:6px;">
+    <input class="pod-sur-k" value="${escapeHtml(size)}" placeholder="XXL" />
+    <input class="pod-sur-v" type="number" step="0.01" value="${escapeHtml(String(amt))}" placeholder="2" />
+    <button class="btn btn-ghost" style="padding:4px 8px;" onclick="this.parentElement.remove()">🗑</button>
+  </div>`;
+}
+function podAddSurRow() { $("#podCfgSur").insertAdjacentHTML("beforeend", podSurRow()); }
+
+async function loadPodConfig() {
+  try {
+    const res = await fetch("/admin/api/pod/config");
+    const c = await res.json();
+    if (!res.ok) throw new Error(c.error);
+    $("#podCfgPrice").value = c.finalPrice ?? "";
+    $("#podCfgSizes").value = (c.sizes || []).join(", ");
+    $("#podCfgPalette").value = (c.palette || []).join(", ");
+    $("#podCfgMaterialDir").value = c.materialDir ?? "";
+    $("#podCfgAux").value = c.auxImages ?? (c.materialsPick?.max ?? 6);
+    $("#podCfgCategories").value = (c.categories || []).join("\n");
+    $("#podCfgAttrs").innerHTML =
+      Object.entries(c.attributes || {}).map(([k, v]) => podAttrRow(k, v)).join("") || podAttrRow();
+    $("#podCfgSur").innerHTML =
+      Object.entries(c.sizeSurcharge || {}).map(([k, v]) => podSurRow(k, v)).join("") || podSurRow();
+  } catch (err) { toast("Không tải được config POD: " + err.message, "error"); }
+}
+
+async function savePodConfig() {
+  const attributes = {};
+  document.querySelectorAll("#podCfgAttrs .pod-attr-row").forEach((r) => {
+    const k = r.querySelector(".pod-attr-k").value.trim();
+    const v = r.querySelector(".pod-attr-v").value.trim();
+    if (k && v) attributes[k] = v;
+  });
+  const sizeSurcharge = {};
+  document.querySelectorAll("#podCfgSur .pod-sur-row").forEach((r) => {
+    const k = r.querySelector(".pod-sur-k").value.trim();
+    const v = parseFloat(r.querySelector(".pod-sur-v").value);
+    if (k && !isNaN(v) && v !== 0) sizeSurcharge[k] = v;
+  });
+  const split = (id, sep) => $(id).value.split(sep).map((s) => s.trim()).filter(Boolean);
+  const body = {
+    finalPrice: $("#podCfgPrice").value,
+    sizes: split("#podCfgSizes", ","),
+    palette: split("#podCfgPalette", ","),
+    categories: split("#podCfgCategories", "\n"),
+    materialDir: $("#podCfgMaterialDir").value.trim(),
+    auxImages: +$("#podCfgAux").value,
+    sizeSurcharge,
+    attributes,
+  };
+  try {
+    const res = await fetch("/admin/api/pod/config", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+    toast("✓ Đã lưu config POD");
+    loadPodMaterials(); // folder material có thể đổi
+  } catch (err) { toast(err.message, "error"); }
+}
+
+// ─── POD material (xem/upload/xoá) ─────────────────────
+async function loadPodMaterials() {
+  try {
+    const res = await fetch("/admin/api/pod/materials");
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+    $("#podMatDir").textContent = "📂 " + data.dir + ` · ${data.items.length} ảnh`;
+    const grid = $("#podMatGrid");
+    grid.innerHTML = (data.items || []).map((it) => {
+      const url = "/admin/api/pod/materials/file?name=" + encodeURIComponent(it.name);
+      return `<div style="position:relative; width:90px;">
+        <img src="${url}" title="${escapeHtml(it.name)}" style="width:90px; height:90px; object-fit:cover; border-radius:8px; border:1px solid var(--border,#333);" />
+        <button onclick="delPodMaterial('${encodeURIComponent(it.name)}')" title="Xoá"
+          style="position:absolute; top:-6px; right:-6px; background:var(--danger,#e44); color:#fff; border:none; border-radius:50%; width:22px; height:22px; cursor:pointer; font-size:12px;">×</button>
+        <div style="font-size:0.68rem; color:var(--text-mute); margin-top:3px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(it.name)}</div>
+      </div>`;
+    }).join("") || '<div class="empty" style="color:var(--text-mute); font-size:0.85rem;">Chưa có ảnh material nào.</div>';
+  } catch (err) { $("#podMatGrid").innerHTML = `<div style="color:var(--danger);">${err.message}</div>`; }
+}
+
+function addPodMaterials(fileList) {
+  const files = Array.from(fileList || []).filter((f) => /^image\/(png|jpe?g|webp)$/i.test(f.type));
+  if (!files.length) return;
+  let pending = files.length, ok = 0;
+  files.forEach((f) => {
+    const reader = new FileReader();
+    reader.onload = async () => {
+      try {
+        const res = await fetch("/admin/api/pod/materials", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ fileName: f.name, imageBase64: reader.result }),
+        });
+        if (res.ok) ok++;
+      } catch { /* ignore */ }
+      if (--pending === 0) { toast(`Đã thêm ${ok}/${files.length} ảnh material`); loadPodMaterials(); }
+    };
+    reader.readAsDataURL(f);
+  });
+}
+
+async function delPodMaterial(encName) {
+  if (!confirm("Xoá ảnh material này?")) return;
+  try {
+    const res = await fetch("/admin/api/pod/materials?name=" + encName, { method: "DELETE" });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+    loadPodMaterials();
+  } catch (err) { toast(err.message, "error"); }
+}
+
+// ─── Cào ảnh ───────────────────────────────────────────
+async function runCrawl() {
+  const url = $("#crawlUrl").value.trim();
+  if (!/^https?:\/\//i.test(url)) return toast("Nhập URL hợp lệ", "error");
+  const btn = $("#crawlBtn"); const logEl = $("#crawlLog");
+  btn.disabled = true; btn.textContent = "⏳ Đang cào…";
+  logEl.style.display = "block"; logEl.textContent = "⏳ Gửi yêu cầu…\n";
+  const append = (s) => { logEl.textContent += s; logEl.scrollTop = logEl.scrollHeight; };
+  try {
+    const res = await fetch("/admin/api/crawl-images", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        url,
+        mode: $("#crawlMode").value,
+        targetWidth: +$("#crawlWidth").value || 1280,
+        maxImages: +$("#crawlMaxImg").value || 0,
+        outputDir: $("#crawlOutDir").value.trim() || undefined,
+        loadMoreSelector: $("#crawlLoadSel").value.trim() || undefined,
+        linkPattern: $("#crawlLinkPat").value.trim() || undefined,
+        cardSelector: $("#crawlCardSel").value.trim() || undefined,
+        titleSelector: $("#crawlTitleSel").value.trim() || undefined,
+      }),
+    });
+    if (!res.ok && res.headers.get("content-type")?.includes("json")) {
+      throw new Error((await res.json()).error);
+    }
+    logEl.textContent = "";
+    // Đọc stream từng dòng realtime
+    const reader = res.body.getReader();
+    const dec = new TextDecoder();
+    let buf = "";
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      const lines = buf.split("\n");
+      buf = lines.pop();
+      for (const line of lines) {
+        if (line.startsWith("__RESULT__")) {
+          const r = JSON.parse(line.slice(10));
+          toast(`🖼️ Lưu ${r.saved} ảnh${r.failed ? ` (lỗi ${r.failed})` : ""} → ${r.dir}`);
+        } else if (line.startsWith("__ERROR__")) {
+          append("\n❌ " + line.slice(9));
+          toast(line.slice(9), "error");
+        } else {
+          append(line + "\n");
+        }
+      }
+    }
+  } catch (err) {
+    append("\n❌ " + err.message);
+    toast(err.message, "error");
+  } finally {
+    btn.disabled = false; btn.textContent = "▶ Bắt đầu cào";
+  }
+}
+
 function openCreateShop() {
   if (state.user.role === "viewer") return toast("Viewer không thể tạo shop", "error");
   $("#modalTitle").textContent = "+ Tạo shop mới";
@@ -2756,37 +3748,8 @@ function renderUsers() {
           })()}
         </div>
       </div>
-      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 8px;">
-        <label class="field"><span>⏰ Auto cron <span style="color:var(--text-mute);">(cron tự pick file của user này)</span></span>
-          <select data-i="${i}" data-field="autoCronOverride" ${canEdit?'':'disabled'}>
-            <option value="" ${u.autoCronOverride === null || u.autoCronOverride === undefined ? 'selected' : ''}>Theo mặc định system</option>
-            <option value="true" ${u.autoCronOverride === true ? 'selected' : ''}>🟢 BẬT auto</option>
-            <option value="false" ${u.autoCronOverride === false ? 'selected' : ''}>🔴 TẮT (manual)</option>
-          </select>
-        </label>
-        <label class="field"><span>🖥️ Headless <span style="color:var(--text-mute);">(ẩn/hiện browser khi worker chạy)</span></span>
-          <select data-i="${i}" data-field="headlessOverride" ${canEdit?'':'disabled'}>
-            <option value="" ${u.headlessOverride === null || u.headlessOverride === undefined ? 'selected' : ''}>Theo mặc định system</option>
-            <option value="false" ${u.headlessOverride === false ? 'selected' : ''}>Hiện browser (debug)</option>
-            <option value="true" ${u.headlessOverride === true ? 'selected' : ''}>Chạy ngầm (production)</option>
-          </select>
-        </label>
-      </div>
-      <div style="margin-top: 8px; padding: 10px 12px; background: var(--bg-elev); border: 1px dashed var(--accent); border-radius: 8px;">
-        <div style="font-size: 0.82rem; color: var(--text-dim); margin-bottom: 6px;">
-          💰 <strong>Pricing override</strong> &nbsp;<span style="color:var(--text-mute);">(rỗng = theo system. Formula: (price + ship) × mult + extra)</span>
-        </div>
-        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px;">
-          <label class="field" style="margin:0;"><span style="font-size: 0.78rem;">📦 Ship fee</span>
-            <input type="number" step="0.01" placeholder="5" value="${u.shipFeeOverride !== null && u.shipFeeOverride !== undefined ? u.shipFeeOverride : ''}" data-i="${i}" data-field="shipFeeOverride" ${canEdit?'':'disabled'} />
-          </label>
-          <label class="field" style="margin:0;"><span style="font-size: 0.78rem;">📈 Multiplier</span>
-            <input type="number" step="0.01" placeholder="1.6" value="${u.multiplierOverride !== null && u.multiplierOverride !== undefined ? u.multiplierOverride : ''}" data-i="${i}" data-field="multiplierOverride" ${canEdit?'':'disabled'} />
-          </label>
-          <label class="field" style="margin:0;"><span style="font-size: 0.78rem;">➕ Extra add</span>
-            <input type="number" step="0.01" placeholder="0" value="${u.extraAddOverride !== null && u.extraAddOverride !== undefined ? u.extraAddOverride : ''}" data-i="${i}" data-field="extraAddOverride" ${canEdit?'':'disabled'} />
-          </label>
-        </div>
+      <div style="margin-top: 8px; padding: 8px 12px; background: var(--bg-elev); border-radius: 8px; font-size: 0.78rem; color: var(--text-mute);">
+        ⚙️ Auto cron · Headless · Pricing → cấu hình chung tại <strong>Settings</strong> (áp dụng cho mọi user).
       </div>
       ${
         u.username === state.user.username
@@ -2819,26 +3782,7 @@ function renderUsers() {
         rebuildUserShops(i);
         return;
       }
-      if (f === "autoCronOverride" || f === "headlessOverride") {
-        // 3-state: "" = null (inherit), "true" → true, "false" → false
-        if (el.value === "") state.config.users[i][f] = null;
-        else state.config.users[i][f] = el.value === "true";
-        // Auto-save ngay (toggle 1 click → ghi luôn DB, không cần bấm Lưu)
-        saveConfig(true);
-      } else if (f === "shipFeeOverride" || f === "multiplierOverride" || f === "extraAddOverride") {
-        // "" = inherit (null), number = explicit
-        const v = el.value.trim();
-        if (v === "") state.config.users[i][f] = null;
-        else {
-          const n = Number(v);
-          if (isFinite(n)) state.config.users[i][f] = n;
-        }
-        // Debounce auto-save 600ms để khỏi save mỗi keystroke
-        clearTimeout(state.pricingDebounce);
-        state.pricingDebounce = setTimeout(() => saveConfig(true), 600);
-      } else {
-        state.config.users[i][f] = el.value;
-      }
+      state.config.users[i][f] = el.value;
     };
     el.oninput = handler;
     el.onchange = handler;  // select cần onchange
@@ -2849,8 +3793,6 @@ function addUser() {
   state.config.users.push({
     username: "", password: "", role: "editor", profiles: [],
     downloadDir: "", baseSheinAutoDir: "",
-    autoCronOverride: null, headlessOverride: null,
-    shipFeeOverride: null, multiplierOverride: null, extraAddOverride: null,
     brandProfilesOverride: null,
   });
   renderUsers();

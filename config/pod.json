@@ -1,0 +1,99 @@
+{
+  "_comment": "Template POD T-shirt. Tất cả áo POD dùng chung size_chart/attributes/measure_guide; chỉ khác title (= tên file ảnh) + random màu + random 1 trong categories. finalPrice = GIÁ BÁN CUỐI (không nhân multiplier). SKU = TA-ddmm-{shopname}.",
+  "categories": [
+    "Womenswear & Underwear / Women's Tops / Women's T-shirts",
+    "Menswear & Underwear / Men's Tops / T-shirts / Men's Short-sleeve T-shirts"
+  ],
+  "finalPrice": "17.99",
+  "sizeSurcharge": {
+    "XXL": 2,
+    "3XL": 4
+  },
+  "brand_name": "",
+  "sizes": [
+    "S",
+    "M",
+    "L",
+    "XL",
+    "XXL",
+    "3XL"
+  ],
+  "palette": [
+    "Black",
+    "White",
+    "Navy",
+    "Sport Grey",
+    "Red",
+    "Royal Blue",
+    "Sand"
+  ],
+  "colorsPerListing": {
+    "min": 4,
+    "max": 6
+  },
+  "auxImages": 6,
+  "attributes": {
+    "Material": "100% Combed Ring-Spun Cotton",
+    "Fit Type": "Unisex Regular Fit",
+    "Sleeve Length": "Short Sleeve",
+    "Neckline": "Crew Neck",
+    "Care Instructions": "Machine wash cold, tumble dry low, do not bleach"
+  },
+  "size_chart": {
+    "unit": "inch",
+    "data": [
+      {
+        "Size": "S",
+        "Chest": "34-37",
+        "Length": "28",
+        "Sleeve": "8"
+      },
+      {
+        "Size": "M",
+        "Chest": "38-41",
+        "Length": "29",
+        "Sleeve": "8.5"
+      },
+      {
+        "Size": "L",
+        "Chest": "42-45",
+        "Length": "30",
+        "Sleeve": "9"
+      },
+      {
+        "Size": "XL",
+        "Chest": "46-49",
+        "Length": "31",
+        "Sleeve": "9.5"
+      },
+      {
+        "Size": "XXL",
+        "Chest": "50-53",
+        "Length": "32",
+        "Sleeve": "10"
+      }
+    ]
+  },
+  "measure_guide": {
+    "items": [
+      {
+        "index": "1",
+        "name": "Chest",
+        "desc": "Measure under the arms, across the fullest part of the chest."
+      },
+      {
+        "index": "2",
+        "name": "Length",
+        "desc": "Measure from the highest shoulder point straight down to the bottom hem."
+      },
+      {
+        "index": "3",
+        "name": "Sleeve",
+        "desc": "Measure from the shoulder seam to the end of the sleeve."
+      }
+    ],
+    "image": null
+  },
+  "descriptionTemplate": "<p style=\"font-size:16px;\"><strong>Premium Print-On-Demand Tee</strong></p><p>Each shirt is made-to-order on soft, breathable ring-spun cotton with a durable, fade-resistant print. True-to-size unisex fit — great for everyday wear and gifting.</p><p><br></p>",
+  "materialDir": ""
+}

@@ -197,6 +197,68 @@ const MIGRATIONS: ((db: Database.Database) => void)[] = [
       CREATE INDEX IF NOT EXISTS idx_rc_verdict ON research_candidate(day, verdict);
     `);
   },
+  // v9: P3 Demand layer (Kalodata) — snapshot demand TikTok US theo ngày.
+  (db) => {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS kalodata_category (
+        day TEXT NOT NULL,
+        cate_id TEXT NOT NULL,
+        name TEXT NOT NULL DEFAULT '',
+        level TEXT NOT NULL DEFAULT '',
+        revenue REAL,                  -- đã parse ra số (VND)
+        growth_rate REAL,              -- 0..1 (vd 0.04 = 4%)
+        shop_number INTEGER,
+        avg_revenue REAL,
+        top3_ratio REAL,               -- độ tập trung top 3 shop
+        top10_ratio REAL,
+        trend_slope REAL,              -- độ dốc revenue_trend (nửa cuối / nửa đầu)
+        captured_at INTEGER NOT NULL,
+        PRIMARY KEY (day, cate_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_kcat_day ON kalodata_category(day, revenue DESC);
+
+      CREATE TABLE IF NOT EXISTS kalodata_product (
+        day TEXT NOT NULL,
+        product_id TEXT NOT NULL,
+        title TEXT NOT NULL DEFAULT '',
+        revenue REAL,
+        sale INTEGER,                  -- units bán
+        unit_price REAL,
+        commission_rate REAL,
+        product_rating REAL,
+        is_local INTEGER,              -- 1 = delivery_type local / is_overseas=0
+        launch_date TEXT,
+        creator_num INTEGER,
+        pri_cate_id TEXT,
+        captured_at INTEGER NOT NULL,
+        PRIMARY KEY (day, product_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_kprod_day ON kalodata_product(day, revenue DESC);
+    `);
+  },
+  // v10: drill-down ngách — numeric id category + tag product theo category đã pull.
+  (db) => {
+    db.exec(`
+      ALTER TABLE kalodata_category ADD COLUMN numeric_id TEXT;
+      ALTER TABLE kalodata_product ADD COLUMN cate_filter TEXT;  -- category name product được pull theo (NULL = global top)
+      CREATE INDEX IF NOT EXISTS idx_kprod_cate ON kalodata_product(day, cate_filter);
+    `);
+  },
+  // v11: Niche Lab P2 — gán ngách cho từng shop (danh mục 10 shop).
+  (db) => {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS shop_niche (
+        shop TEXT NOT NULL,
+        niche_key TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'testing',  -- testing | scaling | dropped
+        note TEXT,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        PRIMARY KEY (shop, niche_key)
+      );
+      CREATE INDEX IF NOT EXISTS idx_shopniche_shop ON shop_niche(shop);
+    `);
+  },
 ];
 
 const runMigrations = (db: Database.Database): void => {

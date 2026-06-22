@@ -2,7 +2,7 @@ import fs from "fs";
 import path from "path";
 import crypto from "crypto";
 import { promises as fsPromises } from "fs";
-import nodeHtmlToImage from "node-html-to-image";
+import { renderHtmlToImage } from "./htmlToImage";
 
 const THEMES = [
   {
@@ -153,8 +153,9 @@ tbody tr { border-bottom: 1px solid ${t.rowEvenBg.replace("0.06", "0.25")}; }
 tbody tr:nth-child(even) { background: ${t.rowEvenBg}; }
 tbody tr:last-child { border-bottom: none; }
 td { color: ${t.tdColor}; font-size: ${cellFont}px; font-weight: 600; padding: ${rowPadding}px 6px; text-align: center; letter-spacing: 0; font-variant-numeric: tabular-nums; font-feature-settings: "tnum"; white-space: nowrap; }
-td:first-child { color: ${t.tdFirst}; font-size: ${cellFont - 2}px; letter-spacing: 0.5px; font-weight: 700; }
+td:first-child { color: ${t.tdFirst}; font-size: ${cellFont}px; letter-spacing: 0.5px; font-weight: 800; background: ${t.rowEvenBg.replace("0.06", "0.16")}; }
 td:nth-child(2) { color: ${t.tdSecond}; font-weight: 800; font-size: ${cellFont + 2}px; letter-spacing: 1px; }
+th:first-child { color: #fff; background: ${t.cornerColor}; }
 .footer { padding: ${footerPad}; text-align: center; flex-shrink: 0; }
 .footer .divider { width: 50px; height: 1px; background: linear-gradient(90deg, transparent, ${t.footerDivider}, transparent); margin: 0 auto ${dense ? 8 : 12}px; }
 .footer p { color: ${t.footerText}; font-size: 11px; font-style: italic; letter-spacing: 0.5px; font-family: Arial, sans-serif; }
@@ -185,87 +186,126 @@ export interface MeasureGuide {
 
 /**
  * Ảnh GỘP "Size Guide" cho gallery sản phẩm (đặt sau ảnh main trên 4Seller):
- * bảng size (1..3 mảnh) + khối "How To Measure" (sơ đồ + hướng dẫn) trong 1 ảnh.
- * - Header mỏng (bớt mảng nâu để lấy diện tích), bảng gọn nhưng thoáng.
- * - Auto-height: nội dung nhiều thì ảnh cao thêm, KHÔNG nhồi nhét.
- * - Rộng cố định 900px → mọi listing đồng bộ.
+ * bảng size + khối "How To Measure" (sơ đồ + hướng dẫn) trong 1 ảnh.
+ * - Khung CỐ ĐỊNH 900×1200 (tỉ lệ 3:4 — đúng ratio TikTok cho phép, không bị crop).
+ * - Tối đa 2 mảnh: 3 piece chỉ hiển thị 2 mảnh đầu (khung 3:4 không đủ chỗ).
+ * - Header mỏng (bớt mảng nâu). Bố cục flex phân bổ ĐỀU theo chiều dọc để đầy khung,
+ *   không bị nhồi (2 mảnh) cũng không trống huơ (1 mảnh).
  */
+export interface SizeSuggestion {
+  verdict: string;
+  pct: number;
+  advice: string;
+  rows: { size: string; height: string; weight: string }[];
+}
+
 export const generateSizeGuideImageHtml = (
   sections: SizeChartSection[],
   measureGuide?: MeasureGuide | null,
-  unit: string = "inch"
+  unit: string = "inch",
+  sizeSuggestion?: SizeSuggestion | null
 ) => {
   const t = THEMES[Math.floor(Math.random() * THEMES.length)];
-  const multi = sections.length > 1;
+  const shown = sections.slice(0, 2);
+  if (sections.length > shown.length) {
+    console.log(`📐 Size Guide: ${sections.length} mảnh → hiển thị ${shown.length} mảnh đầu.`);
+  }
+  const multi = shown.length > 1;
   const fmtCell = (v: any) => String(v ?? "").replace(/(\d)\s*[-–—]\s*(\d)/g, "$1 – $2");
+  const hasSg = !!sizeSuggestion?.rows?.length;
+  const light = t.rowEvenBg.replace("0.06", "0.5");
+  const border = t.rowEvenBg.replace("0.06", "1");
 
   const renderSection = (s: SizeChartSection) => `
-    ${multi && s.name ? `<div class="sec-title">${s.name}</div>` : ""}
-    <table>
-      <thead><tr>${s.headers.map((h) => `<th>${h}</th>`).join("")}</tr></thead>
-      <tbody>${s.data
-        .map((row) => `<tr>${s.headers.map((h) => `<td>${fmtCell(row[h])}</td>`).join("")}</tr>`)
-        .join("")}</tbody>
-    </table>`;
+    <div class="sec">
+      ${multi && s.name ? `<div class="sec-title">${s.name}</div>` : ""}
+      <table>
+        <thead><tr>${s.headers.map((h) => `<th>${h}</th>`).join("")}</tr></thead>
+        <tbody>${s.data
+          .map((row) => `<tr>${s.headers.map((h) => `<td>${fmtCell(row[h])}</td>`).join("")}</tr>`)
+          .join("")}</tbody>
+      </table>
+    </div>`;
 
-  const mg =
+  const mgInner =
     measureGuide && measureGuide.items?.length
-      ? `
-    <div class="mg-divider"></div>
-    <div class="mg-title">How To Measure</div>
-    <div class="mg-row">
-      ${measureGuide.image ? `<div class="mg-img"><img src="${measureGuide.image}" alt="measure guide"></div>` : ""}
-      <div class="mg-list">
-        ${measureGuide.items
-          .map(
-            (it, i) => `
-          <div class="mg-item">
-            <span class="mg-num">${it.index || i + 1}</span>
-            <div class="mg-text"><div class="mg-name">${it.name}</div><div class="mg-desc">${it.desc}</div></div>
-          </div>`
-          )
-          .join("")}
-      </div>
-    </div>`
+      ? `<div class="mg-row">
+        ${measureGuide.image ? `<div class="mg-img"><img src="${measureGuide.image}" alt="measure guide"></div>` : ""}
+        <div class="mg-list">
+          ${measureGuide.items
+            .map(
+              (it, i) =>
+                `<div class="mg-item"><span class="mg-num">${it.index || i + 1}</span><div><div class="mg-name">${it.name}</div><div class="mg-desc">${it.desc}</div></div></div>`
+            )
+            .join("")}
+        </div>
+      </div>`
       : "";
 
+  const sg = hasSg
+    ? `<div class="sg">
+      <div class="sg-title">Size Recommendation</div>
+      <div class="sg-verdict">${sizeSuggestion!.verdict} <b>(${sizeSuggestion!.pct}% true to size)</b></div>
+      <table class="sg-table">
+        <thead><tr><th>Size</th><th>Height</th><th>Weight</th></tr></thead>
+        <tbody>${sizeSuggestion!.rows
+          .slice(0, 6)
+          .map((r) => `<tr><td class="sg-sz">${r.size}</td><td>${r.height}</td><td>${r.weight}</td></tr>`)
+          .join("")}</tbody>
+      </table>
+      <div class="sg-advice">${sizeSuggestion!.advice}</div>
+    </div>`
+    : "";
+
+  // Layout NGANG: Size Chart | How To Measure (2 cột cùng hàng) → Size Recommendation (hàng riêng, text to).
   return `<!DOCTYPE html>
 <html><head><meta charset="UTF-8"><style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
-body { width: 900px; background: ${t.bodyBg}; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; padding: 32px 0; }
-.card { width: 836px; margin: 0 auto; background: #ffffff; border: 1px solid ${t.cardBorder}; border-radius: 4px; overflow: hidden; box-shadow: 0 6px 30px ${t.shadowColor}; }
-/* ----- Header mỏng (bớt nâu) ----- */
-.head { text-align: center; padding: 26px 40px 18px; position: relative; }
-.head .kicker { color: ${t.unitColor}; font-size: 13px; letter-spacing: 6px; text-transform: uppercase; font-weight: 600; margin-bottom: 8px; }
-.head h1 { color: ${t.thColor}; font-size: 44px; font-weight: 800; letter-spacing: 6px; text-transform: uppercase; line-height: 1; }
-.head .unit { display: inline-block; margin-top: 12px; color: #fff; background: ${t.cornerColor}; font-size: 13px; letter-spacing: 2px; font-weight: 700; padding: 5px 16px; border-radius: 20px; text-transform: uppercase; }
-.head .accent { width: 70px; height: 3px; background: ${t.accentColor}; margin: 16px auto 0; border-radius: 2px; }
-/* ----- Body ----- */
-.body { padding: 8px 40px 28px; }
-.sec-title { color: ${t.thColor}; font-size: 20px; font-weight: 800; letter-spacing: 2px; text-transform: uppercase; padding: 18px 0 8px 12px; border-left: 4px solid ${t.cornerColor}; margin-bottom: 6px; }
-table { width: 100%; border-collapse: collapse; table-layout: fixed; margin-bottom: 4px; }
+body { width: 1200px; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; }
+.card { width: 1200px; background: #fff; border: 6px solid ${border}; }
+.head { text-align: center; padding: 26px 40px 18px; border-bottom: 2px solid ${light}; }
+.head .kicker { color: ${t.unitColor}; font-size: 14px; letter-spacing: 7px; text-transform: uppercase; font-weight: 600; margin-bottom: 8px; }
+.head h1 { color: ${t.thColor}; font-size: 46px; font-weight: 800; letter-spacing: 7px; text-transform: uppercase; line-height: 1; }
+.head .unit { display: inline-block; margin-top: 11px; color: #fff; background: ${t.cornerColor}; font-size: 14px; letter-spacing: 2px; font-weight: 700; padding: 5px 18px; border-radius: 20px; text-transform: uppercase; }
+/* ----- Hàng 2 cột: chart | measure ----- */
+.main { display: flex; align-items: stretch; }
+.col { padding: 26px 32px; }
+.col-chart { flex: 1.15; border-right: 2px solid ${light}; }
+.col-measure { flex: 1; }
+.col-head { color: ${t.thColor}; font-size: 22px; font-weight: 800; letter-spacing: 3px; text-transform: uppercase; text-align: center; padding-bottom: 16px; }
+.sec { margin-bottom: 14px; }
+.sec-title { color: ${t.thColor}; font-size: 18px; font-weight: 800; letter-spacing: 2px; text-transform: uppercase; padding: 0 0 7px 10px; border-left: 4px solid ${t.cornerColor}; margin-bottom: 6px; }
+table { width: 100%; border-collapse: collapse; table-layout: fixed; }
 thead tr { background: ${t.rowEvenBg}; border-bottom: 2px solid ${t.thBorder}; }
-th { color: ${t.thColor}; font-size: 15px; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; padding: 14px 8px; text-align: center; }
+th { color: ${t.thColor}; font-size: 13px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; padding: 10px 5px; text-align: center; }
+th:first-child { color: #fff; background: ${t.cornerColor}; }
 tbody tr { border-bottom: 1px solid ${t.rowEvenBg.replace("0.06", "0.3")}; }
 tbody tr:nth-child(even) { background: ${t.rowEvenBg}; }
 tbody tr:last-child { border-bottom: none; }
-td { color: ${t.tdColor}; font-size: 22px; font-weight: 600; padding: 14px 8px; text-align: center; font-variant-numeric: tabular-nums; font-feature-settings: "tnum"; white-space: nowrap; }
-td:first-child { color: ${t.tdFirst}; font-size: 18px; font-weight: 700; }
-td:nth-child(2) { color: ${t.tdSecond}; font-weight: 800; font-size: 24px; }
-/* ----- How To Measure ----- */
-.mg-divider { height: 1px; background: ${t.thBorder}; opacity: 0.5; margin: 26px 0 0; }
-.mg-title { color: ${t.thColor}; font-size: 23px; font-weight: 800; letter-spacing: 3px; text-transform: uppercase; text-align: center; padding: 22px 0 18px; }
-.mg-row { display: flex; gap: 26px; align-items: center; }
-.mg-img { flex: 0 0 290px; }
-.mg-img img { width: 290px; height: auto; display: block; }
-.mg-list { flex: 1; display: flex; flex-direction: column; gap: 18px; }
-.mg-item { display: flex; gap: 13px; align-items: flex-start; }
+td { color: ${t.tdColor}; font-size: 16px; font-weight: 600; padding: 11px 5px; text-align: center; font-variant-numeric: tabular-nums; white-space: nowrap; }
+td:first-child { color: ${t.tdFirst}; font-weight: 800; background: ${t.rowEvenBg.replace("0.06", "0.16")}; }
+td:nth-child(2) { color: ${t.tdSecond}; font-weight: 800; font-size: 18px; }
+.mg-row { display: flex; gap: 18px; align-items: center; }
+.mg-img { flex: 0 0 175px; }
+.mg-img img { width: 175px; height: auto; display: block; }
+.mg-list { flex: 1; display: flex; flex-direction: column; gap: 13px; }
+.mg-item { display: flex; gap: 12px; align-items: flex-start; }
 .mg-num { flex: 0 0 28px; width: 28px; height: 28px; background: ${t.cornerColor}; color: #fff; font-size: 15px; font-weight: 800; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin-top: 2px; }
-.mg-name { color: ${t.thColor}; font-size: 18px; font-weight: 800; letter-spacing: 0.5px; }
-.mg-desc { color: ${t.tdColor}; font-size: 16px; line-height: 1.5; margin-top: 3px; }
-/* ----- Footer ----- */
-.foot { text-align: center; padding: 20px 40px 24px; background: ${t.rowEvenBg}; }
-.foot p { color: ${t.footerText}; font-size: 13px; font-style: italic; letter-spacing: 0.5px; }
+.mg-name { color: ${t.thColor}; font-size: 17px; font-weight: 800; }
+.mg-desc { color: ${t.tdColor}; font-size: 14px; line-height: 1.45; margin-top: 2px; }
+/* ----- Size Recommendation (hàng riêng, TEXT TO) ----- */
+.sg { border-top: 2px solid ${light}; padding: 26px 60px 18px; }
+.sg-title { color: ${t.thColor}; font-size: 30px; font-weight: 800; letter-spacing: 4px; text-transform: uppercase; text-align: center; padding-bottom: 12px; }
+.sg-verdict { text-align: center; font-size: 25px; font-weight: 700; color: ${t.tdColor}; margin-bottom: 18px; }
+.sg-verdict b { color: #16a34a; }
+.sg-table { border-collapse: collapse; width: 100%; max-width: 820px; margin: 0 auto; table-layout: fixed; }
+.sg-table th { background: ${t.cornerColor}; color: #fff; font-size: 19px; font-weight: 800; text-transform: uppercase; letter-spacing: 2px; padding: 13px 12px; }
+.sg-table tbody tr:nth-child(even) { background: ${t.rowEvenBg}; }
+.sg-table td { font-size: 24px; font-weight: 700; color: ${t.tdColor}; text-align: center; padding: 15px 12px; border-bottom: 1px solid ${t.rowEvenBg.replace("0.06", "0.3")}; font-variant-numeric: tabular-nums; }
+.sg-table .sg-sz { color: ${t.thColor}; font-weight: 800; font-size: 28px; }
+.sg-advice { text-align: center; font-style: italic; color: ${t.footerText}; font-size: 18px; margin-top: 16px; }
+.foot { text-align: center; padding: 14px 40px; background: ${t.rowEvenBg}; }
+.foot p { color: ${t.footerText}; font-size: 13px; font-style: italic; }
 </style></head>
 <body>
   <div class="card">
@@ -273,12 +313,12 @@ td:nth-child(2) { color: ${t.tdSecond}; font-weight: 800; font-size: 24px; }
       <div class="kicker">Measurements</div>
       <h1>Size Guide</h1>
       <div class="unit">Unit: ${unit}</div>
-      <div class="accent"></div>
     </div>
-    <div class="body">
-      ${sections.map(renderSection).join("")}
-      ${mg}
+    <div class="main">
+      <div class="col col-chart"><div class="col-head">Size Chart</div>${shown.map(renderSection).join("")}</div>
+      <div class="col col-measure"><div class="col-head">How To Measure</div>${mgInner}</div>
     </div>
+    ${sg}
     <div class="foot"><p>* Please refer to the measurements above for the best fit.</p></div>
   </div>
 </body></html>`;
@@ -311,16 +351,38 @@ export const extractSizeChartSections = (sc: any): SizeChartSection[] => {
 export const buildSizeGuideImageFile = async (
   sections: SizeChartSection[],
   measureGuide: MeasureGuide | null | undefined,
-  unit: string
+  unit: string,
+  sizeSuggestion?: SizeSuggestion | null
 ): Promise<string> => {
   const id = crypto.randomBytes(8).toString("hex");
   const outPath = path.join(__dirname, `temp_size_guide_${id}.png`);
-  await nodeHtmlToImage({
+  await renderHtmlToImage({
     output: outPath,
-    html: generateSizeGuideImageHtml(sections, measureGuide, unit),
-    puppeteerArgs: { defaultViewport: { width: 900, height: 1600 } },
+    html: generateSizeGuideImageHtml(sections, measureGuide, unit, sizeSuggestion),
+    viewport: { width: 1200, height: 1000 },
   });
   return outPath;
+};
+
+/**
+ * Như buildSizeGuideImageFile nhưng trả về data URI base64 (xoá file tạm luôn).
+ * Dùng để paste ảnh GỘP làm ảnh đầu trong mô tả (CKEditor upload qua clipboard image).
+ */
+export const buildSizeGuideImageDataUri = async (
+  sections: SizeChartSection[],
+  measureGuide: MeasureGuide | null | undefined,
+  unit: string
+): Promise<string> => {
+  const file = await buildSizeGuideImageFile(sections, measureGuide, unit);
+  try {
+    return `data:image/png;base64,${fs.readFileSync(file).toString("base64")}`;
+  } finally {
+    try {
+      fs.unlinkSync(file);
+    } catch {
+      /* ignore */
+    }
+  }
 };
 
 export const handleSizeChartUpload = async (page: any, jsonData: any): Promise<void> => {
@@ -337,10 +399,10 @@ export const handleSizeChartUpload = async (page: any, jsonData: any): Promise<v
 
     if (sections.length > 0) {
       console.log(`🎨 Tạo ảnh từ JSON (ID: ${uniqueId}, sections: ${sections.length})`);
-      await nodeHtmlToImage({
+      await renderHtmlToImage({
         output: tempPath,
         html: generateSizeChartHtml(sections, sc.unit || "inch"),
-        puppeteerArgs: { defaultViewport: { width: 900, height: 900 } },
+        viewport: { width: 900, height: 900 },
       });
     } else if (jsonData.size_chart_img) {
       console.log("📸 Sử dụng ảnh base64 có sẵn...");

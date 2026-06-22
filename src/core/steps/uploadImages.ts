@@ -10,20 +10,44 @@ interface VariantImageParam {
   [color: string]: string | string[];
 }
 
-const downloadToFile = async (url: string, filePath: string): Promise<void> => {
-  const response = await axios({ url, method: "GET", responseType: "stream" });
-  const writer = fs.createWriteStream(filePath);
-  response.data.pipe(writer);
-  await new Promise((resolve, reject) => {
-    writer.on("finish", () => {
-      writer.close();
-      resolve(true);
-    });
-    writer.on("error", (err) => {
-      writer.close();
-      reject(err);
-    });
-  });
+const downloadToFile = async (url: string, filePath: string, attempts = 3): Promise<void> => {
+  let lastErr: any;
+  for (let i = 1; i <= attempts; i++) {
+    try {
+      const response = await axios({
+        url,
+        method: "GET",
+        responseType: "stream",
+        timeout: 30000,
+      });
+      const writer = fs.createWriteStream(filePath);
+      await new Promise<void>((resolve, reject) => {
+        response.data.pipe(writer);
+        response.data.on("error", (err: any) => {
+          writer.close();
+          reject(err);
+        });
+        writer.on("finish", () => {
+          writer.close();
+          resolve();
+        });
+        writer.on("error", (err) => {
+          writer.close();
+          reject(err);
+        });
+      });
+      return;
+    } catch (err: any) {
+      lastErr = err;
+      if (i < attempts) {
+        console.warn(
+          `⚠️ Download lỗi (lần ${i}/${attempts}): ${err?.message} — thử lại sau ${i * 0.8}s`
+        );
+        await new Promise((r) => setTimeout(r, 800 * i));
+      }
+    }
+  }
+  throw lastErr;
 };
 
 /**
@@ -51,7 +75,7 @@ export const uploadProductImages = async (
   page: any,
   imageUrls: string[],
   remakeSeed?: string,
-  opts?: { insertAfterMainPath?: string | null }
+  opts?: { insertAfterMainPath?: string | null; prependLocalPath?: string | null }
 ): Promise<void> => {
   console.log("--- Bắt đầu quy trình Upload Ảnh (Bản an toàn đa luồng) ---");
 
@@ -73,11 +97,23 @@ export const uploadProductImages = async (
     );
     console.log(`⬇️ [${uniqueId}] Download${workerConfig().imageRemake?.enabled ? "+remake" : ""} ${imageUrls.length} ảnh mất ${Math.round((Date.now() - t0) / 1000)}s`);
 
+    // Ảnh "nhiều màu" làm ảnh MAIN (index 0) — KHÔNG remake.
+    if (opts?.prependLocalPath && fs.existsSync(opts.prependLocalPath)) {
+      localFilePaths.unshift(opts.prependLocalPath);
+      console.log(`🎨 [${uniqueId}] Prepend ảnh nhiều màu làm ảnh main (vị trí 0)`);
+    }
     // Chèn ảnh GỘP Size Guide ngay sau ảnh main (index 1) — KHÔNG remake để chữ giữ sắc nét.
     if (opts?.insertAfterMainPath && fs.existsSync(opts.insertAfterMainPath)) {
       const at = Math.min(1, localFilePaths.length);
       localFilePaths.splice(at, 0, opts.insertAfterMainPath);
       console.log(`📐 [${uniqueId}] Chèn ảnh Size Guide vào gallery ở vị trí ${at} (sau ảnh main)`);
+    }
+
+    // Defensive: ảnh MAIN TikTok tối đa 9 (gốc + prepend showcase + insert size guide) → cắt nếu dư.
+    const MAX_MAIN_IMAGES = 9;
+    if (localFilePaths.length > MAX_MAIN_IMAGES) {
+      console.log(`✂️ [${uniqueId}] Ảnh main ${localFilePaths.length} → cắt còn ${MAX_MAIN_IMAGES} (giới hạn 4Seller)`);
+      localFilePaths.splice(MAX_MAIN_IMAGES);
     }
 
     const productUploadContainer = page.locator(".file_upload__index").first();
@@ -121,6 +157,31 @@ export const uploadProductImages = async (
   }
 };
 
+/**
+ * Bật/tắt toggle "Variant Image" (el-switch, có dấu * required) trên 4Seller.
+ * POD: 1 ảnh design dùng chung mọi màu → TẮT để khỏi phải điền ảnh từng màu.
+ * Dùng xpath: el-switch ĐẦU TIÊN ngay sau nhãn "Variant Image".
+ */
+export const setVariantImageEnabled = async (page: any, enabled: boolean): Promise<void> => {
+  const sw = page
+    .locator('xpath=(//*[contains(text(),"Variant Image")]/following::*[contains(concat(" ",@class," ")," el-switch ")])[1]')
+    .first();
+  if ((await sw.count().catch(() => 0)) === 0) {
+    console.warn('⚠️ Không thấy toggle "Variant Image" — bỏ qua.');
+    return;
+  }
+  const isOn = await sw
+    .evaluate((n: HTMLElement) => n.classList.contains("is-checked"))
+    .catch(() => false);
+  if (isOn !== enabled) {
+    await sw.click();
+    await page.waitForTimeout(600);
+    console.log(`🔀 Toggle "Variant Image" → ${enabled ? "BẬT" : "TẮT"}`);
+  } else {
+    console.log(`🔀 Toggle "Variant Image" đã ${enabled ? "BẬT" : "TẮT"} sẵn.`);
+  }
+};
+
 export const uploadVariantImages = async (
   page: any,
   variantImages: VariantImageParam[],
@@ -128,10 +189,17 @@ export const uploadVariantImages = async (
 ): Promise<void> => {
   console.log("--- Bắt đầu Upload ảnh Variant (Bản Multi-Image US/DE/FR) ---");
 
+  // TikTok/4Seller giới hạn 9 ảnh/variant → CAP 9, tránh "Exceeding the image count limit"
+  //   (SHEIN có màu 10-11 ảnh). Cap ở đây để xử cả JSON cũ đã cào dư ảnh.
+  const MAX_VARIANT_IMAGES = 9;
   const imageMap: { [key: string]: string[] } = {};
   for (const item of variantImages) {
     for (const [key, value] of Object.entries(item)) {
-      imageMap[key] = Array.isArray(value) ? value : [value];
+      const arr = Array.isArray(value) ? value : [value];
+      if (arr.length > MAX_VARIANT_IMAGES) {
+        console.log(`✂️ "${key}": ${arr.length} ảnh → cắt còn ${MAX_VARIANT_IMAGES} (giới hạn 4Seller)`);
+      }
+      imageMap[key] = arr.slice(0, MAX_VARIANT_IMAGES);
     }
   }
 
@@ -140,30 +208,41 @@ export const uploadVariantImages = async (
   if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir);
 
   const failedColors: string[] = [];
+  const usedBoxIdx = new Set<number>(); // box đã upload → KHÔNG tái dùng (chống chồng ảnh + match nhầm)
 
   for (const [colorName, imageUrls] of Object.entries(imageMap)) {
     const searchColor = colorName.trim();
     const localPaths: string[] = [];
 
     try {
-      // Universal selector: support cả cấu trúc US cũ và DE/FR mới
-      const variantContainer = page
-        .locator(
-          [".variant_imgs li", ".variant_multiple_imgs .flex.column"].join(", ")
-        )
-        .filter({
-          hasText: new RegExp(`${searchColor}`, "i"),
-        });
+      // 🐞 FIX lỗi "Green rỗng" + "Exceeding image count limit": KHÔNG match substring
+      //   (vd /Green/i khớp cả "Army Green 2" → đẩy ảnh nhầm box, chồng >9 ảnh). Match nhãn
+      //   màu CHÍNH XÁC (bỏ dấu "*" required), và bỏ qua box đã dùng.
+      const boxes = page.locator([".variant_imgs li", ".variant_multiple_imgs .flex.column"].join(", "));
+      const total = await boxes.count();
+      const want = searchColor.toLowerCase();
+      const labelsSeen: string[] = [];
+      let targetBox: any = null;
+      let targetIdx = -1;
+      for (let bi = 0; bi < total; bi++) {
+        if (usedBoxIdx.has(bi)) continue;
+        const b = boxes.nth(bi);
+        let label = (await b.locator(".line_ellipsis").first().innerText().catch(() => "")).trim();
+        if (!label) label = ((await b.innerText().catch(() => "")) || "").trim().split("\n")[0];
+        label = label.replace(/\s*\*\s*$/, "").trim(); // bỏ dấu "*" (required)
+        labelsSeen.push(label);
+        if (label.toLowerCase() === want) {
+          targetBox = b;
+          targetIdx = bi;
+          break;
+        }
+      }
 
-      const count = await variantContainer.count();
-
-      if (count === 0) {
-        const currentUIColors = await page
-          .locator(".variant_imgs .line_ellipsis, .variant_multiple_imgs .flex.column")
-          .allInnerTexts();
-        console.warn(`⚠️ Bỏ qua màu: "${searchColor}". UI hiện có:`, currentUIColors);
+      if (!targetBox) {
+        console.warn(`⚠️ Bỏ qua màu: "${searchColor}" (không thấy box khớp CHÍNH XÁC). UI còn:`, labelsSeen);
         continue;
       }
+      usedBoxIdx.add(targetIdx);
 
       // Download song song trong từng màu — vẫn upload tuần tự giữa các màu
       // (vì mỗi màu là 1 DOM element riêng + 4Seller có thể không thích upload đồng thời)
@@ -181,7 +260,6 @@ export const uploadVariantImages = async (
       localPaths.push(...downloaded);
       console.log(`⬇️ Variant "${searchColor}": download ${imageUrls.length} ảnh mất ${Math.round((Date.now() - tDl) / 1000)}s`);
 
-      const targetBox = variantContainer.first();
       await targetBox.scrollIntoViewIfNeeded();
 
       const fileInput = targetBox.locator("input.file_upload__input");

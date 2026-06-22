@@ -1,0 +1,3 @@
+// GET https://www.kalodata.com/api/allLastDay
+// REQUEST: 
+{"success":true,"data":[{"country":"DE","lastDay":"2026-06-07"},{"country":"JP","lastDay":"2026-06-07"},{"country":"MX","lastDay":"2026-06-06"},{"country":"IT","lastDay":"2026-06-07"},{"country":"MY","lastDay":"2026-06-07"},{"country":"FR","lastDay":"2026-06-07"},{"country":"ES","lastDay":"2026-06-07"},{"country":"BR","lastDay":"2026-06-06"},{"country":"TH","lastDay":"2026-06-06"},{"country":"SG","lastDay":"2026-06-07"},{"country":"VN","lastDay":"2026-06-07"},{"country":"PH","lastDay":"2026-06-07"},{"country":"ID","lastDay":"2026-06-06"},{"country":"GB","lastDay":"2026-06-06"},{"country":"US","lastDay":"2026-06-06"}],"message":null,"cached":null,"code":null}

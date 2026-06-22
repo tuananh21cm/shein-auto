@@ -13,8 +13,9 @@ export const fillShippingAndCertification = async (page: any): Promise<void> => 
   try {
     const p = pricing();
     await page.getByPlaceholder("Enter the product weight").fill(p.defaultWeight);
-    await page.getByPlaceholder("Length").fill(p.defaultDimensions.length);
-    await page.getByPlaceholder("Width").fill(p.defaultDimensions.width);
+    // exact:true — tránh khớp nhầm "Select Clothing/Sleeve/Hem Length" khi Specifics đã mở rộng.
+    await page.getByPlaceholder("Length", { exact: true }).fill(p.defaultDimensions.length);
+    await page.getByPlaceholder("Width", { exact: true }).fill(p.defaultDimensions.width);
 
     const heightInput = page.locator('input[placeholder="Height"]');
     if ((await heightInput.count()) > 0) {

@@ -1,6 +1,6 @@
 import * as fs from "fs-extra";
 import * as path from "path";
-import { workerConfig } from "../config/appConfig";
+import { workerConfig, reloadAppConfig } from "../config/appConfig";
 import { listing4sellerShein } from "../core/listing4sellerShein";
 import { getProfileNameFromFolder } from "../core/steps/randomUtils";
 import { workerState } from "../state/workerState";
@@ -116,7 +116,7 @@ export const processFile = async (
       // Mỗi owner có cookie 4Seller riêng (data/cookies/<owner>.json).
       // Owner có thể dạng "userA,userB" do dedup baseDir → lấy user đầu.
       const primaryOwner = owner.split(",")[0];
-      const effective = await getEffectiveSettings(primaryOwner);
+      const effective = await getEffectiveSettings();
       await listing4sellerShein(absJsonPath, {
         cookieUser: primaryOwner,
         headless: effective.headless,
@@ -222,8 +222,8 @@ const tickForUser = async (dirs: UserDirs, slotsAvailable: number): Promise<numb
   if (slotsAvailable <= 0) return 0;
   if (!(await fs.pathExists(baseSheinAutoDir))) return 0;
 
-  // Per-user autoCron override: nếu user tắt → skip user này khỏi cron
-  const effective = await getEffectiveSettings(username);
+  // autoCron global: tắt → skip toàn bộ cron (đã bỏ override per-user).
+  const effective = await getEffectiveSettings();
   if (!effective.autoCron) {
     console.log(`⏸️  Skip ${username} (autoCron OFF)`);
     return 0;
@@ -279,6 +279,7 @@ const tickForUser = async (dirs: UserDirs, slotsAvailable: number): Promise<numb
 };
 
 export const runQueueManagerOnce = async (): Promise<void> => {
+  reloadAppConfig(); // đọc lại worker.json TƯƠI mỗi tick → sửa config có hiệu lực ngay, khỏi restart
   if (!workerConfig().autoCron) return; // user đã tắt auto cron
 
   const concurrency = Math.max(1, workerConfig().concurrency);

@@ -54,7 +54,7 @@ const render = async (file: string, sections: SizeChartSection[], mg: MeasureGui
   await nodeHtmlToImage({
     output: out,
     html: generateSizeGuideImageHtml(sections, mg, "inch"),
-    puppeteerArgs: { defaultViewport: { width: 900, height: 1600 } },
+    puppeteerArgs: { defaultViewport: { width: 900, height: 1200 } },
   });
   console.log("✅", out);
 };

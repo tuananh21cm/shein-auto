@@ -22,6 +22,10 @@ import { historyStore } from "./state/historyStore";
 import { scanListings, scanShopsSummary, resolveListingPath, ListingStatus } from "./state/listingScan";
 import { validatePath, detectDirConflicts, getUserDirsByName, getShopOwner } from "./state/userDirs";
 import { processFile } from "./queue/queueManager";
+import { runPodRouterOnce, ingestPodDesign } from "./queue/podRouter";
+import { resolvePodMaterialDir } from "./core/pod/buildPodListing";
+import { crawlImages } from "./core/imageCrawler/crawlImages";
+import crypto from "crypto";
 import { eventBus } from "./state/eventBus";
 import { workerConfig, reloadAppConfig } from "./config/appConfig";
 import { configCookie, userCookiePath } from "./utils/configCookie";
@@ -54,6 +58,11 @@ import { runDailyResearch } from "./core/research/dailyResearch";
 import { enrichCandidates } from "./core/research/enrichCandidates";
 import { validateCandidates } from "./core/research/validateCandidates";
 import { generateResearchBriefing } from "./services/gemini/researchInsights";
+import { runDemandCollection } from "./core/research/collectDemand";
+import { isFashionCategory } from "./core/research/demandFit";
+import { computeDropScores } from "./core/research/dropScore";
+import { shopNicheStore, type ShopNicheStatus } from "./state/shopNicheStore";
+import { kalodataStore } from "./state/kalodataStore";
 import { researchStore, today as researchToday } from "./state/researchStore";
 
 const adminSessionSecret = process.env.ADMIN_SESSION_SECRET || "shein-auto-secret";
@@ -67,11 +76,6 @@ const sanitizeUserForUi = (user: AdminUser) => ({
   profiles: user.profiles,
   downloadDir: user.downloadDir ?? "",
   baseSheinAutoDir: user.baseSheinAutoDir ?? "",
-  autoCronOverride: user.autoCronOverride ?? null,
-  headlessOverride: user.headlessOverride ?? null,
-  shipFeeOverride: user.shipFeeOverride ?? null,
-  multiplierOverride: user.multiplierOverride ?? null,
-  extraAddOverride: user.extraAddOverride ?? null,
   brandProfilesOverride: user.brandProfilesOverride ?? null,
 });
 
@@ -232,34 +236,68 @@ export const startAdminServer = async () => {
     next();
   };
 
+  // Cache shop list 4Seller per-user — extension poll /profiles mỗi 10s nên PHẢI
+  // cache, tránh spam /api/shop/get-tidy-list (rate-limit/khoá cookie).
+  const shopListCache = new Map<string, { ts: number; shops: string[]; source: string }>();
+  const SHOP_CACHE_TTL = 5 * 60_000;
+
+  /**
+   * Nguồn shop cho Tampermonkey. Ưu tiên SYNC TỪ 4SELLER (getShopList) → tên shop
+   * THẬT để khớp đúng dropdown lúc đăng (selectProfile match theo title). Fallback
+   * theo thứ tự: user.profiles (explicit) → auto-scan folder → rỗng.
+   */
+  async function resolveUserShops(user: AdminUser): Promise<{ shops: string[]; source: string }> {
+    const cached = shopListCache.get(user.username);
+    if (cached && Date.now() - cached.ts < SHOP_CACHE_TTL) return cached;
+
+    // 1. 4Seller (cần cookie đã upload). Tên = shopName ("TA Scan152-Fashion Lace_US").
+    try {
+      const list = await fsGetShopList(user.username);
+      const records = list?.records ?? [];
+      let shops = records
+        .filter((s) => !s.platform || /tiktok/i.test(String(s.platform)))
+        .map((s) => s.shopName)
+        .filter(Boolean);
+      if (shops.length === 0) shops = records.map((s) => s.shopName).filter(Boolean);
+      if (shops.length > 0) {
+        shops.sort();
+        const out = { ts: Date.now(), shops, source: "4seller" };
+        shopListCache.set(user.username, out);
+        return out;
+      }
+    } catch (e: any) {
+      console.warn(`[profiles] 4Seller getShopList lỗi (fallback folder): ${e?.message ?? e}`);
+    }
+    // 2. Explicit profiles
+    if ((user.profiles ?? []).length > 0) {
+      return { ts: Date.now(), shops: user.profiles, source: "explicit" } as any;
+    }
+    // 3. Auto-scan folder baseDir
+    try {
+      const { getUserDirsByName } = await import("./state/userDirs");
+      const dirs = await getUserDirsByName(user.username);
+      if (dirs?.baseSheinAutoDir && (await fs.pathExists(dirs.baseSheinAutoDir))) {
+        const entries = await fs.readdir(dirs.baseSheinAutoDir);
+        const shops: string[] = [];
+        for (const name of entries) {
+          if (name.startsWith(".") || name === "Success" || name === "Fail") continue;
+          const stats = await fs.stat(path.join(dirs.baseSheinAutoDir, name)).catch(() => null);
+          if (stats?.isDirectory()) shops.push(name);
+        }
+        shops.sort();
+        return { ts: Date.now(), shops, source: "auto-scan" } as any;
+      }
+    } catch {
+      /* ignore */
+    }
+    return { ts: Date.now(), shops: [], source: "empty" } as any;
+  }
+
   ingestRouter.get("/profiles", ingestAuth, async (req, res) => {
     try {
       const user = (req as any).tokenUser as AdminUser;
-      const explicit = user.profiles ?? [];
-      // Nếu user khai báo profiles list cứng → dùng list đó
-      if (explicit.length > 0) {
-        return res.json({ username: user.username, profiles: explicit, source: "explicit" });
-      }
-      // Profiles rỗng = "tất cả shop trong baseDir của user"
-      // Auto-scan để tampermonkey luôn có list mới nhất
-      const { getUserDirsByName } = await import("./state/userDirs");
-      const dirs = await getUserDirsByName(user.username);
-      if (!dirs?.baseSheinAutoDir || !(await fs.pathExists(dirs.baseSheinAutoDir))) {
-        return res.json({ username: user.username, profiles: [], source: "empty" });
-      }
-      const entries = await fs.readdir(dirs.baseSheinAutoDir);
-      const shops: string[] = [];
-      for (const name of entries) {
-        if (name.startsWith(".") || name === "Success" || name === "Fail") continue;
-        try {
-          const stats = await fs.stat(path.join(dirs.baseSheinAutoDir, name));
-          if (stats.isDirectory()) shops.push(name);
-        } catch {
-          // ignore
-        }
-      }
-      shops.sort();
-      res.json({ username: user.username, profiles: shops, source: "auto-scan" });
+      const { shops, source } = await resolveUserShops(user);
+      res.json({ username: user.username, profiles: shops, source });
     } catch (err: any) {
       res.status(500).json({ error: err?.message ?? "Lỗi load profiles" });
     }
@@ -319,12 +357,14 @@ export const startAdminServer = async () => {
       if (!dirs?.baseSheinAutoDir) {
         return res.status(400).json({ error: "User chưa cấu hình baseSheinAutoDir" });
       }
-      // Validate shops trong profiles user (nếu có profiles list)
-      if ((user.profiles ?? []).length > 0) {
-        const allowed = new Set(user.profiles);
+      // Validate shops thuộc tài khoản user. Dùng cùng nguồn với /profiles:
+      // khi có allowlist xác định (4Seller hoặc explicit) thì chặn shop lạ.
+      const resolved = await resolveUserShops(user);
+      if (resolved.shops.length > 0 && (resolved.source === "4seller" || resolved.source === "explicit")) {
+        const allowed = new Set(resolved.shops);
         const invalid = shops.filter((s) => !allowed.has(s));
         if (invalid.length > 0) {
-          return res.status(403).json({ error: `User không có quyền vào shops: ${invalid.join(", ")}` });
+          return res.status(403).json({ error: `Shop không thuộc tài khoản: ${invalid.join(", ")}` });
         }
       }
       const timestamp = Date.now();
@@ -349,6 +389,86 @@ export const startAdminServer = async () => {
       res.json({ ok: true, queued: written, ts: timestamp });
     } catch (err: any) {
       res.status(500).json({ error: err?.message ?? "Lỗi ingest" });
+    }
+  });
+
+  // ── Ingest LINKS: tampermonkey gom link sp từ trang LISTING/CATEGORY/SEARCH → đẩy vào
+  //    "uncrawled queue" = shop_allocation (status='allocated'). Sau đó crawlAllocated (Chrome/Kiki)
+  //    cào detail từng link. KHÁC với POST "/" (cào sẵn detail 1 sp khi user click vào).
+  ingestRouter.post("/links", ingestAuth, async (req, res) => {
+    try {
+      const user = (req as any).tokenUser as AdminUser;
+      const { links, shops } = req.body as { links?: any[]; shops?: string[] };
+      if (!Array.isArray(links) || links.length === 0) {
+        return res.status(400).json({ error: "Thiếu field links (mảng sản phẩm)" });
+      }
+      if (!Array.isArray(shops) || shops.length === 0) {
+        return res.status(400).json({ error: "Phải chọn ít nhất 1 shop" });
+      }
+      // Validate shops thuộc user (cùng allowlist với /profiles + ingest detail).
+      const resolved = await resolveUserShops(user);
+      if (resolved.shops.length > 0 && (resolved.source === "4seller" || resolved.source === "explicit")) {
+        const allowed = new Set(resolved.shops);
+        const invalid = shops.filter((s) => !allowed.has(s));
+        if (invalid.length > 0) {
+          return res.status(403).json({ error: `Shop không thuộc tài khoản: ${invalid.join(", ")}` });
+        }
+      }
+      const { getDb } = await import("./state/db");
+      const db = getDb();
+      const excluded = new Set(
+        db.prepare("SELECT goods_id FROM excluded_products").all().map((r: any) => String(r.goods_id))
+      );
+      // niche_key theo từng shop (để crawlAllocated/list biết ngách). Thiếu → null.
+      const nicheByShop = new Map<string, string | null>();
+      for (const shop of shops) {
+        const r = db.prepare("SELECT niche_key FROM shop_niche WHERE shop=? LIMIT 1").get(shop) as any;
+        nicheByShop.set(shop, r?.niche_key ?? null);
+      }
+      // Chuẩn hoá payload → {goods_id, name, price, url, image}. Lọc goodsId hợp lệ + không bị exclude.
+      const clean: any[] = [];
+      const seen = new Set<string>();
+      for (const l of links) {
+        const gid = String(
+          l.goodsId || l.goods_id || (String(l.url || "").match(/-p-(\d+)\.html/)?.[1]) || ""
+        ).trim();
+        if (!/^\d{5,}$/.test(gid) || seen.has(gid) || excluded.has(gid)) continue;
+        seen.add(gid);
+        const url = String(l.url || "").split("?")[0] || `https://us.shein.com/-p-${gid}.html`;
+        const price = l.price != null && !isNaN(Number(l.price)) ? Number(l.price) : null;
+        clean.push({ goods_id: gid, name: String(l.name || "").slice(0, 200), price, url, image: String(l.image || "") });
+      }
+      // goods_id là PRIMARY KEY toàn cục → 1 sp chỉ thuộc 1 shop (dedup cross-shop tự nhiên).
+      // INSERT OR IGNORE: đã có (allocated/recrawl/crawled/listed ở BẤT KỲ shop) → bỏ qua.
+      const ins = db.prepare(
+        `INSERT OR IGNORE INTO shop_allocation
+           (goods_id,shop,niche_key,name,win_score,opportunity_score,price,url,image,status,allocated_at)
+         VALUES (@goods_id,@shop,@niche_key,@name,0,@opp,@price,@url,@image,'allocated',@now)`
+      );
+      const now = Date.now();
+      const perShop: Record<string, { added: number; skipped: number }> = {};
+      const tx = db.transaction(() => {
+        for (const shop of shops) {
+          if (/[\/\\]|\.\./.test(shop)) continue;
+          const niche = nicheByShop.get(shop) ?? null;
+          let added = 0;
+          for (const c of clean) {
+            // opp=40: ưu tiên thấp hơn sp đã research-allocated (~74-89) → cào sau, không chen hàng.
+            const info = ins.run({ ...c, shop, niche_key: niche, opp: 40, now });
+            if (info.changes > 0) added++;
+          }
+          perShop[shop] = { added, skipped: clean.length - added };
+        }
+      });
+      tx();
+      const totalAdded = Object.values(perShop).reduce((s, v) => s + v.added, 0);
+      console.log(
+        `🔗 [INGEST-LINKS] user=${user.username} shops=${shops.join(",")} received=${links.length} valid=${clean.length} added=${totalAdded}`
+      );
+      refreshQueueSnapshot().catch(() => {});
+      res.json({ ok: true, received: links.length, valid: clean.length, perShop });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? "Lỗi ingest links" });
     }
   });
 
@@ -397,6 +517,213 @@ export const startAdminServer = async () => {
       res.json(result);
     } catch (err: any) {
       res.status(500).json({ error: err?.message ?? "Lỗi test path" });
+    }
+  });
+
+  // ── Uncrawled queue manager (shop_allocation) ─────────────
+  // Quản lý link sp chờ cào detail: lọc theo shop/status/từ khoá, xoá, đưa cào lại, loại trừ.
+  app.get("/admin/api/uncrawled", async (req, res) => {
+    try {
+      const { getDb } = await import("./state/db");
+      const db = getDb();
+      const shop = ((req.query.shop as string) || "").trim();
+      const status = ((req.query.status as string) || "allocated").trim();
+      const q = ((req.query.q as string) || "").trim();
+      const limit = Math.min(Number(req.query.limit) || 300, 2000);
+      const where: string[] = [];
+      const params: any[] = [];
+      if (shop) { where.push("shop = ?"); params.push(shop); }
+      if (status && status !== "all") { where.push("status = ?"); params.push(status); }
+      if (q) { where.push("(name LIKE ? OR goods_id LIKE ?)"); params.push(`%${q}%`, `%${q}%`); }
+      const whereSql = where.length ? "WHERE " + where.join(" AND ") : "";
+      const rows = db.prepare(
+        `SELECT goods_id, shop, niche_key, name, price, opportunity_score, url, image, status, allocated_at
+         FROM shop_allocation ${whereSql}
+         ORDER BY allocated_at DESC, opportunity_score DESC LIMIT ?`
+      ).all(...params, limit);
+      // summary status (giới hạn theo shop nếu đang lọc shop)
+      const sumWhere = shop ? "WHERE shop = ?" : "";
+      const statusCounts = db.prepare(
+        `SELECT status, COUNT(*) c FROM shop_allocation ${sumWhere} GROUP BY status ORDER BY c DESC`
+      ).all(...(shop ? [shop] : []));
+      const shops = db.prepare(
+        "SELECT shop, COUNT(*) c FROM shop_allocation GROUP BY shop ORDER BY shop"
+      ).all();
+      res.json({ rows, statusCounts, shops, limit });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? "Lỗi load uncrawled" });
+    }
+  });
+
+  app.post("/admin/api/uncrawled/action", async (req, res) => {
+    try {
+      const { getDb } = await import("./state/db");
+      const db = getDb();
+      const { action, goodsIds } = req.body as { action?: string; goodsIds?: string[] };
+      if (!Array.isArray(goodsIds) || goodsIds.length === 0) {
+        return res.status(400).json({ error: "Thiếu goodsIds" });
+      }
+      const ids = goodsIds.map(String).filter((x) => /^\d+$/.test(x));
+      if (!ids.length) return res.status(400).json({ error: "goodsIds không hợp lệ" });
+      const ph = ids.map(() => "?").join(",");
+      let affected = 0;
+      if (action === "delete") {
+        affected = db.prepare(`DELETE FROM shop_allocation WHERE goods_id IN (${ph})`).run(...ids).changes;
+      } else if (action === "requeue") {
+        affected = db.prepare(`UPDATE shop_allocation SET status='allocated' WHERE goods_id IN (${ph})`).run(...ids).changes;
+      } else if (action === "recrawl") {
+        affected = db.prepare(`UPDATE shop_allocation SET status='recrawl' WHERE goods_id IN (${ph})`).run(...ids).changes;
+      } else if (action === "exclude") {
+        // Loại trừ vĩnh viễn: thêm excluded_products + xoá khỏi allocation (research/allocate sau sẽ bỏ qua).
+        const now = Date.now();
+        const insEx = db.prepare("INSERT OR IGNORE INTO excluded_products (goods_id, reason, excluded_at) VALUES (?, 'uncrawled-ui', ?)");
+        const del = db.prepare("DELETE FROM shop_allocation WHERE goods_id = ?");
+        const tx = db.transaction(() => { for (const id of ids) { insEx.run(id, now); affected += del.run(id).changes; } });
+        tx();
+      } else {
+        return res.status(400).json({ error: "action không hợp lệ (delete|requeue|recrawl|exclude)" });
+      }
+      refreshQueueSnapshot().catch(() => {});
+      res.json({ ok: true, affected });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? "Lỗi action" });
+    }
+  });
+
+  // Trigger CÀO uncrawled qua CHROME (CDP 9222) → ghi JSON → vào listing queue. Stream log realtime.
+  // Body: { shop (bắt buộc), n?, goodsIds? }. Có goodsIds → cào đúng các sp đó; không → top-N theo score.
+  app.post("/admin/api/uncrawled/crawl", async (req, res) => {
+    try {
+      const sessionUser = (req.session as any).user as SessionUser;
+      if (sessionUser.role === "viewer") return res.status(403).json({ error: "Viewer không thể cào" });
+      const { shop, n, goodsIds } = req.body as { shop?: string; n?: number; goodsIds?: string[] };
+      if (!shop) return res.status(400).json({ error: "Thiếu shop (chọn 1 shop cụ thể, không phải 'tất cả')" });
+      const limit = Math.min(Math.max(Number(n) || 10, 1), 50);
+
+      const { getDb } = await import("./state/db");
+      const db = getDb();
+      let items: any[];
+      const picked = Array.isArray(goodsIds) ? goodsIds.map(String).filter((x) => /^\d+$/.test(x)) : [];
+      if (picked.length) {
+        const ph = picked.map(() => "?").join(",");
+        items = db.prepare(
+          `SELECT goods_id, name, url, status FROM shop_allocation
+           WHERE shop=? AND goods_id IN (${ph}) AND status IN ('allocated','recrawl') AND url IS NOT NULL AND url!=''`
+        ).all(shop, ...picked) as any[];
+      } else {
+        items = db.prepare(
+          `SELECT goods_id, name, url, status FROM shop_allocation
+           WHERE shop=? AND status IN ('allocated','recrawl') AND url IS NOT NULL AND url!=''
+           ORDER BY (status='recrawl') DESC, opportunity_score DESC LIMIT ?`
+        ).all(shop, limit) as any[];
+      }
+
+      res.setHeader("Content-Type", "text/plain; charset=utf-8");
+      res.setHeader("Cache-Control", "no-cache");
+      res.setHeader("X-Accel-Buffering", "no");
+      const send = (line: string) => { try { res.write(line + "\n"); } catch { /* client đóng */ } };
+
+      if (!items.length) { send(`__ERROR__Không có sp 'allocated'/'recrawl' cho ${shop}.`); return res.end(); }
+
+      const { getUserDirsByName } = await import("./state/userDirs");
+      const dirs = await getUserDirsByName(sessionUser.username);
+      const baseDir = dirs?.baseSheinAutoDir;
+      if (!baseDir) { send("__ERROR__User chưa cấu hình baseSheinAutoDir."); return res.end(); }
+
+      const cdpUrl = process.env.CHROME_CDP || "http://127.0.0.1:9222";
+      send(`▶ Cào ${items.length} sp [${shop}] qua Chrome ${cdpUrl}`);
+      send(`   (Chrome phải đang mở với --remote-debugging-port=9222)`);
+
+      const { scrapeBatchViaChrome } = await import("./core/scrapeViaChrome");
+      const { dispatchScrapedData } = await import("./core/scrapeViaKiki");
+      const markCrawled = db.prepare("UPDATE shop_allocation SET status='crawled' WHERE goods_id=?");
+      const markRecrawl = db.prepare("UPDATE shop_allocation SET status='recrawl' WHERE goods_id=?");
+      const statusById: Record<string, string> = {};
+      for (const it of items) statusById[it.goods_id] = it.status;
+      let ok = 0, requeued = 0, failed = 0;
+
+      try {
+        await scrapeBatchViaChrome({
+          items: items.map((it) => ({ goodsId: String(it.goods_id), url: it.url })),
+          cdpUrl,
+          onLog: (m) => send(m),
+          onProduct: async (goodsId, data, error) => {
+            if (data) {
+              const sc = (data as any).size_chart;
+              const hasSize = !!(sc && ((sc.sections && sc.sections.length) || (sc.data && sc.data.length)));
+              if (!hasSize && statusById[goodsId] !== "recrawl") {
+                markRecrawl.run(goodsId); requeued++;
+                send(`⚠️ ${goodsId} thiếu size_chart → recrawl (cào lại lần sau)`);
+              } else {
+                await dispatchScrapedData(baseDir, data, [shop]);
+                markCrawled.run(goodsId); ok++;
+                send(`✅ ${goodsId} OK · ${data.listing_variations?.colors?.length || 0} màu → JSON → listing queue`);
+              }
+            } else {
+              failed++;
+              send(`❌ ${goodsId} fail: ${error || "?"}`);
+            }
+          },
+        });
+        refreshQueueSnapshot().catch(() => {});
+        send(`__RESULT__${JSON.stringify({ ok, requeued, failed, total: items.length })}`);
+      } catch (e: any) {
+        send(`__ERROR__${e?.message ?? e}`);
+      }
+      res.end();
+    } catch (err: any) {
+      if (!res.headersSent) res.status(500).json({ error: err?.message ?? "Lỗi cào uncrawled" });
+      else { try { res.end(); } catch { /* ignore */ } }
+    }
+  });
+
+  // Bật Chrome debug (cổng 9222) cho backend Chrome. Idempotent: đã chạy → trả luôn.
+  app.post("/admin/api/chrome/launch", async (req, res) => {
+    try {
+      const net = await import("net");
+      const HOST = "127.0.0.1", PORT = 9222;
+      const probe = (timeout = 1500): Promise<boolean> =>
+        new Promise((resolve) => {
+          const sock = net.connect({ host: HOST, port: PORT });
+          let done = false;
+          const fin = (v: boolean) => { if (!done) { done = true; try { sock.destroy(); } catch { /* ignore */ } resolve(v); } };
+          sock.once("connect", () => fin(true));
+          sock.once("error", () => fin(false));
+          sock.setTimeout(timeout, () => fin(false));
+        });
+
+      if (await probe()) return res.json({ ok: true, already: true, message: "Chrome debug đã chạy ở 9222." });
+
+      const candidates = [
+        "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+        "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
+        path.join(process.env.LOCALAPPDATA || "", "Google\\Chrome\\Application\\chrome.exe"),
+      ];
+      let exe = "";
+      for (const c of candidates) { if (c && (await fs.pathExists(c))) { exe = c; break; } }
+      if (!exe) return res.status(500).json({ error: "Không tìm thấy chrome.exe (Program Files / LOCALAPPDATA)." });
+
+      const userDir = process.env.CHROME_DEBUG_DIR || "C:\\chrome-debug-shein";
+      const { spawn } = await import("child_process");
+      const child = spawn(exe, [
+        "--remote-debugging-port=9222",
+        "--remote-debugging-address=127.0.0.1",
+        `--user-data-dir=${userDir}`,
+        "https://us.shein.com",
+      ], { detached: true, stdio: "ignore" });
+      child.unref();
+
+      let up = false;
+      for (let i = 0; i < 16 && !up; i++) {
+        await new Promise((r) => setTimeout(r, 500));
+        up = await probe();
+      }
+      if (up) return res.json({ ok: true, launched: true, exe, message: "Đã bật Chrome debug ở 9222." });
+      return res.status(500).json({
+        error: "Đã spawn Chrome nhưng cổng 9222 chưa lên. Có thể Chrome đang mở user-data-dir này ở instance khác — tắt hết Chrome rồi thử lại.",
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? "Lỗi bật Chrome debug" });
     }
   });
 
@@ -453,21 +780,6 @@ export const startAdminServer = async () => {
             downloadDir: typeof u.downloadDir === "string" ? u.downloadDir : existing?.downloadDir ?? "",
             baseSheinAutoDir:
               typeof u.baseSheinAutoDir === "string" ? u.baseSheinAutoDir : existing?.baseSheinAutoDir ?? "",
-            autoCronOverride: u.autoCronOverride === undefined
-              ? existing?.autoCronOverride ?? null
-              : u.autoCronOverride,
-            headlessOverride: u.headlessOverride === undefined
-              ? existing?.headlessOverride ?? null
-              : u.headlessOverride,
-            shipFeeOverride: u.shipFeeOverride === undefined
-              ? existing?.shipFeeOverride ?? null
-              : u.shipFeeOverride,
-            multiplierOverride: u.multiplierOverride === undefined
-              ? existing?.multiplierOverride ?? null
-              : u.multiplierOverride,
-            extraAddOverride: u.extraAddOverride === undefined
-              ? existing?.extraAddOverride ?? null
-              : u.extraAddOverride,
             brandProfilesOverride: u.brandProfilesOverride === undefined
               ? existing?.brandProfilesOverride ?? null
               : u.brandProfilesOverride,
@@ -500,21 +812,6 @@ export const startAdminServer = async () => {
       if (typeof updatedUser.baseSheinAutoDir === "string") {
         existingUser.baseSheinAutoDir = updatedUser.baseSheinAutoDir;
       }
-      if (updatedUser.autoCronOverride !== undefined) {
-        existingUser.autoCronOverride = updatedUser.autoCronOverride;
-      }
-      if (updatedUser.headlessOverride !== undefined) {
-        existingUser.headlessOverride = updatedUser.headlessOverride;
-      }
-      if (updatedUser.shipFeeOverride !== undefined) {
-        existingUser.shipFeeOverride = updatedUser.shipFeeOverride;
-      }
-      if (updatedUser.multiplierOverride !== undefined) {
-        existingUser.multiplierOverride = updatedUser.multiplierOverride;
-      }
-      if (updatedUser.extraAddOverride !== undefined) {
-        existingUser.extraAddOverride = updatedUser.extraAddOverride;
-      }
       if (updatedUser.brandProfilesOverride !== undefined) {
         existingUser.brandProfilesOverride = updatedUser.brandProfilesOverride;
       }
@@ -530,12 +827,26 @@ export const startAdminServer = async () => {
   });
 
   // ── Dashboard ─────────────────────────────────────────────
-  app.get("/admin/api/dashboard", async (_req, res) => {
+  app.get("/admin/api/dashboard", async (req, res) => {
     try {
       const queue = await refreshQueueSnapshot();
+      // Allowlist shop (4Seller hiện tại) để UI tự ẩn folder "lạ" rỗng — KHÔNG xoá data.
+      let shops: { list: string[]; source: string } = { list: [], source: "empty" };
+      try {
+        const sessionUser = (req.session as any).user as SessionUser | undefined;
+        if (sessionUser) {
+          const cfg = await loadAdminConfig();
+          const u = cfg.users.find((x) => x.username === sessionUser.username);
+          if (u) {
+            const r = await resolveUserShops(u as any);
+            shops = { list: r.shops, source: r.source };
+          }
+        }
+      } catch { /* allowlist best-effort */ }
       res.json({
         worker: workerState.get(),
         queue,
+        shops,
         config: {
           concurrency: workerConfig().concurrency,
           fileRouterCron: config.cronFileRouter,
@@ -653,7 +964,23 @@ export const startAdminServer = async () => {
 
   app.get("/admin/api/listings/shops", async (req, res) => {
     try {
-      const shops = await scanShopsSummary({ username: ownerScope(req) });
+      let shops = await scanShopsSummary({ username: ownerScope(req) });
+      // CHỈ hiện shop thuộc 4Seller account HIỆN TẠI (theo cookie). Ẩn hẳn shop của
+      // account 4Seller khác (P1/P5 cũ) dù còn lịch sử trên ổ đĩa.
+      try {
+        const sessionUser = (req.session as any).user as SessionUser | undefined;
+        if (sessionUser) {
+          const cfg = await loadAdminConfig();
+          const u = cfg.users.find((x) => x.username === sessionUser.username);
+          if (u) {
+            const r = await resolveUserShops(u as any);
+            if (r.source === "4seller" || r.source === "explicit") {
+              const set = new Set(r.shops.map((s) => s.toLowerCase()));
+              shops = shops.filter((s) => set.has(s.folder.toLowerCase()));
+            }
+          }
+        }
+      } catch { /* best-effort */ }
       res.json({ shops });
     } catch (err: any) {
       res.status(500).json({ error: err?.message ?? "Lỗi scan shops" });
@@ -737,6 +1064,11 @@ export const startAdminServer = async () => {
       const spawned: { id: string; folder: string; file: string }[] = [];
       const skipped: { id: string; reason: string }[] = [];
 
+      // Gom theo folder shop. processFile lock 1 browser/folder → nhiều file CÙNG shop phải
+      // chạy TUẦN TỰ (xong file này mới tới file kia), nếu bắn song song thì 7/8 bị "đang lock, skip".
+      type Job = { baseDir: string; folder: string; file: string; owner: string };
+      const groups = new Map<string, Job[]>();
+
       for (const id of ids) {
         const resolved = await resolveListingPath(id);
         if (!resolved) { skipped.push({ id, reason: "id không hợp lệ" }); continue; }
@@ -755,14 +1087,289 @@ export const startAdminServer = async () => {
         spawned.push({ id, folder: resolved.folder, file: resolved.file });
         // Owner thật của shop (theo profiles explicit) thay vì merged dedup
         const trueOwner = (await getShopOwner(resolved.folder)) || resolved.owner.split(",")[0];
-        // Fire-and-forget — processFile có lock per (baseDir, folder)
-        processFile(resolved.baseDir, resolved.folder, resolved.file, trueOwner)
-          .catch((err) => console.error(`❌ run-batch ${resolved.folder}/${resolved.file}:`, err));
+        const key = `${resolved.baseDir}::${resolved.folder}`;
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key)!.push({ baseDir: resolved.baseDir, folder: resolved.folder, file: resolved.file, owner: trueOwner });
+      }
+
+      // Mỗi folder: 1 runner chạy TUẦN TỰ qua các file. Các folder khác nhau chạy SONG SONG.
+      for (const jobs of groups.values()) {
+        void (async () => {
+          for (const j of jobs) {
+            try {
+              await processFile(j.baseDir, j.folder, j.file, j.owner);
+            } catch (err) {
+              console.error(`❌ run-batch ${j.folder}/${j.file}:`, err);
+            }
+          }
+        })();
       }
 
       res.json({ ok: true, spawned, skipped });
     } catch (err: any) {
       res.status(500).json({ error: err?.message ?? "Lỗi run-batch" });
+    }
+  });
+
+  // POD: quét inbox thủ công → build JSON vào queue (force=true, bỏ qua autoCron gate).
+  app.post("/admin/api/pod/scan", async (req, res) => {
+    try {
+      const sessionUser = (req.session as any).user as SessionUser;
+      if (sessionUser.role === "viewer") return res.status(403).json({ error: "Viewer không thể quét POD" });
+      const result = await runPodRouterOnce({ force: true });
+      res.json({ ok: true, ...result });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? "Lỗi quét POD" });
+    }
+  });
+
+  // POD: tạo listing từ ảnh kéo-thả trên UI (base64). Body lớn → parser riêng 30mb.
+  app.post("/admin/api/pod/create", express.json({ limit: "30mb" }), async (req, res) => {
+    let tmpPath = "";
+    try {
+      const sessionUser = (req.session as any).user as SessionUser;
+      if (sessionUser.role === "viewer") return res.status(403).json({ error: "Viewer không thể tạo POD" });
+
+      const { shop, title, imageBase64 } = req.body as { shop?: string; title?: string; imageBase64?: string };
+      if (!shop || /[\/\\]|\.\./.test(shop)) return res.status(400).json({ error: "Shop không hợp lệ" });
+      if (!title || !title.trim()) return res.status(400).json({ error: "Thiếu title" });
+      if (!imageBase64) return res.status(400).json({ error: "Thiếu ảnh design" });
+
+      // Tách data URL nếu có: "data:image/png;base64,...."
+      const m = imageBase64.match(/^data:image\/(png|jpe?g|webp);base64,(.+)$/i);
+      const ext = m ? (m[1].toLowerCase() === "jpeg" ? "jpg" : m[1].toLowerCase()) : "png";
+      const b64 = m ? m[2] : imageBase64;
+      const buf = Buffer.from(b64, "base64");
+      if (buf.length === 0) return res.status(400).json({ error: "Ảnh rỗng / base64 sai" });
+
+      const tmpDir = path.join(process.cwd(), "data", "_pod_tmp");
+      await fs.ensureDir(tmpDir);
+      tmpPath = path.join(tmpDir, `${crypto.randomBytes(8).toString("hex")}.${ext}`);
+      await fs.writeFile(tmpPath, new Uint8Array(buf));
+
+      const r = await ingestPodDesign({ shop, title: title.trim(), designPath: tmpPath });
+      res.json({ ok: true, ...r });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? "Lỗi tạo POD" });
+    } finally {
+      if (tmpPath) await fs.remove(tmpPath).catch(() => {});
+    }
+  });
+
+  // POD: đọc/ghi template config (attributes, giá, màu, size, ngách).
+  const POD_FILE = path.resolve(process.cwd(), "config", "pod.json");
+  app.get("/admin/api/pod/config", async (_req, res) => {
+    try {
+      res.json(JSON.parse(await fs.readFile(POD_FILE, "utf-8")));
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? "Không đọc được pod.json" });
+    }
+  });
+  app.post("/admin/api/pod/config", async (req, res) => {
+    try {
+      const sessionUser = (req.session as any).user as SessionUser;
+      if (sessionUser.role === "viewer") return res.status(403).json({ error: "Viewer không thể sửa config POD" });
+
+      const b = req.body as Record<string, any>;
+      const existing = JSON.parse(await fs.readFile(POD_FILE, "utf-8"));
+      const merged = { ...existing };
+
+      // Các field UI cho sửa — validate nhẹ, giữ nguyên size_chart/measure_guide/descriptionTemplate.
+      if (b.finalPrice !== undefined) {
+        const p = String(b.finalPrice).replace(/[^0-9.]/g, "");
+        if (!p || isNaN(Number(p))) return res.status(400).json({ error: "Giá không hợp lệ" });
+        merged.finalPrice = p;
+      }
+      const cleanArr = (v: any) =>
+        Array.isArray(v) ? v.map((x) => String(x).trim()).filter(Boolean) : undefined;
+      if (b.sizes !== undefined) {
+        const a = cleanArr(b.sizes);
+        if (!a?.length) return res.status(400).json({ error: "Cần ít nhất 1 size" });
+        merged.sizes = a;
+      }
+      if (b.palette !== undefined) {
+        const a = cleanArr(b.palette);
+        if (!a?.length) return res.status(400).json({ error: "Cần ít nhất 1 màu" });
+        merged.palette = a;
+      }
+      if (b.categories !== undefined) {
+        const a = cleanArr(b.categories);
+        if (!a?.length) return res.status(400).json({ error: "Cần ít nhất 1 ngách" });
+        merged.categories = a;
+      }
+      if (b.attributes !== undefined && b.attributes && typeof b.attributes === "object") {
+        const attrs: Record<string, string> = {};
+        for (const [k, v] of Object.entries(b.attributes)) {
+          const key = String(k).trim();
+          const val = String(v ?? "").trim();
+          if (key && val) attrs[key] = val;
+        }
+        if (Object.keys(attrs).length < 2)
+          return res.status(400).json({ error: "Cần ≥2 attribute (để sinh mô tả)" });
+        merged.attributes = attrs;
+      }
+      if (b.colorsPerListing && typeof b.colorsPerListing === "object") {
+        const min = Math.max(1, Number(b.colorsPerListing.min) || 1);
+        const max = Math.max(min, Number(b.colorsPerListing.max) || min);
+        merged.colorsPerListing = { min, max };
+      }
+      if (b.materialsPick && typeof b.materialsPick === "object") {
+        const min = Math.max(0, Number(b.materialsPick.min) || 0);
+        const max = Math.max(min, Number(b.materialsPick.max) || min);
+        merged.materialsPick = { min, max };
+      }
+      if (b.sizeSurcharge !== undefined && b.sizeSurcharge && typeof b.sizeSurcharge === "object") {
+        const sc: Record<string, number> = {};
+        for (const [k, v] of Object.entries(b.sizeSurcharge)) {
+          const key = String(k).trim();
+          const n = Number(v);
+          if (key && !isNaN(n) && n !== 0) sc[key] = n;
+        }
+        merged.sizeSurcharge = sc;
+      }
+      if (b.auxImages !== undefined) {
+        const n = Math.max(0, Math.floor(Number(b.auxImages)));
+        if (!isNaN(n)) merged.auxImages = n;
+      }
+      if (b.brand_name !== undefined) merged.brand_name = String(b.brand_name).trim();
+      if (b.materialDir !== undefined) merged.materialDir = String(b.materialDir).trim();
+
+      await fs.writeFile(POD_FILE, JSON.stringify(merged, null, 2), "utf-8");
+      reloadAppConfig();
+      res.json({ ok: true, config: merged });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? "Lỗi lưu config POD" });
+    }
+  });
+
+  // Cào ảnh website (pagination / loadmore) → lưu theo title, nâng width.
+  app.post("/admin/api/crawl-images", async (req, res) => {
+    try {
+      const sessionUser = (req.session as any).user as SessionUser;
+      if (sessionUser.role === "viewer") return res.status(403).json({ error: "Viewer không thể cào" });
+      const b = req.body as {
+        url?: string; mode?: string; targetWidth?: number; outputDir?: string;
+        maxPages?: number; maxLoadMore?: number; maxImages?: number; loadMoreSelector?: string;
+        linkPattern?: string; cardSelector?: string; titleSelector?: string;
+      };
+      if (!b.url || !/^https?:\/\//i.test(b.url)) return res.status(400).json({ error: "URL không hợp lệ" });
+      const mode = b.mode === "loadmore" ? "loadmore" : "pagination";
+
+      // Folder lưu: ưu tiên outputDir user nhập; rỗng → mặc định data/crawled-images/<slug>.
+      let dir: string;
+      const custom = (b.outputDir || "").trim();
+      if (custom) {
+        dir = path.isAbsolute(custom) ? path.normalize(custom) : path.resolve(process.cwd(), custom);
+      } else {
+        let slug = "site";
+        try {
+          const u = new URL(b.url);
+          slug = (u.hostname + u.pathname).replace(/[^a-zA-Z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80);
+        } catch { /* keep default */ }
+        dir = path.join(process.cwd(), "data", "crawled-images", slug);
+      }
+
+      // STREAM log realtime (chunked) → UI thấy tiến độ ngay, không kẹt ở "đang khởi động".
+      res.setHeader("Content-Type", "text/plain; charset=utf-8");
+      res.setHeader("Cache-Control", "no-cache");
+      res.setHeader("X-Accel-Buffering", "no");
+      const send = (line: string) => { try { res.write(line + "\n"); } catch { /* client đóng */ } };
+      send(`🔎 Cào: ${b.url} · mode=${mode} · width=${Number(b.targetWidth) || 1280}`);
+      try {
+        const r = await crawlImages({
+          url: b.url,
+          mode,
+          outputDir: dir,
+          targetWidth: Number(b.targetWidth) || 1280,
+          maxPages: Number(b.maxPages) || 20,
+          maxLoadMore: Number(b.maxLoadMore) || 30,
+          maxImages: Number(b.maxImages) || 0,
+          loadMoreSelector: b.loadMoreSelector || undefined,
+          linkPattern: b.linkPattern || undefined,
+          cardSelector: b.cardSelector || undefined,
+          titleSelector: b.titleSelector || undefined,
+          headless: true,
+          onLog: (m) => send(m),
+        });
+        send(`__RESULT__${JSON.stringify(r)}`);
+      } catch (e: any) {
+        send(`__ERROR__${e?.message ?? e}`);
+      }
+      res.end();
+    } catch (err: any) {
+      if (!res.headersSent) res.status(500).json({ error: err?.message ?? "Lỗi cào ảnh" });
+      else { try { res.end(); } catch { /* ignore */ } }
+    }
+  });
+
+  // POD material — quản lý ảnh material (xem/upload/xoá) trong folder đang cấu hình.
+  const MAT_NAME = /^[^\/\\]+\.(png|jpe?g|webp)$/i;
+  const safeMatName = (n: any): string | null => {
+    const s = String(n ?? "");
+    return MAT_NAME.test(s) && !s.includes("..") ? s : null;
+  };
+
+  app.get("/admin/api/pod/materials", async (_req, res) => {
+    try {
+      const dir = resolvePodMaterialDir();
+      let items: { name: string; size: number }[] = [];
+      if (await fs.pathExists(dir)) {
+        const files = (await fs.readdir(dir)).filter((f) => MAT_NAME.test(f));
+        items = await Promise.all(
+          files.map(async (name) => ({ name, size: (await fs.stat(path.join(dir, name))).size }))
+        );
+      }
+      res.json({ dir, items });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? "Lỗi đọc material" });
+    }
+  });
+
+  app.get("/admin/api/pod/materials/file", async (req, res) => {
+    const name = safeMatName(req.query.name);
+    if (!name) return res.status(400).end();
+    const fp = path.join(resolvePodMaterialDir(), name);
+    if (!(await fs.pathExists(fp))) return res.status(404).end();
+    res.sendFile(fp);
+  });
+
+  app.post("/admin/api/pod/materials", express.json({ limit: "30mb" }), async (req, res) => {
+    try {
+      const sessionUser = (req.session as any).user as SessionUser;
+      if (sessionUser.role === "viewer") return res.status(403).json({ error: "Viewer không thể upload" });
+      const { fileName, imageBase64 } = req.body as { fileName?: string; imageBase64?: string };
+      if (!imageBase64) return res.status(400).json({ error: "Thiếu ảnh" });
+      const m = imageBase64.match(/^data:image\/(png|jpe?g|webp);base64,(.+)$/i);
+      const ext = m ? (m[1].toLowerCase() === "jpeg" ? "jpg" : m[1].toLowerCase()) : "png";
+      const b64 = m ? m[2] : imageBase64;
+      const buf = Buffer.from(b64, "base64");
+      if (!buf.length) return res.status(400).json({ error: "Ảnh rỗng" });
+
+      // Tên file: giữ tên gốc (sanitize) hoặc random; tránh ghi đè bằng cách thêm hậu tố nếu trùng.
+      const baseRaw = (fileName || "").replace(/\.[^.]+$/, "").replace(/[^a-zA-Z0-9_-]+/g, "_").slice(0, 40);
+      const base = baseRaw || `mat_${crypto.randomBytes(4).toString("hex")}`;
+      const dir = resolvePodMaterialDir();
+      await fs.ensureDir(dir);
+      let name = `${base}.${ext}`;
+      let i = 1;
+      while (await fs.pathExists(path.join(dir, name))) name = `${base}_${i++}.${ext}`;
+      await fs.writeFile(path.join(dir, name), new Uint8Array(buf));
+      res.json({ ok: true, name });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? "Lỗi upload material" });
+    }
+  });
+
+  app.delete("/admin/api/pod/materials", async (req, res) => {
+    try {
+      const sessionUser = (req.session as any).user as SessionUser;
+      if (sessionUser.role === "viewer") return res.status(403).json({ error: "Viewer không thể xoá" });
+      const name = safeMatName(req.query.name);
+      if (!name) return res.status(400).json({ error: "Tên file không hợp lệ" });
+      await fs.remove(path.join(resolvePodMaterialDir(), name));
+      res.json({ ok: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? "Lỗi xoá material" });
     }
   });
 
@@ -1457,10 +2064,18 @@ export const startAdminServer = async () => {
     try {
       const day = ((req.query.day as string) || researchStore.listDays()[0] || researchToday()).trim();
       const status = (req.query.status as any) || undefined;
+      const niche = ((req.query.niche as string) || "").trim() || undefined;
       const limit = Math.min(200, Number(req.query.limit ?? 100));
       const offset = Number(req.query.offset ?? 0);
-      const { items, total } = researchStore.listCandidates({ day, status, limit, offset });
-      res.json({ day, total, candidates: items });
+      let { items, total } = researchStore.listCandidates({ day, status, niche, limit, offset });
+      let source = "candidate";
+      // Ngách chưa lọt top-candidate → fallback hiện MỌI sp ngách đó từ research_product.
+      if (niche && total === 0) {
+        items = researchStore.listProductsAsCandidates(day, niche, limit);
+        total = items.length;
+        source = "product";
+      }
+      res.json({ day, total, source, candidates: items });
     } catch (err: any) {
       res.status(500).json({ error: err?.message ?? "Lỗi đọc candidates" });
     }
@@ -1501,6 +2116,111 @@ export const startAdminServer = async () => {
     }
   });
 
+  // P3 Demand: thu Kalodata (TikTok US) qua Kiki → Signal Store (async)
+  let demandRunning = false;
+  app.post("/admin/api/research/collect-demand", (req, res) => {
+    const sessionUser = (req.session as any).user as SessionUser;
+    if (sessionUser.role === "viewer") return res.status(403).json({ error: "Viewer không được" });
+    if (demandRunning) return res.status(409).json({ error: "Đang thu demand, chờ xong đã" });
+    demandRunning = true;
+    res.json({ ok: true, started: true });
+    runDemandCollection({ onLog: (m) => console.log("[demand]", m) })
+      .catch((e) => console.error("[demand] lỗi:", e?.message ?? e))
+      .finally(() => { demandRunning = false; });
+  });
+
+  app.get("/admin/api/research/demand", (req, res) => {
+    try {
+      const day = ((req.query.day as string) || kalodataStore.latestDay() || "").trim();
+      if (!day) return res.json({ day: null, categories: [] });
+      const sort = (req.query.sort as string) || "growth";
+      const fashionOnly = req.query.all !== "1"; // mặc định CHỈ thời trang (loại jewelry/phone…)
+      let cats = kalodataStore.listCategories(day);
+      if (fashionOnly) cats = cats.filter((c) => isFashionCategory(c.name));
+      if (sort === "growth") cats = [...cats].sort((a, b) => (b.growthRate ?? -9) - (a.growthRate ?? -9));
+      res.json({ day, total: cats.length, fashionOnly, categories: cats.slice(0, 40) });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? "Lỗi đọc demand" });
+    }
+  });
+
+  // Niche Lab P1: DropScore — xếp hạng ngách "ngon cho dropship" (rẻ+trend+ít refund)
+  app.get("/admin/api/research/dropscore", (req, res) => {
+    try {
+      const day = ((req.query.day as string) || researchStore.listDays()[0] || researchToday()).trim();
+      res.json({ day, niches: computeDropScores(day) });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? "Lỗi DropScore" });
+    }
+  });
+
+  // Niche Lab P2: danh mục shop × ngách
+  app.get("/admin/api/research/shop-niche", async (req, res) => {
+    try {
+      const sessionUser = (req.session as any).user as SessionUser;
+      let shops: string[] = [];
+      try {
+        const cfg = await loadAdminConfig();
+        const u = cfg.users.find((x) => x.username === sessionUser.username);
+        if (u) shops = (await resolveUserShops(u as any)).shops;
+      } catch { /* ignore */ }
+      const day = researchStore.listDays()[0] || researchToday();
+      const niches = computeDropScores(day).map((d) => ({ nicheKey: d.nicheKey, group: d.group, dropScore: d.dropScore, medianCost: d.medianCost }));
+      res.json({ shops, day, niches, assignments: shopNicheStore.listAll() });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? "Lỗi shop-niche" });
+    }
+  });
+
+  app.post("/admin/api/research/shop-niche/assign", (req, res) => {
+    const u = (req.session as any).user as SessionUser;
+    if (u.role === "viewer") return res.status(403).json({ error: "Viewer không được" });
+    const { shop, nicheKey } = req.body || {};
+    if (!shop || !nicheKey) return res.status(400).json({ error: "Thiếu shop/nicheKey" });
+    shopNicheStore.assign(String(shop), String(nicheKey));
+    res.json({ ok: true });
+  });
+
+  app.post("/admin/api/research/shop-niche/remove", (req, res) => {
+    const u = (req.session as any).user as SessionUser;
+    if (u.role === "viewer") return res.status(403).json({ error: "Viewer không được" });
+    const { shop, nicheKey } = req.body || {};
+    if (!shop || !nicheKey) return res.status(400).json({ error: "Thiếu shop/nicheKey" });
+    shopNicheStore.remove(String(shop), String(nicheKey));
+    res.json({ ok: true });
+  });
+
+  app.post("/admin/api/research/shop-niche/status", (req, res) => {
+    const u = (req.session as any).user as SessionUser;
+    if (u.role === "viewer") return res.status(403).json({ error: "Viewer không được" });
+    const { shop, nicheKey, status } = req.body || {};
+    if (!shop || !nicheKey || !["testing", "scaling", "dropped"].includes(status))
+      return res.status(400).json({ error: "Thiếu/sai tham số" });
+    shopNicheStore.setStatus(String(shop), String(nicheKey), status as ShopNicheStatus);
+    res.json({ ok: true });
+  });
+
+  // Drill-down 1 ngách demand: product SHEIN (nguồn cung) + Kalodata (best-seller TikTok)
+  app.get("/admin/api/research/category-drill", async (req, res) => {
+    try {
+      const name = ((req.query.name as string) || "").trim();
+      if (!name) return res.status(400).json({ error: "name required" });
+      const day = kalodataStore.latestDay() || "";
+      // Kalodata: best-seller TikTok trong ngách (đã pre-pull khi thu demand)
+      const kalodata = day ? kalodataStore.listProductsByCategory(day, name, 24) : [];
+      // SHEIN: search nguồn cung theo tên ngách → rank win
+      const kw = name.replace(/women'?s|men'?s|girl'?s|boy'?s/gi, "").trim() || name;
+      let shein: any[] = [];
+      try {
+        const r = await sheinSearch(kw, { perPage: 24, country: "us" });
+        shein = rankByWin(r.products).slice(0, 18);
+      } catch { /* shein optional */ }
+      res.json({ name, day, query: kw, kalodataAvailable: kalodata.length > 0, kalodata, shein });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? "Lỗi drill-down ngách" });
+    }
+  });
+
   // Deep Validation Gate: mở detail Kiki → sold/rank + local + true-to-size + verdict (async)
   let validateRunning = false;
   app.post("/admin/api/research/validate", (req, res) => {
@@ -1515,6 +2235,26 @@ export const startAdminServer = async () => {
     res.json({ ok: true, started: true, limit });
     validateCandidates({ profileId, day, limit, onLog: (m) => console.log("[validate]", m) })
       .catch((e) => console.error("[validate] lỗi:", e?.message ?? e))
+      .finally(() => { validateRunning = false; });
+  });
+
+  // Soi 1 ngách: pre-filter + promote top sp → candidate → validate (Kiki) → verdict
+  app.post("/admin/api/research/validate-niche", (req, res) => {
+    const sessionUser = (req.session as any).user as SessionUser;
+    if (sessionUser.role === "viewer") return res.status(403).json({ error: "Viewer không được" });
+    if (validateRunning) return res.status(409).json({ error: "Validate đang chạy, chờ xong đã" });
+    const niche = ((req.body?.niche as string) || "").trim();
+    const profileId = ((req.body?.profileId as string) || "").trim();
+    if (!niche) return res.status(400).json({ error: "Thiếu niche" });
+    if (!profileId) return res.status(400).json({ error: "Thiếu Kiki profileId" });
+    const day = ((req.body?.day as string) || "").trim() || researchStore.listDays()[0] || researchToday();
+    const limit = Math.min(40, Number(req.body?.limit ?? 15));
+    const promoted = researchStore.promoteNicheProducts(day, niche, limit);
+    if (promoted === 0) return res.json({ ok: true, promoted: 0, note: "Không sp nào qua pre-filter (rating≥4 / giá≤max / không IP)" });
+    validateRunning = true;
+    res.json({ ok: true, started: true, promoted });
+    validateCandidates({ profileId, day, niche, limit, onLog: (m) => console.log("[validate-niche]", m) })
+      .catch((e) => console.error("[validate-niche] lỗi:", e?.message ?? e))
       .finally(() => { validateRunning = false; });
   });
 
@@ -1539,6 +2279,7 @@ export const startAdminServer = async () => {
   app.post("/admin/api/research/candidates/:id/dismiss", (req, res) => {
     const sessionUser = (req.session as any).user as SessionUser;
     if (sessionUser.role === "viewer") return res.status(403).json({ error: "Viewer không được" });
+    if (req.params.id.startsWith("prod:")) return res.json({ ok: true, skipped: true }); // sp tạm, không có row để bỏ
     const c = researchStore.updateCandidate(req.params.id, { status: "dismissed" });
     if (!c) return res.status(404).json({ error: "Không tìm thấy candidate" });
     res.json({ ok: true, candidate: c });
@@ -1550,9 +2291,10 @@ export const startAdminServer = async () => {
       const sessionUser = (req.session as any).user as SessionUser;
       if (sessionUser.role === "viewer") return res.status(403).json({ error: "Viewer không được đăng" });
 
-      const cand = researchStore.findCandidate(req.params.id);
-      if (!cand) return res.status(404).json({ error: "Không tìm thấy candidate" });
-      if (!cand.url) return res.status(400).json({ error: "Candidate thiếu URL sản phẩm" });
+      const isProduct = req.params.id.startsWith("prod:");
+      const cand = researchStore.findCandidate(req.params.id) ?? researchStore.findProductCandidate(req.params.id);
+      if (!cand) return res.status(404).json({ error: "Không tìm thấy candidate/sản phẩm" });
+      if (!cand.url) return res.status(400).json({ error: "Thiếu URL sản phẩm" });
 
       const body = req.body as { shop?: string; profileId?: string; options?: { divide4?: boolean; maxColors?: number } };
       const shop = (body.shop ?? "").trim();
@@ -1579,7 +2321,10 @@ export const startAdminServer = async () => {
         onLog: (m) => { logs.push(m); console.log("[research:queue]", m); },
       });
       const written = await dispatchScrapedData(dirs.baseSheinAutoDir, data, [shop]);
-      const updated = researchStore.updateCandidate(cand.id, { status: "queued", targetShop: shop });
+      // Candidate thật → update; sp từ research_product → tạo candidate queued (để track + listedCount).
+      let updated;
+      if (isProduct) { researchStore.markProductQueued(cand, shop); updated = { ...cand, status: "queued", targetShop: shop }; }
+      else { updated = researchStore.updateCandidate(cand.id, { status: "queued", targetShop: shop }); }
       refreshQueueSnapshot().catch(() => {});
       res.json({ ok: true, candidate: updated, queued: written, product_name: data.product_name, logs });
     } catch (err: any) {
@@ -1786,6 +2531,9 @@ export const startAdminServer = async () => {
       const targetFile = userCookiePath(sessionUser.username);
       await fs.ensureDir(path.dirname(targetFile));
       await fs.writeFile(targetFile, JSON.stringify(body.cookie, null, 2), "utf-8");
+      // Đổi cookie → account 4Seller có thể khác → XOÁ cache shop-list (5p) để Listings
+      // phản ánh tài khoản mới NGAY, không phải chờ cache hết hạn.
+      shopListCache.delete(sessionUser.username);
       res.json({ ok: true, count: body.cookie.length, savedTo: targetFile });
     } catch (err: any) {
       res.status(500).json({ error: err?.message ?? "Lỗi lưu cookie" });
@@ -1818,7 +2566,15 @@ export const startAdminServer = async () => {
   });
 
   const port = Number(process.env.ADMIN_PORT ?? 3000);
-  app.listen(port, () => {
-    console.log(`🌐 Admin UI đang chạy tại http://localhost:${port}/admin`);
+  // Bind tường minh: resolve khi listening, REJECT khi lỗi (vd EADDRINUSE = đã có
+  // instance khác). Để index.ts thoát hẳn → tránh chạy nhiều instance cron song song
+  // (mỗi instance có folderLocks riêng → đăng TRÙNG cùng 1 file nhiều lần).
+  await new Promise<void>((resolve, reject) => {
+    const server = app.listen(port);
+    server.once("listening", () => {
+      console.log(`🌐 Admin UI đang chạy tại http://localhost:${port}/admin`);
+      resolve();
+    });
+    server.once("error", (err) => reject(err));
   });
 };

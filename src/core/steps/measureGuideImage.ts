@@ -22,17 +22,53 @@ export async function processMeasureGuideImage(url?: string | null): Promise<str
     const H = meta.height ?? 0;
     if (!W || !H) return null;
 
-    // Hộp trắng che góc dưới-phải (nơi chữ SHEIN). Tỉ lệ theo kích thước ảnh.
-    const boxW = Math.round(W * 0.42);
-    const boxH = Math.round(H * 0.07);
+    // Watermark "SHEIN" luôn nằm ở GÓC PHẢI-DƯỚI sâu, nhưng chiều cao thay đổi theo sơ đồ
+    // (có sơ đồ sát đáy, có sơ đồ ở ~85%). Sơ đồ vẽ luôn căn giữa-trái nên vùng phải-dưới
+    // sâu chỉ còn chữ SHEIN → dò pixel chữ ĐEN ở vùng đó, tính bbox rồi phủ trắng đúng chỗ.
+    // Không thấy chữ → trả ảnh gốc (không có watermark vùng này, khỏi che).
+    const { data, info } = await sharp(buf)
+      .removeAlpha()
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+    const ch = info.channels; // 3 sau removeAlpha
+    const x0 = Math.floor(W * 0.58); // chừa hình vẽ căn giữa-trái
+    const y0 = Math.floor(H * 0.72); // chừa marker/viền trên của sơ đồ
+    let minX = W, minY = H, maxX = 0, maxY = 0, found = 0;
+    for (let y = y0; y < H; y++) {
+      for (let x = x0; x < W; x++) {
+        const i = (y * W + x) * ch;
+        const lum = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+        if (lum < 110) {
+          found++;
+          if (x < minX) minX = x;
+          if (x > maxX) maxX = x;
+          if (y < minY) minY = y;
+          if (y > maxY) maxY = y;
+        }
+      }
+    }
+    if (found < 20) {
+      // không phát hiện watermark vùng phải-dưới → giữ nguyên ảnh
+      return `data:image/png;base64,${buf.toString("base64")}`;
+    }
+    const pad = Math.round(W * 0.015);
+    minX = Math.max(0, minX - pad);
+    minY = Math.max(0, minY - pad);
+    maxX = Math.min(W - 1, maxX + pad);
+    maxY = Math.min(H - 1, maxY + pad);
     const cover = await sharp({
-      create: { width: boxW, height: boxH, channels: 3, background: "#ffffff" },
+      create: {
+        width: maxX - minX + 1,
+        height: maxY - minY + 1,
+        channels: 3,
+        background: "#ffffff",
+      },
     })
       .png()
       .toBuffer();
 
     const out = await img
-      .composite([{ input: cover, left: W - boxW, top: H - boxH }])
+      .composite([{ input: cover, left: minX, top: minY }])
       .png()
       .toBuffer();
 

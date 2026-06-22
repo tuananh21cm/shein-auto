@@ -208,6 +208,36 @@ export const getCategoryById = (
     `/api/meta/tiktok/get-category-by-id?categoryId=${encodeURIComponent(categoryId)}&site=${encodeURIComponent(site)}&shopId=${encodeURIComponent(String(shopId))}`
   );
 
+/** Lấy DRAFT của 1 shop (status="draft"). shopId = id số từ getShopList. */
+export const getDraftPage = (
+  username: string,
+  opts: { shopId?: string | number; pageCurrent?: number; pageSize?: number }
+) =>
+  fourSellerPost<{ records: ListingRecord[]; total: number }>(username, "/api/listing/tiktok/page", {
+    pageCurrent: opts.pageCurrent ?? 1,
+    pageSize: opts.pageSize ?? 100,
+    isGlobal: null,
+    suspendedStatus: "",
+    status: "draft",
+    orderBy: "update_time",
+    desc: "desc",
+    shopId: opts.shopId ?? "",
+    queryStatus: "",
+    sitePublishStatus: "",
+    searchType: "msku",
+    searchValue: [],
+    searchMethod: "exact",
+    groupId: "",
+    migrationPageType: "q-all",
+    listingIdList: [],
+    hasVariation: "",
+    categoryMap: [""],
+  });
+
+/** Publish 1 hoặc nhiều draft theo listing id (POST mảng id thuần). */
+export const batchPublish = (username: string, listingIds: (number | string)[]) =>
+  fourSellerPost<any>(username, "/api/listing/tiktok/batch-publish", listingIds.map(Number));
+
 export const getListingPage = (
   username: string,
   opts: {

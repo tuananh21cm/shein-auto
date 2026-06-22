@@ -14,3 +14,17 @@ export const getProfileNameFromFolder = (jsonFile: string): string => {
   if (folderName.includes("_")) return folderName;
   return `${folderName}_US`;
 };
+
+/**
+ * Chuẩn hoá tên shop để gắn vào SKU: bỏ prefix "tiktok_", bỏ market suffix (_US/_UK...),
+ * bỏ dấu tiếng Việt, bỏ space + ký tự đặc biệt → viết liền. Vd "Memetee Shop_US" → "MemeteeShop".
+ */
+export const normalizeShopName = (profile: string): string =>
+  (profile || "")
+    .replace(/^tiktok_/i, "")
+    .replace(/_(US|UK|DE|FR|IT|ES)$/i, "")
+    .replace(/đ/g, "d")
+    .replace(/Đ/g, "D")
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/[^a-zA-Z0-9]/g, "");

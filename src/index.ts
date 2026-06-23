@@ -12,6 +12,7 @@ import { initDb, closeDb } from "./state/db";
 import { scheduleResearchCron } from "./core/research/researchCron";
 import { scheduleTiktokCron } from "./core/tiktokCron";
 import { scheduleDripPublisher } from "./core/dripPublisher";
+import { scheduleAutoCrawler } from "./core/autoCrawler";
 
 // Pipe console.* lên eventBus để SSE stream xuống UI. Phải gọi sớm.
 installConsoleTap();
@@ -40,6 +41,7 @@ const bootstrap = async () => {
   scheduleResearchCron();
   scheduleTiktokCron();
   scheduleDripPublisher();
+  scheduleAutoCrawler();
   console.log("⏰ Đã đăng ký cron (instance này giữ port → chạy cron).");
 };
 bootstrap().catch((err: any) => {

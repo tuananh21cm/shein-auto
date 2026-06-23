@@ -238,6 +238,35 @@ export const getDraftPage = (
 export const batchPublish = (username: string, listingIds: (number | string)[]) =>
   fourSellerPost<any>(username, "/api/listing/tiktok/batch-publish", listingIds.map(Number));
 
+/** 1 dòng báo cáo doanh số theo shop (endpoint Report → Sales by shop). */
+export interface ShopSalesRow {
+  shopId: number;
+  shopName: string;
+  platform: string;
+  totalSales: number;
+  paidSales: number;
+  refundedSales: number;
+  totalOrders: number;
+  paidOrders: number;
+  averageOrderValue: number;
+}
+
+/**
+ * Doanh số/đơn theo từng shop trong khoảng [startTime, endTime] (YYYY-MM-DD).
+ * shopIds = mảng id số (từ getShopList). CHỈ trả shop có phát sinh đơn trong kỳ.
+ */
+export const getSalesByShop = (
+  username: string,
+  opts: { startTime: string; endTime: string; shopIds: (number | string)[] }
+) =>
+  fourSellerPost<ShopSalesRow[]>(username, "/api/shop-sales-performance/shop-list", {
+    desc: "desc",
+    orderBy: "total_sales",
+    startTime: opts.startTime,
+    endTime: opts.endTime,
+    shopIds: opts.shopIds,
+  });
+
 export const getListingPage = (
   username: string,
   opts: {

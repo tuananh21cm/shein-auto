@@ -1,0 +1,9 @@
+{
+  "_comment": "Auto-crawl uncrawled (allocated/recrawl) qua Chrome CDP, chạy nền liên tục. batchSize sp/cycle; intervalSeconds nghỉ giữa cycle; maxAttempts lần thử trước khi bỏ (status=failed). Chrome phải mở --remote-debugging-port=9222.",
+  "enabled": false,
+  "batchSize": 10,
+  "intervalSeconds": 90,
+  "idleSeconds": 300,
+  "cdpUrl": "http://127.0.0.1:9222",
+  "maxAttempts": 3
+}

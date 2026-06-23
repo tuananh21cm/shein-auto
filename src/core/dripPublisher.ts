@@ -43,16 +43,18 @@ export async function runDripCycle(opts: DripOptions): Promise<DripCycleResult> 
   const per = opts.perShopPerCycle ?? 1;
   const jit = opts.interShopJitterSec ?? [30, 90];
 
-  const { records: shops } = await getShopList(opts.cookieUser);
-  const list = (opts.shopFilter ? shops.filter(opts.shopFilter) : shops) ?? [];
+  const shopResp = await getShopList(opts.cookieUser);
+  const shops = shopResp?.records ?? [];
+  const list = opts.shopFilter ? shops.filter(opts.shopFilter) : shops;
   let published = 0;
   let remaining = 0;
   const perShop: Record<string, number> = {};
 
   for (const shop of list) {
     try {
-      const { records } = await getDraftPage(opts.cookieUser, { shopId: shop.id });
-      const drafts = records ?? [];
+      // 4Seller trả data=null khi shop không còn draft (hoặc shop đóng) → coi như 0 draft.
+      const resp = await getDraftPage(opts.cookieUser, { shopId: shop.id });
+      const drafts = resp?.records ?? [];
       if (!drafts.length) continue;
       const batch = drafts.slice(0, per);
       const ids = batch.map((d) => d.id);

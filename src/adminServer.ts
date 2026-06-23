@@ -35,6 +35,7 @@ import {
   getListingPage as fsGetListingPage,
   getListingDetail as fsGetListingDetail,
   getCategoryById as fsGetCategoryById,
+  getSalesByShop as fsGetSalesByShop,
 } from "./services/fourseller/client";
 import {
   computeShopScore,
@@ -64,6 +65,7 @@ import { computeDropScores } from "./core/research/dropScore";
 import { shopNicheStore, type ShopNicheStatus } from "./state/shopNicheStore";
 import { kalodataStore } from "./state/kalodataStore";
 import { researchStore, today as researchToday } from "./state/researchStore";
+import { EditDb } from "./services/tiktok/editDb";
 
 const adminSessionSecret = process.env.ADMIN_SESSION_SECRET || "shein-auto-secret";
 
@@ -240,6 +242,54 @@ export const startAdminServer = async () => {
   // cache, tránh spam /api/shop/get-tidy-list (rate-limit/khoá cookie).
   const shopListCache = new Map<string, { ts: number; shops: string[]; source: string }>();
   const SHOP_CACHE_TTL = 5 * 60_000;
+
+  // Cache số listing LIVE (active) thật từ 4Seller per-user — getStatusCount/shop tốn ~16 call.
+  const liveCountCache = new Map<string, { ts: number; byShop: Record<string, number> }>();
+  /** Map shopName(lowercase) → activeCount thật trên TikTok (qua 4Seller). Best-effort, cache 5p. */
+  async function fetchLiveCounts(username: string): Promise<Record<string, number>> {
+    const cached = liveCountCache.get(username);
+    if (cached && Date.now() - cached.ts < SHOP_CACHE_TTL) return cached.byShop;
+    const byShop: Record<string, number> = {};
+    try {
+      const list = await fsGetShopList(username);
+      const records = (list?.records ?? []).filter((s) => !s.platform || /tiktok/i.test(String(s.platform)));
+      await Promise.all(
+        records.map(async (s) => {
+          try {
+            const sc = await fsGetStatusCount(username, { shopId: s.id });
+            byShop[String(s.shopName).toLowerCase()] = sc?.activeCount ?? 0;
+          } catch { /* 1 shop lỗi → bỏ qua */ }
+        })
+      );
+    } catch { /* không có cookie / lỗi → trả map rỗng */ }
+    liveCountCache.set(username, { ts: Date.now(), byShop });
+    return byShop;
+  }
+
+  // Cache số ĐƠN theo shop (4Seller Report → Sales by shop), cửa sổ 7 ngày gần nhất.
+  const ordersCache = new Map<string, { ts: number; byShop: Record<string, number> }>();
+  /** Map shopName(lowercase) → totalOrders 7 ngày gần nhất. Shop không có đơn → không có key (=0). */
+  async function fetchOrdersByShop(username: string): Promise<Record<string, number>> {
+    const cached = ordersCache.get(username);
+    if (cached && Date.now() - cached.ts < SHOP_CACHE_TTL) return cached.byShop;
+    const byShop: Record<string, number> = {};
+    try {
+      const list = await fsGetShopList(username);
+      const ids = (list?.records ?? []).map((s) => s.id).filter((x) => x != null);
+      if (ids.length) {
+        const end = new Date();
+        const start = new Date();
+        start.setDate(start.getDate() - 6); // 7 ngày gồm hôm nay
+        const fmt = (d: Date) => d.toISOString().slice(0, 10);
+        const rows = await fsGetSalesByShop(username, { startTime: fmt(start), endTime: fmt(end), shopIds: ids });
+        for (const r of rows ?? []) {
+          if (r?.shopName) byShop[String(r.shopName).toLowerCase()] = r.totalOrders ?? 0;
+        }
+      }
+    } catch { /* không cookie / lỗi → map rỗng */ }
+    ordersCache.set(username, { ts: Date.now(), byShop });
+    return byShop;
+  }
 
   /**
    * Nguồn shop cho Tampermonkey. Ưu tiên SYNC TỪ 4SELLER (getShopList) → tên shop
@@ -965,6 +1015,8 @@ export const startAdminServer = async () => {
   app.get("/admin/api/listings/shops", async (req, res) => {
     try {
       let shops = await scanShopsSummary({ username: ownerScope(req) });
+      let liveByShop: Record<string, number> = {};
+      let ordersByShop: Record<string, number> = {};
       // CHỈ hiện shop thuộc 4Seller account HIỆN TẠI (theo cookie). Ẩn hẳn shop của
       // account 4Seller khác (P1/P5 cũ) dù còn lịch sử trên ổ đĩa.
       try {
@@ -978,10 +1030,43 @@ export const startAdminServer = async () => {
               const set = new Set(r.shops.map((s) => s.toLowerCase()));
               shops = shops.filter((s) => set.has(s.folder.toLowerCase()));
             }
+            // active thật + số đơn 7 ngày từ 4Seller (mỗi cái cache 5p), gọi song song.
+            [liveByShop, ordersByShop] = await Promise.all([
+              fetchLiveCounts(u.username),
+              fetchOrdersByShop(u.username),
+            ]);
           }
         }
       } catch { /* best-effort */ }
-      res.json({ shops });
+
+      // Enrich: ngách (shop_niche) + uncrawled (shop_allocation) từ shein-auto.db.
+      const nicheByShop = new Map<string, string>();
+      const uncrawledByShop = new Map<string, number>();
+      try {
+        const { getDb } = await import("./state/db");
+        const db = getDb();
+        for (const r of db.prepare("SELECT shop, niche_key FROM shop_niche WHERE niche_key IS NOT NULL").all() as any[]) {
+          const k = String(r.shop ?? "").toLowerCase();
+          if (k && !nicheByShop.has(k)) nicheByShop.set(k, r.niche_key);
+        }
+        for (const r of db.prepare(
+          "SELECT shop, COUNT(*) c FROM shop_allocation WHERE status IN ('allocated','recrawl') GROUP BY shop"
+        ).all() as any[]) {
+          if (r.shop) uncrawledByShop.set(String(r.shop).toLowerCase(), r.c);
+        }
+      } catch { /* best-effort */ }
+
+      const enriched = shops.map((s) => {
+        const lc = s.folder.toLowerCase();
+        return {
+          ...s,
+          niche: nicheByShop.get(lc) ?? null,
+          uncrawled: uncrawledByShop.get(lc) ?? 0,
+          live: lc in liveByShop ? liveByShop[lc] : null, // null = chưa lấy được (no cookie)
+          orders: lc in ordersByShop ? ordersByShop[lc] : (Object.keys(ordersByShop).length ? 0 : null),
+        };
+      });
+      res.json({ shops: enriched });
     } catch (err: any) {
       res.status(500).json({ error: err?.message ?? "Lỗi scan shops" });
     }
@@ -1153,6 +1238,113 @@ export const startAdminServer = async () => {
       res.status(500).json({ error: err?.message ?? "Lỗi tạo POD" });
     } finally {
       if (tmpPath) await fs.remove(tmpPath).catch(() => {});
+    }
+  });
+
+  // ── TikTok Auto-Edit (click suggestions) ──────────────────
+  // Quản lý: danh sách shop (4Seller) + Kiki profile login TikTok Seller Center của từng shop,
+  // và xem listing đã chạy suggestion. Mapping lưu ở data/tiktok.db (KHÁC shop_niche.kiki_profile = SHEIN).
+  app.get("/admin/api/tiktok-edit/shops", async (req, res) => {
+    try {
+      const sessionUser = (req.session as any).user as SessionUser;
+      const cfg = await loadAdminConfig();
+      const u = cfg.users.find((x) => x.username === sessionUser.username);
+      if (!u) return res.status(404).json({ error: "User không tồn tại" });
+      const { shops, source } = await resolveUserShops(u as AdminUser);
+      const edb = new EditDb();
+      try {
+        const profMap = new Map(edb.allProfiles().map((p) => [p.shop, p]));
+        const countMap = new Map(edb.countsByShop().map((c) => [c.shop, c]));
+        const rows = shops.map((shop) => {
+          const c = countMap.get(shop);
+          return {
+            shop,
+            kikiProfile: profMap.get(shop)?.kiki_profile ?? "",
+            updatedAt: profMap.get(shop)?.updated_at ?? null,
+            edited: c?.edited ?? 0,
+            failed: c?.failed ?? 0,
+          };
+        });
+        // Tổng edit chưa gán shop (script cũ chạy 1 profile, không ghi shop) → hiển thị riêng.
+        const unassigned = countMap.get("") ?? { edited: 0, failed: 0, total: 0 };
+        res.json({ shops: rows, source, unassigned });
+      } finally {
+        edb.close();
+      }
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? "Lỗi load shop TikTok edit" });
+    }
+  });
+
+  app.post("/admin/api/tiktok-edit/profile", async (req, res) => {
+    try {
+      const sessionUser = (req.session as any).user as SessionUser;
+      if (sessionUser.role === "viewer") return res.status(403).json({ error: "Viewer không thể sửa profile" });
+      const { shop, kikiProfile } = req.body as { shop?: string; kikiProfile?: string };
+      if (!shop || !shop.trim()) return res.status(400).json({ error: "Thiếu shop" });
+      const edb = new EditDb();
+      try {
+        edb.setProfile(shop.trim(), kikiProfile ?? "");
+        res.json({ ok: true, shop: shop.trim(), kikiProfile: (kikiProfile ?? "").trim() });
+      } finally {
+        edb.close();
+      }
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? "Lỗi lưu profile" });
+    }
+  });
+
+  app.get("/admin/api/tiktok-edit/edited", async (req, res) => {
+    try {
+      const shop = ((req.query.shop as string) || "").trim();
+      const status = ((req.query.status as string) || "").trim();
+      const limit = Math.min(Number(req.query.limit) || 500, 5000);
+      const edb = new EditDb();
+      try {
+        const rows = edb.listEdited({ shop: shop || undefined, status: status || undefined, limit });
+        res.json({ rows, total: rows.length });
+      } finally {
+        edb.close();
+      }
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? "Lỗi load listing đã edit" });
+    }
+  });
+
+  // Chạy auto-edit cho 1 shop (Kiki mở TikTok Seller Center, click suggestion + Update). Stream log.
+  // Kiki chỉ chạy 1 profile/lần → guard chống chạy song song.
+  let autoEditRunning = false;
+  app.post("/admin/api/tiktok-edit/run", async (req, res) => {
+    const sessionUser = (req.session as any).user as SessionUser;
+    if (sessionUser.role === "viewer") return res.status(403).json({ error: "Viewer không thể chạy" });
+    const { shop, n, dryRun } = req.body as { shop?: string; n?: number; dryRun?: boolean };
+    if (!shop || !shop.trim()) return res.status(400).json({ error: "Thiếu shop" });
+    if (autoEditRunning) {
+      return res.status(409).json({ error: "Đang có 1 phiên auto-edit chạy (Kiki chỉ 1 profile/lần). Đợi xong rồi chạy." });
+    }
+    // Lấy profile đã gán
+    let profile = "";
+    const edbP = new EditDb();
+    try { profile = edbP.getProfile(shop.trim()) || ""; } finally { edbP.close(); }
+    if (!profile) return res.status(400).json({ error: `Shop "${shop}" chưa gán Kiki profile.` });
+
+    const limit = Math.min(Math.max(Number(n) || 50, 1), 200);
+    res.setHeader("Content-Type", "text/plain; charset=utf-8");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("X-Accel-Buffering", "no");
+    const send = (line: string) => { try { res.write(line + "\n"); } catch { /* client đóng */ } };
+
+    autoEditRunning = true;
+    try {
+      const { runAutoEdit } = await import("./scripts/tiktokAutoEdit");
+      send(`▶ Auto-edit [${shop}] · profile ${profile} · tối đa ${limit}${dryRun ? " · DRY-RUN (không Update)" : ""}`);
+      const r = await runAutoEdit({ profileId: profile, shop: shop.trim(), n: limit, dryRun: !!dryRun, onLog: (m) => send(m) });
+      send(`__RESULT__${JSON.stringify(r)}`);
+    } catch (e: any) {
+      send(`__ERROR__${e?.message ?? e}`);
+    } finally {
+      autoEditRunning = false;
+      res.end();
     }
   });
 

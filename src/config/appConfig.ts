@@ -117,6 +117,15 @@ export interface PublishFile {
   interShopJitterMaxSec: number;
 }
 
+export interface CrawlFile {
+  enabled: boolean;
+  batchSize: number;
+  intervalSeconds: number;
+  idleSeconds: number;
+  cdpUrl: string;
+  maxAttempts: number;
+}
+
 /** Template POD T-shirt (config/pod.json). Mọi áo POD dùng chung; chỉ khác title + random màu. */
 export interface PodFile {
   /** Danh sách ngách — mỗi listing random 1. */
@@ -177,6 +186,10 @@ export const tiktokConfig = (): TiktokFile =>
 let _publish: PublishFile | null = null;
 export const publishConfig = (): PublishFile =>
   (_publish ??= readJson<PublishFile>("publish.json"));
+
+let _crawl: CrawlFile | null = null;
+export const crawlConfig = (): CrawlFile =>
+  (_crawl ??= readJson<CrawlFile>("crawl.json"));
 
 /**
  * Tính giá bán cuối cùng từ giá gốc: (price + shipFee) × multiplier + extraAdd.

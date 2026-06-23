@@ -23,7 +23,9 @@ const PROFILE = process.env.TIKTOK_PROFILE || cfg.profileId;
 const MANAGE_URL = "https://seller-us.tiktok.com/product/manage?shop_region=US";
 const SUGGEST_WAIT_MS = 40_000; // đợi nút suggestions hiện (~30s như yêu cầu, để dư 40s)
 
-const log = (m: string) => console.log(`[${new Date().toISOString().slice(11, 19)}] ${m}`);
+// Sink log có thể tráo (CLI → console; gọi từ admin server → stream ra UI).
+let logSink: (m: string) => void = (m) => console.log(m);
+const log = (m: string) => logSink(`[${new Date().toISOString().slice(11, 19)}] ${m}`);
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 // tsx/esbuild (keepNames) chèn __name vào hàm con khi serialize page.evaluate → "__name is not defined".
@@ -34,10 +36,10 @@ const injectShim = async (page: any) => {
     .catch(() => {});
 };
 
-const connect = async () => {
-  log(`Force-stop + start Kiki profile ${PROFILE}…`);
-  await kiki.forceStop(PROFILE);
-  const started = await kiki.startWithRetry(PROFILE, (m) => log("  " + m));
+const connect = async (profile: string) => {
+  log(`Force-stop + start Kiki profile ${profile}…`);
+  await kiki.forceStop(profile);
+  const started = await kiki.startWithRetry(profile, (m) => log("  " + m));
   const browser = await chromium.connectOverCDP(started.websocketDebuggerUrl);
   const ctx = browser.contexts()[0] ?? (await browser.newContext());
   const page = ctx.pages()[0] ?? (await ctx.newPage());
@@ -90,11 +92,34 @@ const findRow = async (page: any, pid: string): Promise<any | null> => {
   return idNode.locator("xpath=ancestor::*[contains(@class,'core-table-row')][1]");
 };
 
-/** Phát hiện captcha TikTok (iframe/secsdk/verify) đang chặn. */
+/** Phát hiện captcha TikTok ĐANG CHẶN (thật sự hiển thị). TikTok preload sẵn node
+ *  secsdk/captcha ẨN (display:none / 0×0) trong DOM → KHÔNG được tính các node ẩn đó,
+ *  nếu không sẽ báo captcha giả dù màn hình sạch. Chỉ tính node visible + đủ to. */
 const hasCaptcha = async (page: any): Promise<boolean> => {
   try {
-    if (/captcha|secsdk|verify-?bridge/i.test(page.url())) return true;
-    return (await page.locator('iframe[src*="captcha" i], [class*="captcha" i], [class*="secsdk" i], [id*="captcha" i]').count().catch(() => 0)) > 0;
+    // URL captcha-verify chuyên dụng = chắc chắn captcha.
+    if (/captcha[-_]?verify|\/secsdk[-_]?verify/i.test(page.url())) return true;
+    return await page
+      .evaluate(() => {
+        const sels = [
+          'iframe[src*="captcha" i]',
+          '[id*="captcha-verify" i]',
+          '[class*="captcha_verify" i]',
+          '[class*="captcha-verify" i]',
+          '[class*="secsdk-captcha" i]',
+        ];
+        for (const sel of sels) {
+          for (const el of Array.from(document.querySelectorAll(sel))) {
+            const r = (el as HTMLElement).getBoundingClientRect();
+            const st = getComputedStyle(el as HTMLElement);
+            const visible = st.display !== "none" && st.visibility !== "hidden" && Number(st.opacity || "1") > 0.05;
+            // Captcha modal thật hiện ra to (>120px). Placeholder ẩn thường 0×0.
+            if (visible && r.width > 120 && r.height > 120) return true;
+          }
+        }
+        return false;
+      })
+      .catch(() => false);
   } catch { return false; }
 };
 
@@ -320,69 +345,95 @@ const runDiscover = async (page: any) => {
   }
 };
 
-const main = async () => {
-  const argv = process.argv.slice(2);
-  const discover = argv.includes("--discover");
-  const dryRun = argv.includes("--dry-run");
-  const N = Number(argv.find((a) => /^\d+$/.test(a))) || 50;
-  const pidArg = argv.find((a) => a.startsWith("--pid="))?.slice(6); // chỉ xử lý 1 product cụ thể
-  const holdSec = Number(argv.find((a) => a.startsWith("--hold="))?.slice(7)) || 0; // giữ tab edit mở N giây để check
-  if (!PROFILE) { console.log("❌ Chưa có profileId TikTok (config/tiktok.json)."); process.exit(1); }
+export interface AutoEditOpts {
+  profileId: string;          // Kiki profile login TikTok Seller Center
+  shop?: string;              // tên shop (4Seller) — ghi vào edited_listings để thống kê/lọc
+  n?: number;                 // số listing tối đa (mặc định 50)
+  dryRun?: boolean;           // làm hết TRỪ Update
+  pid?: string;               // chỉ xử lý 1 product cụ thể
+  holdSec?: number;           // giữ tab edit mở để check
+  onLog?: (m: string) => void; // sink log (admin server stream ra UI)
+}
 
-  const { browser, page } = await connect();
+/** Chạy auto-edit (click suggestions) cho 1 profile/shop. Tái dùng cho CLI lẫn admin server. */
+export const runAutoEdit = async (opts: AutoEditOpts): Promise<{ ok: number; fail: number; processed: number }> => {
+  const { profileId, shop, n = 50, dryRun = false, pid: pidArg, holdSec = 0 } = opts;
+  if (!profileId) throw new Error("Thiếu profileId Kiki");
+  const prevSink = logSink;
+  if (opts.onLog) logSink = opts.onLog;
+  const { browser, page } = await connect(profileId);
   const edb = new EditDb();
+  let ok = 0, fail = 0;
   try {
-    if (discover) { await runDiscover(page); return; }
-
-    log(`▶️ Auto-edit TikTok listings (${pidArg ? "pid=" + pidArg : "tối đa " + N}, ${dryRun ? "DRY-RUN — KHÔNG Update" : "THẬT"}${holdSec ? `, giữ tab ${holdSec}s` : ""}). Đã edit trước: ${edb.count()}.`);
+    log(`▶️ Auto-edit${shop ? " [" + shop + "]" : ""} (${pidArg ? "pid=" + pidArg : "tối đa " + n}, ${dryRun ? "DRY-RUN — KHÔNG Update" : "THẬT"}${holdSec ? `, giữ tab ${holdSec}s` : ""}). Đã edit trước: ${edb.count()}.`);
     let todo: string[];
     if (pidArg) {
-      todo = [pidArg]; // chỉ định product cụ thể
+      todo = [pidArg];
     } else {
       const ids = await getActiveProductIds(page);
       log(`Active: ${ids.length} listing. Lọc bỏ id đã edit…`);
-      todo = ids.filter((id) => !edb.isEdited(id)).slice(0, N);
+      todo = ids.filter((id) => !edb.isEdited(id)).slice(0, n);
     }
     log(`Sẽ xử lý ${todo.length} listing.`);
 
-    let ok = 0, fail = 0;
     for (let i = 0; i < todo.length; i++) {
       const pid = todo[i];
       try {
         log(`[${i + 1}/${todo.length}] mở edit ${pid}…`);
         const editPage = await openEdit(page, pid);
-        if (!editPage) { edb.mark(pid, { status: "failed", error: "ko mở được trang edit" }); fail++; log(`  ❌ ko mở được edit`); await page.goto(MANAGE_URL).catch(() => {}); continue; }
+        if (!editPage) { edb.mark(pid, { shop, status: "failed", error: "ko mở được trang edit" }); fail++; log(`  ❌ ko mở được edit`); await page.goto(MANAGE_URL).catch(() => {}); continue; }
         const applied = await applyAllSuggestions(editPage);
         log(`  Đã apply: ${applied.length ? applied.join(", ") : "(không có suggestion)"}`);
         if (dryRun) {
           log(`  [dry-run] KHÔNG bấm Update.`);
-          edb.mark(pid, { applied, status: "skipped" });
+          edb.mark(pid, { shop, applied, status: "skipped" });
         } else {
           const updated = await clickUpdate(editPage);
-          if (updated) { edb.mark(pid, { applied, status: "edited" }); ok++; log(`  ✅ Update OK`); }
-          else { edb.mark(pid, { applied, status: "failed", error: "Update ko xác nhận" }); fail++; log(`  ⚠️ Update không chắc thành công`); }
+          if (updated) { edb.mark(pid, { shop, applied, status: "edited" }); ok++; log(`  ✅ Update OK`); }
+          else { edb.mark(pid, { shop, applied, status: "failed", error: "Update ko xác nhận" }); fail++; log(`  ⚠️ Update không chắc thành công`); }
         }
-        // Giữ tab edit mở để sếp check (KHÔNG đóng, KHÔNG Update) — theo --hold.
         if (holdSec > 0) {
-          log(`  ⏸️ Giữ tab edit mở ${holdSec}s để sếp check (URL: ${editPage.url().slice(0, 70)})…`);
+          log(`  ⏸️ Giữ tab edit mở ${holdSec}s để check (URL: ${editPage.url().slice(0, 70)})…`);
           await editPage.waitForTimeout(holdSec * 1000).catch(() => {});
         }
-        // Đóng tab edit nếu là tab mới; về lại manage.
         if (editPage !== page) await editPage.close().catch(() => {});
         await page.goto(MANAGE_URL, { waitUntil: "domcontentloaded" }).catch(() => {});
         await page.waitForTimeout(3000);
       } catch (e: any) {
-        fail++; edb.mark(pid, { status: "failed", error: String(e?.message ?? e).slice(0, 120) });
+        fail++; edb.mark(pid, { shop, status: "failed", error: String(e?.message ?? e).slice(0, 120) });
         log(`  ❌ lỗi: ${String(e?.message ?? e).slice(0, 80)}`);
         await page.goto(MANAGE_URL).catch(() => {});
       }
     }
-    log(`🏁 XONG: ✅ ${ok} edit, ❌ ${fail} fail. Tổng đã edit (DB): ${edb.count()}.`);
+    log(`🏁 XONG${shop ? " [" + shop + "]" : ""}: ✅ ${ok} edit, ❌ ${fail} fail. Tổng đã edit (DB): ${edb.count()}.`);
+    return { ok, fail, processed: ok + fail };
   } finally {
     edb.close();
     await browser.close().catch(() => {});
-    await kiki.stopProfile(PROFILE).catch(() => {});
+    await kiki.stopProfile(profileId).catch(() => {});
+    logSink = prevSink;
   }
 };
 
-main().then(() => process.exit(0)).catch((e) => { log(`💥 ${e?.message ?? e}`); process.exit(1); });
+const main = async () => {
+  const argv = process.argv.slice(2);
+  const discover = argv.includes("--discover");
+  const dryRun = argv.includes("--dry-run");
+  const N = Number(argv.find((a) => /^\d+$/.test(a))) || 50;
+  const pidArg = argv.find((a) => a.startsWith("--pid="))?.slice(6);
+  const holdSec = Number(argv.find((a) => a.startsWith("--hold="))?.slice(7)) || 0;
+  if (!PROFILE) { console.log("❌ Chưa có profileId TikTok (config/tiktok.json)."); process.exit(1); }
+
+  if (discover) {
+    const { browser, page } = await connect(PROFILE);
+    try { await runDiscover(page); }
+    finally { await browser.close().catch(() => {}); await kiki.stopProfile(PROFILE).catch(() => {}); }
+    return;
+  }
+  await runAutoEdit({ profileId: PROFILE, n: N, dryRun, pid: pidArg, holdSec });
+};
+
+// Chỉ chạy main() khi gọi trực tiếp (CLI), KHÔNG khi được admin server import.
+if (require.main === module) {
+  main().then(() => process.exit(0)).catch((e) => { log(`💥 ${e?.message ?? e}`); process.exit(1); });
+}

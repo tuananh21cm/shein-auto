@@ -134,9 +134,9 @@
     .json-view { background: #050811; color: #cdd6f4; padding: 16px; border-radius: 8px; font-family: 'JetBrains Mono', monospace; font-size: 0.78rem; max-height: 50vh; overflow: auto; white-space: pre-wrap; }
 
     /* Shop summary cards (landing view of Listings) */
-    .shops-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; }
-    .shop-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; cursor: pointer; transition: transform .15s, border-color .15s; display: flex; flex-direction: column; }
-    .shop-card:hover { transform: translateY(-2px); border-color: var(--accent); }
+    .shops-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; }
+    .shop-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; cursor: pointer; transition: transform .15s, border-color .15s, box-shadow .15s; display: flex; flex-direction: column; }
+    .shop-card:hover { transform: translateY(-3px); border-color: var(--accent); box-shadow: 0 10px 26px rgba(0,0,0,.22); }
     .shop-card .cover { aspect-ratio: 16/9; background: var(--bg-elev); position: relative; overflow: hidden; }
     .shop-card .cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
     .shop-card .cover .placeholder { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; color: var(--text-mute); font-size: 0.85rem; }
@@ -149,6 +149,69 @@
     .shop-card .counter.pending .val { color: var(--warn); }
     .shop-card .counter.success .val { color: var(--success); }
     .shop-card .counter.fail .val { color: var(--danger); }
+    /* ── Card tinh gọn (hero Live) ── */
+    .shop-card .cover { aspect-ratio: 16/10; }
+    .shop-card .cover::after { content: ''; position: absolute; inset: 0; background: linear-gradient(to top, rgba(8,12,24,0.55), transparent 42%); pointer-events: none; }
+    .shop-card .cover .niche-chip { position: absolute; left: 11px; bottom: 10px; z-index: 1; background: rgba(8,12,24,0.55); color: #eef1f8; padding: 3px 10px; border-radius: 7px; font-size: 0.7rem; font-weight: 600; letter-spacing: .02em; backdrop-filter: blur(6px); }
+    .shop-card .cover .niche-chip.none { color: #aab2cc; font-weight: 500; }
+    .shop-card .body { padding: 15px 16px 13px; gap: 15px; }
+    .shop-card .head-row { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+    .shop-card .name { font-size: 0.92rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .shop-card .owner { font-size: 0.7rem; color: var(--text-mute); white-space: nowrap; flex-shrink: 0; }
+    /* hero: tiến độ Live → target */
+    .shop-card .hero .hrow { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 8px; }
+    .shop-card .hero .htitle { font-size: 0.6rem; text-transform: uppercase; letter-spacing: .09em; color: var(--text-mute); }
+    .shop-card .hero .hval { font-size: 1.15rem; font-weight: 800; color: var(--success); font-variant-numeric: tabular-nums; line-height: 1; }
+    .shop-card .hero .hval.muted { color: var(--text-mute); }
+    .shop-card .hero .hval small { font-size: 0.72rem; font-weight: 600; color: var(--text-mute); }
+    .shop-card .hero .hpct { font-size: 0.72rem; font-weight: 600; color: var(--text-dim); }
+    .shop-card .hero .hpct.done { color: var(--success); }
+    /* dải chỉ số phụ: phẳng, không hộp viền */
+    .shop-card .metrics { display: flex; border-top: 1px solid var(--border); padding-top: 12px; }
+    .shop-card .metric { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 3px; position: relative; }
+    .shop-card .metric + .metric::before { content: ''; position: absolute; left: 0; top: 3px; bottom: 3px; width: 1px; background: var(--border); }
+    .shop-card .metric .mv { font-size: 1rem; font-weight: 700; color: var(--text-mute); font-variant-numeric: tabular-nums; line-height: 1; }
+    .shop-card .metric .mk { font-size: 0.58rem; color: var(--text-mute); text-transform: uppercase; letter-spacing: .03em; }
+    .shop-card .metric.unc { cursor: pointer; }
+    /* mỗi loại 1 màu — chỉ tô khi >0 để số 0 không gây nhiễu */
+    .shop-card .metric.unc.has .mv { color: #5aa9e6; }
+    .shop-card .metric.pending.has .mv { color: var(--warn); }
+    .shop-card .metric.fail.has .mv { color: var(--danger); }
+    .shop-card .metric.orders.has .mv { color: #b794f6; }
+    .shop-card .metric.unc:hover .mk { color: #5aa9e6; }
+    /* segmented sub-tab (shop detail) */
+    .seg { display: inline-flex; background: var(--bg-elev); border: 1px solid var(--border); border-radius: 9px; padding: 3px; gap: 3px; }
+    .seg-btn { background: transparent; border: none; color: var(--text-dim); padding: 6px 14px; border-radius: 7px; cursor: pointer; font-size: 0.85rem; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; }
+    .seg-btn:hover { color: var(--text); }
+    .seg-btn.active { background: var(--accent-soft); color: var(--accent); }
+    .seg-btn .cnt { font-size: 0.72rem; background: var(--bg-card); border: 1px solid var(--border); border-radius: 999px; padding: 1px 7px; color: var(--text-mute); }
+    /* ── Mini dashboard (Listings overview) ── */
+    .dash { display: grid; grid-template-columns: minmax(260px, 340px) 1fr; gap: 16px; margin-bottom: 16px; }
+    @media (max-width: 900px) { .dash { grid-template-columns: 1fr; } }
+    .kpis { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; align-content: start; }
+    .kpi { background: var(--bg-card); border: 1px solid var(--border); border-radius: 14px; padding: 13px 14px; position: relative; overflow: hidden; }
+    .kpi::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: var(--accent); }
+    .kpi.unc::before { background: #5aa9e6; } .kpi.pending::before { background: var(--warn); }
+    .kpi.live::before { background: var(--success); } .kpi.fail::before { background: var(--danger); }
+    .kpi.orders::before { background: #b794f6; }
+    .kpi .kpi-v { font-size: 1.65rem; font-weight: 800; line-height: 1.1; }
+    .kpi .kpi-k { font-size: 0.68rem; color: var(--text-mute); text-transform: uppercase; letter-spacing: 0.05em; margin-top: 2px; }
+    .kpi .kpi-ico { position: absolute; right: 11px; top: 11px; font-size: 1.05rem; opacity: 0.45; }
+    .dash-chart { background: var(--bg-card); border: 1px solid var(--border); border-radius: 14px; padding: 15px 16px; }
+    .dash-chart .chart-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+    .dash-chart h4 { margin: 0; font-size: 0.92rem; }
+    .legend { display: flex; gap: 13px; font-size: 0.7rem; color: var(--text-dim); flex-wrap: wrap; }
+    .legend i { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 5px; vertical-align: middle; }
+    .bars { display: flex; flex-direction: column; gap: 7px; max-height: 280px; overflow-y: auto; padding-right: 4px; }
+    .bar-row { display: grid; grid-template-columns: 116px 1fr 38px; gap: 10px; align-items: center; font-size: 0.78rem; cursor: pointer; }
+    .bar-row:hover .bn { color: var(--accent); }
+    .bar-row .bn { color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .bar-track { display: flex; height: 15px; border-radius: 7px; overflow: hidden; background: var(--bg-elev); }
+    .bar-seg { height: 100%; transition: width .3s; }
+    .bar-row .bt { text-align: right; color: var(--text-mute); font-variant-numeric: tabular-nums; }
+    /* progress trong card shop */
+    .shop-card .prog { height: 7px; background: var(--bg-elev); border-radius: 5px; overflow: hidden; }
+    .shop-card .prog-fill { height: 100%; border-radius: 5px; transition: width .4s ease; }
 
     .back-bar { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; padding: 10px 14px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; }
     .back-bar .crumb { color: var(--text-mute); font-size: 0.88rem; }
@@ -174,7 +237,7 @@
     .bulk-bar .count { font-weight: 700; color: var(--accent); }
     .listing-card .time-row { display: flex; align-items: center; gap: 6px; padding: 0 12px 8px; font-size: 0.72rem; color: var(--text-mute); }
     .listing-card .time-row .scraped { margin-left: auto; opacity: 0.7; }
-    .shop-card .last-time { padding: 0 16px 12px; font-size: 0.78rem; color: var(--text-mute); display: flex; align-items: center; gap: 6px; }
+    .shop-card .last-time { padding: 9px 16px; font-size: 0.68rem; color: var(--text-mute); display: flex; align-items: center; gap: 6px; border-top: 1px solid var(--border); }
     .listing-card .actions { display: flex; gap: 6px; padding: 0 12px 12px; }
     .listing-card .actions button { flex: 1; padding: 7px 10px; font-size: 0.78rem; border-radius: 8px; cursor: pointer; border: 1px solid var(--border); background: var(--bg-elev); color: var(--text-dim); transition: all .15s; }
     .listing-card .actions button:hover { color: var(--text); border-color: var(--accent); }
@@ -207,9 +270,6 @@
     <div class="nav-item" data-view="crawl">
       <span class="ico">🖼️</span><span>Cào ảnh</span>
     </div>
-    <div class="nav-item" data-view="uncrawled">
-      <span class="ico">🔗</span><span>Uncrawled</span>
-    </div>
     <div class="nav-item" data-view="history">
       <span class="ico">📜</span><span>History</span>
     </div>
@@ -230,6 +290,9 @@
     </div>
     <div class="nav-item" data-view="kiki">
       <span class="ico">🤖</span><span>Kiki Scrape</span>
+    </div>
+    <div class="nav-item" data-view="tiktokedit">
+      <span class="ico">✨</span><span>TikTok Suggest</span>
     </div>
     <div class="nav-item" data-view="users">
       <span class="ico">👥</span><span>Users</span>
@@ -300,27 +363,78 @@
 
       <!-- View 1: Shop summary cards (mặc định) -->
       <div id="shopsView">
+        <div id="shopsDashboard"></div>
         <div class="card">
           <div id="shopsGrid"><div class="empty">Đang tải…</div></div>
         </div>
       </div>
 
-      <!-- View 2: Listings của 1 shop được chọn -->
+      <!-- View 2: Listings + Uncrawled của 1 shop được chọn -->
       <div id="listingsDetailView" style="display:none;">
         <div class="back-bar">
           <button class="btn btn-ghost btn-icon" onclick="exitShopDetail()">← Back</button>
           <div class="crumb">Shop: <code id="detailShopName">—</code></div>
           <div style="flex:1;"></div>
-          <select id="listStatus" onchange="loadListings()" style="width:auto; min-width:160px;">
-            <option value="">Tất cả status</option>
-            <option value="pending">⏳ Pending</option>
-            <option value="success">✓ Success</option>
-            <option value="fail">✕ Fail</option>
-          </select>
-          <input id="listSearch" placeholder="Tìm title..." oninput="renderListings()" style="width: 200px;" />
+          <div class="seg">
+            <button id="tabListingsBtn" class="seg-btn active" onclick="switchDetailTab('listings')">📦 Listings</button>
+            <button id="tabUncrawledBtn" class="seg-btn" onclick="switchDetailTab('uncrawled')">🔗 Uncrawled <span class="cnt" id="tabUncCount">0</span></button>
+          </div>
         </div>
-        <div class="card">
-          <div id="listingsGrid"><div class="empty">Đang tải…</div></div>
+
+        <!-- Panel: Listings (file pending/success/fail) -->
+        <div id="shopListingsPanel">
+          <div style="display:flex; gap:8px; justify-content:flex-end; margin-bottom:12px;">
+            <select id="listStatus" onchange="loadListings()" style="width:auto; min-width:160px;">
+              <option value="">Tất cả status</option>
+              <option value="pending">⏳ Pending</option>
+              <option value="success">✓ Success</option>
+              <option value="fail">✕ Fail</option>
+            </select>
+            <input id="listSearch" placeholder="Tìm title..." oninput="renderListings()" style="width: 200px;" />
+          </div>
+          <div class="card">
+            <div id="listingsGrid"><div class="empty">Đang tải…</div></div>
+          </div>
+        </div>
+
+        <!-- Panel: Uncrawled queue (shop_allocation) của shop này -->
+        <div id="shopUncrawledPanel" style="display:none;">
+          <div class="card">
+            <div style="color:var(--text-mute); font-size:0.82rem; margin-bottom:12px;">Link sản phẩm chờ cào detail (shop_allocation). Nguồn: gom link Tampermonkey + research phân bổ.</div>
+            <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:12px;">
+              <select id="uncStatus" onchange="loadUncrawled()">
+                <option value="allocated">allocated (chờ cào)</option>
+                <option value="recrawl">recrawl (cào lại)</option>
+                <option value="crawled">crawled (đã cào)</option>
+                <option value="listed">listed (đã đăng)</option>
+                <option value="all">— Tất cả status —</option>
+              </select>
+              <input id="uncQ" placeholder="Tìm tên / goods_id…" oninput="debouncedUnc()" style="flex:1; min-width:160px; padding:8px 10px; border-radius:8px; border:1px solid var(--border); background:var(--bg-elev); color:var(--text);">
+            </div>
+            <div id="uncSummary" style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px;"></div>
+            <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px; align-items:center;">
+              <button class="btn btn-ghost" onclick="uncSelectAll(true)">Chọn tất cả</button>
+              <button class="btn btn-ghost" onclick="uncSelectAll(false)">Bỏ chọn</button>
+              <button class="btn btn-ghost" id="uncChromeBtn" onclick="chromeLaunch()" title="Mở Chrome với cổng debug 9222 (cần cho nút cào)">🟢 Bật Chrome debug</button>
+              <input id="uncCrawlN" type="number" value="10" min="1" max="50" title="Số sp cào (khi không tick chọn)" style="width:58px;padding:7px;border-radius:8px;border:1px solid var(--border);background:var(--bg-elev);color:var(--text);">
+              <button class="btn" id="uncCrawlBtn" onclick="uncCrawl()" style="background:var(--accent,#ae122a);color:#fff;border:none;">▶ Cào Chrome → Listing</button>
+              <span style="flex:1"></span>
+              <button class="btn btn-ghost" onclick="uncAction('requeue')">↻ Cào lại (allocated)</button>
+              <button class="btn btn-ghost" onclick="uncAction('exclude')">🚫 Loại trừ</button>
+              <button class="btn btn-ghost" style="color:#ef4444;border-color:#ef4444" onclick="uncAction('delete')">🗑 Xoá</button>
+            </div>
+            <div style="overflow:auto; max-height:64vh;">
+              <table>
+                <thead><tr>
+                  <th style="width:28px"><input type="checkbox" id="uncCheckAll" onchange="uncSelectAll(this.checked)"></th>
+                  <th style="width:48px">Ảnh</th><th>Tên</th><th>goods_id</th><th>Ngách</th><th>Giá</th><th>Score</th><th>Status</th>
+                </tr></thead>
+                <tbody id="uncRows"><tr><td colspan="8" style="text-align:center;color:var(--text-mute)">…</td></tr></tbody>
+              </table>
+            </div>
+            <div id="uncCount" style="margin-top:8px;color:var(--text-mute);font-size:0.85rem;"></div>
+            <pre id="uncLog" style="display:none;margin-top:12px;max-height:220px;overflow:auto;background:var(--bg-elev);border:1px solid var(--border);border-radius:8px;padding:10px;font-size:0.78rem;white-space:pre-wrap;color:var(--text-dim);"></pre>
+          </div>
         </div>
       </div>
     </section>
@@ -709,6 +823,51 @@
       </div>
     </section>
 
+    <!-- ───── TIKTOK SUGGEST (auto-edit) ───── -->
+    <section class="view" id="view-tiktokedit">
+      <div class="page-head">
+        <div>
+          <h1>✨ TikTok Click Suggestion</h1>
+          <div class="subtitle">Gán Kiki profile (đã login TikTok Seller Center) cho từng shop 4Seller, và xem listing đã chạy suggestion. Profile này KHÁC profile Kiki cào SHEIN.</div>
+        </div>
+        <button class="btn btn-ghost" onclick="initTiktokEdit()">Refresh</button>
+      </div>
+
+      <div class="card" style="margin-bottom:14px;">
+        <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px;">
+          <h3 style="margin:0;">🏪 Shop &amp; Kiki profile</h3>
+          <span id="teSource" class="badge badge-warn">nguồn: ?</span>
+        </div>
+        <div style="color:var(--text-mute); font-size:0.82rem; margin:6px 0 10px;">
+          Điền profile id Kiki (đã login TikTok Seller Center) rồi bấm Lưu. Để trống = bỏ gán. Gán xong bấm <b>Run</b> để chạy click-suggestion cho shop đó.
+        </div>
+        <div style="display:flex; gap:14px; align-items:center; flex-wrap:wrap; margin-bottom:10px; font-size:0.85rem;">
+          <label style="color:var(--text-mute);">Max listing <input id="teRunN" type="number" value="50" min="1" max="200" style="width:72px; padding:6px 8px; border-radius:7px; border:1px solid var(--border); background:var(--bg-elev); color:var(--text);" /></label>
+          <label class="tm-acc-item"><input type="checkbox" id="teDryRun"> Dry-run (không bấm Update)</label>
+        </div>
+        <div id="teShops"><div class="empty">Đang tải…</div></div>
+        <pre id="teLog" style="display:none; margin-top:12px; max-height:340px; overflow:auto; background:var(--bg-elev); border:1px solid var(--border); border-radius:8px; padding:10px; font-size:0.78rem; white-space:pre-wrap;"></pre>
+      </div>
+
+      <div class="card">
+        <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px; margin-bottom:10px;">
+          <h3 style="margin:0;">📋 Listing đã chạy suggestion</h3>
+          <div style="display:flex; gap:8px; align-items:center;">
+            <select id="teEditedShop" onchange="loadTeEdited()" style="padding:7px 10px; border-radius:8px; border:1px solid var(--border); background:var(--bg-elev); color:var(--text);">
+              <option value="">Tất cả shop</option>
+            </select>
+            <select id="teEditedStatus" onchange="loadTeEdited()" style="padding:7px 10px; border-radius:8px; border:1px solid var(--border); background:var(--bg-elev); color:var(--text);">
+              <option value="">Mọi status</option>
+              <option value="edited">edited</option>
+              <option value="failed">failed</option>
+              <option value="skipped">skipped</option>
+            </select>
+          </div>
+        </div>
+        <div id="teEdited"><div class="empty">Đang tải…</div></div>
+      </div>
+    </section>
+
     <!-- ───── USERS ───── -->
     <section class="view" id="view-users">
       <div class="page-head">
@@ -846,54 +1005,6 @@
       #uncPreview img { display: block; width: 320px; height: auto; max-height: 420px; object-fit: contain; border-radius: 5px; }
       .unc-thumb:hover { outline: 2px solid var(--accent, #ae122a); }
     </style>
-    <section class="view" id="view-uncrawled">
-      <div class="page-head">
-        <div>
-          <h1>🔗 Uncrawled Queue</h1>
-          <div class="subtitle">Link sản phẩm chờ cào detail (shop_allocation). Lọc theo shop/status, xoá, đưa cào lại, loại trừ. Nguồn: gom link Tampermonkey + research phân bổ.</div>
-        </div>
-        <button class="btn btn-ghost" onclick="loadUncrawled()">↻ Tải lại</button>
-      </div>
-      <div class="card">
-        <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:12px;">
-          <select id="uncShop" onchange="loadUncrawled()" style="min-width:200px;">
-            <option value="">— Tất cả shop —</option>
-          </select>
-          <select id="uncStatus" onchange="loadUncrawled()">
-            <option value="allocated">allocated (chờ cào)</option>
-            <option value="recrawl">recrawl (cào lại)</option>
-            <option value="crawled">crawled (đã cào)</option>
-            <option value="listed">listed (đã đăng)</option>
-            <option value="all">— Tất cả status —</option>
-          </select>
-          <input id="uncQ" placeholder="Tìm tên / goods_id…" oninput="debouncedUnc()" style="flex:1; min-width:160px; padding:8px 10px; border-radius:8px; border:1px solid var(--border); background:var(--bg-elev); color:var(--text);">
-        </div>
-        <div id="uncSummary" style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px;"></div>
-        <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px; align-items:center;">
-          <button class="btn btn-ghost" onclick="uncSelectAll(true)">Chọn tất cả</button>
-          <button class="btn btn-ghost" onclick="uncSelectAll(false)">Bỏ chọn</button>
-          <button class="btn btn-ghost" id="uncChromeBtn" onclick="chromeLaunch()" title="Mở Chrome với cổng debug 9222 (cần cho nút cào)">🟢 Bật Chrome debug</button>
-          <input id="uncCrawlN" type="number" value="10" min="1" max="50" title="Số sp cào (khi không tick chọn)" style="width:58px;padding:7px;border-radius:8px;border:1px solid var(--border);background:var(--bg-elev);color:var(--text);">
-          <button class="btn" id="uncCrawlBtn" onclick="uncCrawl()" style="background:var(--accent,#ae122a);color:#fff;border:none;">▶ Cào Chrome → Listing</button>
-          <span style="flex:1"></span>
-          <button class="btn btn-ghost" onclick="uncAction('requeue')">↻ Cào lại (allocated)</button>
-          <button class="btn btn-ghost" onclick="uncAction('exclude')">🚫 Loại trừ</button>
-          <button class="btn btn-ghost" style="color:#ef4444;border-color:#ef4444" onclick="uncAction('delete')">🗑 Xoá</button>
-        </div>
-        <div style="overflow:auto; max-height:64vh;">
-          <table>
-            <thead><tr>
-              <th style="width:28px"><input type="checkbox" id="uncCheckAll" onchange="uncSelectAll(this.checked)"></th>
-              <th style="width:48px">Ảnh</th><th>Tên</th><th>goods_id</th><th>Shop</th><th>Ngách</th><th>Giá</th><th>Score</th><th>Status</th>
-            </tr></thead>
-            <tbody id="uncRows"><tr><td colspan="9" style="text-align:center;color:var(--text-mute)">…</td></tr></tbody>
-          </table>
-        </div>
-        <div id="uncCount" style="margin-top:8px;color:var(--text-mute);font-size:0.85rem;"></div>
-        <pre id="uncLog" style="display:none;margin-top:12px;max-height:220px;overflow:auto;background:var(--bg-elev);border:1px solid var(--border);border-radius:8px;padding:10px;font-size:0.78rem;white-space:pre-wrap;color:var(--text-dim);"></pre>
-      </div>
-    </section>
-
   </main>
 </div>
 
@@ -920,6 +1031,7 @@ const state = {
 };
 const $ = (sel) => document.querySelector(sel);
 const escapeHtml = (v) => String(v ?? "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;");
+const LIVE_TARGET = 100; // mục tiêu số listing live mỗi shop
 
 const relTime = (ms) => {
   if (!ms || isNaN(ms)) return "—";
@@ -1001,7 +1113,9 @@ function ensureUncPreview() {
 }
 
 async function loadUncrawled() {
-  const shop = $("#uncShop").value, status = $("#uncStatus").value, q = $("#uncQ").value.trim();
+  const shop = state.listings.selectedShop;        // panel luôn scoped theo shop đang mở
+  if (!shop) return;
+  const status = $("#uncStatus").value, q = $("#uncQ").value.trim();
   const tb = $("#uncRows");
   try {
     const url = `/admin/api/uncrawled?shop=${encodeURIComponent(shop)}&status=${encodeURIComponent(status)}&q=${encodeURIComponent(q)}&limit=500`;
@@ -1009,19 +1123,17 @@ async function loadUncrawled() {
     const d = await r.json();
     if (!r.ok) { toast(d.error || "Lỗi load", "error"); return; }
 
-    // dropdown shop (giữ lựa chọn hiện tại)
-    const sel = $("#uncShop"), cur = sel.value;
-    sel.innerHTML = '<option value="">— Tất cả shop —</option>' +
-      d.shops.map(s => `<option value="${escapeHtml(s.shop)}">${escapeHtml(uncShortShop(s.shop))} (${s.c})</option>`).join("");
-    sel.value = cur;
-
-    // chip summary status
+    // chip summary status (theo shop này)
     $("#uncSummary").innerHTML = d.statusCounts.map(s =>
       `<span class="badge" style="background:var(--bg-elev);border:1px solid var(--border)">${escapeHtml(s.status)}: <b>${s.c}</b></span>`).join("")
       || '<span style="color:var(--text-mute)">Trống</span>';
+    // cập nhật badge số trên sub-tab = tổng allocated+recrawl
+    const waiting = (d.statusCounts || []).filter(s => s.status === "allocated" || s.status === "recrawl")
+      .reduce((a, s) => a + s.c, 0);
+    const cntEl = $("#tabUncCount"); if (cntEl) cntEl.textContent = waiting;
 
     if (!d.rows.length) {
-      tb.innerHTML = `<tr><td colspan="9" style="text-align:center;color:var(--text-mute)">Không có sản phẩm khớp bộ lọc</td></tr>`;
+      tb.innerHTML = `<tr><td colspan="8" style="text-align:center;color:var(--text-mute)">Không có sản phẩm khớp bộ lọc</td></tr>`;
     } else {
       tb.innerHTML = d.rows.map(row => `
         <tr>
@@ -1029,7 +1141,6 @@ async function loadUncrawled() {
           <td>${row.image ? `<img src="${escapeHtml(row.image)}" data-full="${escapeHtml(uncFullImg(row.image))}" class="unc-thumb" loading="lazy" onclick="window.open(this.dataset.full||this.src,'_blank')" style="width:40px;height:53px;object-fit:cover;border-radius:4px;cursor:zoom-in">` : ""}</td>
           <td><a href="${escapeHtml(row.url || "#")}" target="_blank" rel="noopener" style="color:var(--text);text-decoration:none">${escapeHtml((row.name || "(không tên)").slice(0, 70))}</a></td>
           <td style="font-family:monospace;font-size:0.8rem">${escapeHtml(row.goods_id)}</td>
-          <td style="font-size:0.8rem">${escapeHtml(uncShortShop(row.shop))}</td>
           <td style="font-size:0.8rem;color:var(--text-dim)">${escapeHtml(row.niche_key || "")}</td>
           <td>${row.price != null ? "$" + row.price : ""}</td>
           <td style="color:var(--text-dim)">${row.opportunity_score ?? ""}</td>
@@ -1068,8 +1179,8 @@ async function chromeLaunch() {
 
 // Trigger cào Chrome cho shop đang lọc (hoặc các sp đang tick) → ghi JSON → listing queue.
 async function uncCrawl() {
-  const shop = $("#uncShop").value;
-  if (!shop) { toast("Chọn 1 shop cụ thể ở dropdown trước khi cào", "error"); return; }
+  const shop = state.listings.selectedShop;
+  if (!shop) { toast("Chưa chọn shop", "error"); return; }
   const picked = uncSelected();
   const n = Math.max(1, Math.min(50, parseInt($("#uncCrawlN").value) || 10));
   const logEl = $("#uncLog");
@@ -1152,7 +1263,6 @@ document.querySelectorAll(".nav-item").forEach((item) => {
     item.classList.add("active");
     $(`#view-${view}`).classList.add("active");
     if (view === "history") loadHistory();
-    if (view === "uncrawled") loadUncrawled();
     if (view === "listings") loadShopsOrListings();
     if (view === "pod") initPod();
     if (view === "stats") loadStats();
@@ -1161,6 +1271,7 @@ document.querySelectorAll(".nav-item").forEach((item) => {
     if (view === "winhunt") initWinHunt();
     if (view === "similar") { /* chờ user nhập */ }
     if (view === "kiki") initKiki();
+    if (view === "tiktokedit") initTiktokEdit();
     if (view === "users") renderUsers();
     if (view === "settings") { loadSettings(); loadPricing(); }
     if (view === "cookie") loadCookieStatus();
@@ -1418,6 +1529,7 @@ state.listings = {
   shops: [],
   items: [],
   selectedShop: null, // null = ở view shops
+  detailTab: "listings", // "listings" | "uncrawled" (sub-tab trong shop detail)
 };
 
 const loadShopsOrListings = () => state.listings.selectedShop ? loadListings() : loadShops();
@@ -1435,64 +1547,183 @@ async function loadShops() {
   }
 }
 
+// Mini dashboard phía trên: KPI tiles + biểu đồ thanh xếp chồng theo shop.
+function renderShopsDashboard(shops, totals) {
+  const el = $("#shopsDashboard");
+  if (!el) return;
+  if (!shops.length) { el.innerHTML = ""; return; }
+
+  const kpi = (cls, val, label) =>
+    `<div class="kpi ${cls}"><div class="kpi-v">${val}</div><div class="kpi-k">${label}</div></div>`;
+
+  // Tiến độ mục tiêu live tổng (mỗi shop target LIVE_TARGET).
+  const totalTarget = shops.length * LIVE_TARGET;
+  const reachedShops = shops.filter((s) => (s.live || 0) >= LIVE_TARGET).length;
+  const livePct = totalTarget ? Math.round(totals.live / totalTarget * 100) : 0;
+  const liveTile = `<div class="kpi live">
+    <div class="kpi-v">${totals.live} <span style="font-size:0.95rem;color:var(--text-mute);font-weight:600;">/ ${totalTarget}</span></div>
+    <div class="kpi-k">Live · ${livePct}% mục tiêu · ${reachedShops}/${shops.length} đạt</div></div>`;
+
+  // Sắp theo khối lượng (uncrawled+pending) giảm dần — shop bận nhất lên đầu.
+  const rows = shops
+    .map((s) => ({
+      folder: s.folder, owner: s.owner,
+      unc: s.uncrawled || 0, pending: s.pending || 0, live: s.live || 0, fail: s.fail || 0,
+    }))
+    .sort((a, b) => (b.unc + b.pending) - (a.unc + a.pending));
+  const maxTotal = Math.max(1, ...rows.map((r) => r.unc + r.pending + r.live + r.fail));
+  const seg = (w, color) => w > 0 ? `<div class="bar-seg" style="width:${(w / maxTotal * 100).toFixed(1)}%;background:${color}" title="${w}"></div>` : "";
+
+  const barRows = rows.map((r) => {
+    const tot = r.unc + r.pending + r.live + r.fail;
+    return `<div class="bar-row" onclick="enterShopDetail('${escapeHtml(r.folder)}','${escapeHtml(r.owner)}')" title="${escapeHtml(r.folder)} — uncrawled ${r.unc} · pending ${r.pending} · live ${r.live} · fail ${r.fail}">
+      <div class="bn">${escapeHtml(uncShortShop(r.folder) || r.folder)}</div>
+      <div class="bar-track">${seg(r.unc, "#5aa9e6")}${seg(r.pending, "var(--warn)")}${seg(r.live, "var(--success)")}${seg(r.fail, "var(--danger)")}</div>
+      <div class="bt">${tot}</div>
+    </div>`;
+  }).join("");
+
+  el.innerHTML = `
+    <div class="dash">
+      <div class="kpis">
+        ${kpi("shops", shops.length, "Shops")}
+        ${kpi("unc", totals.uncrawled, "Uncrawled")}
+        ${kpi("pending", totals.pending, "Pending")}
+        ${liveTile}
+        ${kpi("fail", totals.fail, "Fail")}
+        ${kpi("orders", totals.orders, "Đơn (7 ngày)")}
+      </div>
+      <div class="dash-chart">
+        <div class="chart-head">
+          <h4>Khối lượng listing theo shop</h4>
+          <div class="legend">
+            <span><i style="background:#5aa9e6"></i>Uncrawled</span>
+            <span><i style="background:var(--warn)"></i>Pending</span>
+            <span><i style="background:var(--success)"></i>Live</span>
+            <span><i style="background:var(--danger)"></i>Fail</span>
+          </div>
+        </div>
+        <div class="bars">${barRows}</div>
+      </div>
+    </div>`;
+}
+
 function renderShops() {
   const shops = state.listings.shops;
   const totals = shops.reduce(
-    (acc, s) => ({ pending: acc.pending + s.pending, success: acc.success + s.success, fail: acc.fail + s.fail }),
-    { pending: 0, success: 0, fail: 0 }
+    (acc, s) => ({
+      uncrawled: acc.uncrawled + (s.uncrawled || 0),
+      pending: acc.pending + (s.pending || 0),
+      live: acc.live + (s.live || 0),
+      fail: acc.fail + (s.fail || 0),
+      orders: acc.orders + (s.orders || 0),
+    }),
+    { uncrawled: 0, pending: 0, live: 0, fail: 0, orders: 0 }
   );
+  const sep = '<span style="color:var(--border); margin:0 10px;">|</span>';
+  const m = (color, val, label) => `<b style="color:${color}">${val}</b> <span style="color:var(--text-mute)">${label}</span>`;
   $("#listingsSubtitle").innerHTML =
-    `${shops.length} shop &nbsp;·&nbsp;` +
-    `<span style="color:var(--warn);">⏳ ${totals.pending}</span> &nbsp;·&nbsp;` +
-    `<span style="color:var(--success);">✓ ${totals.success}</span> &nbsp;·&nbsp;` +
-    `<span style="color:var(--danger);">✕ ${totals.fail}</span>`;
+    `${m("var(--text)", shops.length, "shop")} ${sep}` +
+    `${m("#5aa9e6", totals.uncrawled, "uncrawl")} ${sep}` +
+    `${m("var(--warn)", totals.pending, "pending")} ${sep}` +
+    `${m("var(--success)", totals.live, "live")} ${sep}` +
+    `${m("var(--danger)", totals.fail, "fail")} ${sep}` +
+    `${m("#b794f6", totals.orders, "đơn/7n")}`;
+
+  renderShopsDashboard(shops, totals);
 
   if (shops.length === 0) {
     $("#shopsGrid").innerHTML = '<div class="empty">Chưa có shop nào</div>';
     return;
   }
 
+  // 1 chỉ số phụ phẳng (không hộp viền). nullv → "—" mờ; >0 → tô màu (fail/orders).
+  const metricEl = (cls, val, label, extra = "") => {
+    const nullv = val === null || val === undefined;
+    const has = (!nullv && val > 0) ? " has" : "";
+    return `<div class="metric ${cls}${has}" ${extra}><div class="mv${nullv ? " muted" : ""}">${nullv ? "—" : val}</div><div class="mk">${label}</div></div>`;
+  };
+
   $("#shopsGrid").innerHTML =
     '<div class="shops-grid">' +
     shops
-      .map(
-        (s) => `
-      <div class="shop-card" onclick="enterShopDetail('${escapeHtml(s.folder)}', '${escapeHtml(s.owner)}')">
+      .map((s) => {
+        const niche = s.niche
+          ? `<span class="niche-chip">${escapeHtml(s.niche)}</span>`
+          : `<span class="niche-chip none">chưa gán ngách</span>`;
+        const liveNull = s.live === null || s.live === undefined;
+        const live = s.live || 0;
+        const tgtPct = Math.min(100, Math.round(live / LIVE_TARGET * 100));
+        const done = live >= LIVE_TARGET;
+        const tier = done ? "var(--success)" : tgtPct >= 60 ? "var(--warn)" : "var(--accent)";
+        const f = escapeHtml(s.folder), o = escapeHtml(s.owner);
+        const uncExtra = `title="Mở queue uncrawled" onclick="event.stopPropagation(); enterShopDetail('${f}','${o}','uncrawled')"`;
+        return `
+      <div class="shop-card" onclick="enterShopDetail('${f}', '${o}')">
         <div class="cover">
           ${s.cover
             ? `<img src="${escapeHtml(s.cover)}" alt="" loading="lazy" onerror="this.parentElement.innerHTML='<div class=&quot;placeholder&quot;>(no image)</div>'" />`
             : `<div class="placeholder">(no image)</div>`}
+          ${niche}
         </div>
         <div class="body">
-          <div class="name">${escapeHtml(s.folder)} <span style="font-size:0.7rem; color: var(--text-mute); font-weight:400; margin-left: 6px;">@${escapeHtml(s.owner.split(',')[0])}</span></div>
-          <div class="counters">
-            <div class="counter pending"><div class="val">${s.pending}</div><div class="lbl">Pending</div></div>
-            <div class="counter success"><div class="val">${s.success}</div><div class="lbl">Success</div></div>
-            <div class="counter fail"><div class="val">${s.fail}</div><div class="lbl">Fail</div></div>
+          <div class="head-row">
+            <div class="name">${escapeHtml(s.folder)}</div>
+            <span class="owner">@${escapeHtml(s.owner.split(',')[0])}</span>
+          </div>
+          <div class="hero">
+            <div class="hrow">
+              <span class="htitle">Live · mục tiêu ${LIVE_TARGET}</span>
+              <span class="hval${liveNull ? " muted" : ""}">${liveNull ? "—" : live}<small> /${LIVE_TARGET}</small></span>
+            </div>
+            <div class="prog" title="${liveNull ? "Live chưa lấy được" : `Live ${live}/${LIVE_TARGET} (${tgtPct}%)`}">
+              <div class="prog-fill" style="width:${liveNull ? 0 : tgtPct}%;background:${tier}"></div>
+            </div>
+          </div>
+          <div class="metrics">
+            ${metricEl("unc", s.uncrawled, "Uncrawl", uncExtra)}
+            ${metricEl("pending", s.pending, "Pending")}
+            ${metricEl("fail", s.fail, "Fail")}
+            ${metricEl("orders", s.orders, "Đơn 7n")}
           </div>
         </div>
-        <div class="last-time" title="${escapeHtml(absTime(s.lastActivityMs))}">⏱ Last activity: ${escapeHtml(relTime(s.lastActivityMs))}</div>
-      </div>
-    `
-      )
+        <div class="last-time" title="${escapeHtml(absTime(s.lastActivityMs))}">⏱ ${escapeHtml(relTime(s.lastActivityMs))}</div>
+      </div>`;
+      })
       .join("") +
     "</div>";
 }
 
-function enterShopDetail(folder, owner) {
+function enterShopDetail(folder, owner, tab) {
   state.listings.selectedShop = folder;
   state.listings.selectedOwner = owner || null;
   $("#shopsView").style.display = "none";
   $("#listingsDetailView").style.display = "";
   $("#detailShopName").textContent = `${folder} @${(owner||'').split(',')[0]}`;
+  // badge uncrawled trên sub-tab lấy ngay từ card (cập nhật chính xác khi load panel)
+  const sh = (state.listings.shops || []).find((s) => s.folder === folder);
+  const cntEl = $("#tabUncCount"); if (cntEl) cntEl.textContent = sh ? (sh.uncrawled || 0) : 0;
   // Reset filters
   $("#listStatus").value = "";
   $("#listSearch").value = "";
-  loadListings();
+  switchDetailTab(tab || "listings");
+}
+
+// Chuyển giữa 2 sub-tab: Listings (file) ↔ Uncrawled (queue). Lazy-load panel tương ứng.
+function switchDetailTab(tab) {
+  state.listings.detailTab = tab;
+  const isUnc = tab === "uncrawled";
+  $("#shopListingsPanel").style.display = isUnc ? "none" : "";
+  $("#shopUncrawledPanel").style.display = isUnc ? "" : "none";
+  $("#tabListingsBtn").classList.toggle("active", !isUnc);
+  $("#tabUncrawledBtn").classList.toggle("active", isUnc);
+  if (isUnc) loadUncrawled();
+  else loadListings();
 }
 
 function exitShopDetail() {
   state.listings.selectedShop = null;
+  state.listings.detailTab = "listings";
   state.listings.selected = new Set();
   renderBulkBar();
   $("#shopsView").style.display = "";
@@ -2767,6 +2998,161 @@ async function dismissCandidate(id, btn) {
     if (!res.ok) throw new Error(d.error);
     await loadCandidates();
   } catch (err) { toast("Lỗi: " + err.message, "error"); btn.disabled = false; }
+}
+
+// ─── TikTok Suggest (auto-edit) ───────────────────────
+async function initTiktokEdit() {
+  const wrap = $("#teShops");
+  wrap.innerHTML = '<div class="empty">Đang tải…</div>';
+  try {
+    const res = await apiFetch("/admin/api/tiktok-edit/shops");
+    const d = await res.json();
+    $("#teSource").textContent = "nguồn: " + (d.source || "?");
+    renderTeShops(d.shops || [], d.unassigned || { edited: 0, failed: 0 });
+    // populate shop filter dropdown
+    const sel = $("#teEditedShop");
+    const cur = sel.value;
+    sel.innerHTML = '<option value="">Tất cả shop</option>' +
+      (d.shops || []).map((s) => `<option value="${escapeHtml(s.shop)}">${escapeHtml(s.shop)}</option>`).join("");
+    sel.value = cur;
+  } catch (err) {
+    wrap.innerHTML = `<div class="empty">Lỗi tải: ${escapeHtml(err.message)}</div>`;
+  }
+  loadTeEdited();
+}
+
+function renderTeShops(shops, unassigned) {
+  const wrap = $("#teShops");
+  if (!shops.length) { wrap.innerHTML = '<div class="empty">Không có shop nào (kiểm tra cookie 4Seller).</div>'; return; }
+  const canEdit = state.user.role !== "viewer";
+  const rows = shops.map((s) => `
+    <tr>
+      <td style="font-weight:600;">${escapeHtml(s.shop)}</td>
+      <td><input type="text" value="${escapeHtml(s.kikiProfile)}" placeholder="kiki profile id…" data-shop="${escapeHtml(s.shop)}"
+            class="te-prof" ${canEdit ? "" : "disabled"}
+            style="width:240px; padding:7px 9px; border-radius:7px; border:1px solid var(--border); background:var(--bg-elev); color:var(--text); font-family:monospace; font-size:0.8rem;" /></td>
+      <td style="text-align:center;">${s.kikiProfile ? '<span class="badge badge-success">đã gán</span>' : '<span class="badge badge-warn">chưa</span>'}</td>
+      <td style="text-align:center;">${s.edited}</td>
+      <td style="text-align:center; color:${s.failed ? 'var(--danger,#e55)' : 'var(--text-mute)'};">${s.failed}</td>
+      <td style="text-align:center; white-space:nowrap;">${canEdit ? `
+        <button class="btn btn-ghost" style="padding:5px 10px;" onclick="saveTeProfile(this, '${encodeURIComponent(s.shop)}')">Lưu</button>
+        <button class="btn" style="padding:5px 10px;" ${s.kikiProfile ? "" : "disabled title='Gán profile trước'"} onclick="runTeShop(this, '${encodeURIComponent(s.shop)}')">▶ Run</button>` : "—"}</td>
+    </tr>`).join("");
+  const note = (unassigned.edited || unassigned.failed)
+    ? `<div style="color:var(--text-mute); font-size:0.8rem; margin-top:10px;">⚠️ ${unassigned.edited} edited / ${unassigned.failed} failed chưa gắn shop (script cũ chạy 1 profile, không ghi shop).</div>`
+    : "";
+  wrap.innerHTML = `
+    <table style="width:100%; border-collapse:collapse; font-size:0.85rem;">
+      <thead><tr style="text-align:left; color:var(--text-mute); border-bottom:1px solid var(--border);">
+        <th style="padding:8px 6px;">Shop</th><th style="padding:8px 6px;">Kiki profile (TikTok)</th>
+        <th style="padding:8px 6px; text-align:center;">Trạng thái</th>
+        <th style="padding:8px 6px; text-align:center;">Edited</th>
+        <th style="padding:8px 6px; text-align:center;">Failed</th>
+        <th style="padding:8px 6px; text-align:center;"></th>
+      </tr></thead><tbody>${rows}</tbody>
+    </table>${note}`;
+}
+
+async function saveTeProfile(btn, shopEnc) {
+  const shop = decodeURIComponent(shopEnc);
+  const input = document.querySelector(`.te-prof[data-shop="${CSS.escape(shop)}"]`);
+  const kikiProfile = input ? input.value.trim() : "";
+  btn.disabled = true; const old = btn.textContent; btn.textContent = "…";
+  try {
+    const res = await apiFetch("/admin/api/tiktok-edit/profile", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ shop, kikiProfile }),
+    });
+    const d = await res.json();
+    if (!res.ok) throw new Error(d.error || "Lỗi lưu");
+    toast(`Đã lưu profile cho ${shop}`);
+    initTiktokEdit();
+  } catch (err) {
+    toast(err.message, "error"); btn.disabled = false; btn.textContent = old;
+  }
+}
+
+let teRunning = false;
+async function runTeShop(btn, shopEnc) {
+  if (teRunning) { toast("Đang chạy 1 shop rồi, đợi xong", "error"); return; }
+  const shop = decodeURIComponent(shopEnc);
+  const n = Math.max(1, Math.min(200, parseInt($("#teRunN").value) || 50));
+  const dryRun = $("#teDryRun").checked;
+  if (!dryRun && !confirm(`Chạy click-suggestion THẬT cho "${shop}" (tối đa ${n} listing)?\nKiki sẽ mở TikTok Seller Center và bấm Update.`)) return;
+  const logEl = $("#teLog");
+  logEl.style.display = "block";
+  logEl.textContent = "";
+  const append = (s) => { logEl.textContent += s + "\n"; logEl.scrollTop = logEl.scrollHeight; };
+  teRunning = true; btn.disabled = true; const old = btn.textContent; btn.textContent = "…";
+  try {
+    const r = await fetch("/admin/api/tiktok-edit/run", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ shop, n, dryRun }),
+    });
+    if (!r.body) { const d = await r.json().catch(() => ({})); append("❌ " + (d.error || "no stream")); toast(d.error || "Lỗi", "error"); return; }
+    const reader = r.body.getReader();
+    const dec = new TextDecoder();
+    let buf = "";
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      const lines = buf.split("\n");
+      buf = lines.pop();
+      for (const line of lines) {
+        if (!line) continue;
+        if (line.startsWith("__RESULT__")) {
+          const res = JSON.parse(line.slice(10));
+          append(`✔ XONG: ${res.ok} edit · ${res.fail} fail / ${res.processed}`);
+          toast(`Auto-edit xong: ${res.ok} edit`);
+        } else if (line.startsWith("__ERROR__")) {
+          append("❌ " + line.slice(9));
+          toast(line.slice(9), "error");
+        } else append(line);
+      }
+    }
+    initTiktokEdit();
+  } catch (e) {
+    append("❌ " + e.message);
+    toast("Lỗi: " + e.message, "error");
+  } finally {
+    teRunning = false; btn.disabled = false; btn.textContent = old;
+  }
+}
+
+async function loadTeEdited() {
+  const wrap = $("#teEdited");
+  wrap.innerHTML = '<div class="empty">Đang tải…</div>';
+  const shop = $("#teEditedShop").value;
+  const status = $("#teEditedStatus").value;
+  try {
+    const qs = new URLSearchParams();
+    if (shop) qs.set("shop", shop);
+    if (status) qs.set("status", status);
+    const res = await apiFetch("/admin/api/tiktok-edit/edited?" + qs.toString());
+    const d = await res.json();
+    const rows = d.rows || [];
+    if (!rows.length) { wrap.innerHTML = '<div class="empty">Chưa có listing nào.</div>'; return; }
+    const badge = (st) => st === "edited" ? "badge-success" : st === "failed" ? "badge-danger" : "badge-warn";
+    wrap.innerHTML = `
+      <div style="color:var(--text-mute); font-size:0.8rem; margin-bottom:6px;">${rows.length} listing</div>
+      <table style="width:100%; border-collapse:collapse; font-size:0.82rem;">
+        <thead><tr style="text-align:left; color:var(--text-mute); border-bottom:1px solid var(--border);">
+          <th style="padding:7px 6px;">Product ID</th><th style="padding:7px 6px;">Shop</th>
+          <th style="padding:7px 6px;">Status</th><th style="padding:7px 6px;">Đã apply</th>
+          <th style="padding:7px 6px;">Thời điểm</th>
+        </tr></thead><tbody>${rows.map((r) => `
+          <tr style="border-bottom:1px solid var(--border);">
+            <td style="padding:7px 6px; font-family:monospace;"><a href="https://seller-us.tiktok.com/product/edit?product_id=${encodeURIComponent(r.product_id)}&shop_region=US" target="_blank" style="color:var(--accent);">${escapeHtml(r.product_id)}</a></td>
+            <td style="padding:7px 6px;">${escapeHtml(r.shop || "—")}</td>
+            <td style="padding:7px 6px;"><span class="badge ${badge(r.status)}">${escapeHtml(r.status)}</span></td>
+            <td style="padding:7px 6px;">${(r.applied || []).length ? escapeHtml((r.applied || []).join(", ")) : '<span style="color:var(--text-mute);">—</span>'}</td>
+            <td style="padding:7px 6px; color:var(--text-mute);">${relTime(r.edited_at)}</td>
+          </tr>`).join("")}</tbody>
+      </table>`;
+  } catch (err) {
+    wrap.innerHTML = `<div class="empty">Lỗi tải: ${escapeHtml(err.message)}</div>`;
+  }
 }
 
 async function initKiki() {

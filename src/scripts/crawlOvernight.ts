@@ -22,7 +22,7 @@ import { chromium } from "playwright-core";
 import { config } from "../config";
 import { scrapeSheinProduct } from "../services/kiki/sheinScraper";
 import { attachStatsCapture } from "../services/kiki/productStats";
-import { dispatchScrapedData } from "../core/scrapeViaKiki";
+import { dispatchScrapedData, hardScrapeError } from "../core/scrapeViaKiki";
 
 const CDP = process.env.CHROME_CDP || "http://127.0.0.1:9222";
 const DELAY_MS = Number(process.env.CRAWL_DELAY_MS) || 180_000; // 3 phút giữa các listing
@@ -40,8 +40,8 @@ const main = async () => {
   const db = new Database(path.join(process.cwd(), "data", "shein-auto.db"));
   const shops: string[] = db.prepare("SELECT shop FROM shop_niche ORDER BY shop").all().map((r: any) => r.shop);
   if (!shops.length) { log("❌ Không có shop SHEIN trong shop_niche."); db.close(); return; }
-  const markCrawled = db.prepare("UPDATE shop_allocation SET status='crawled' WHERE goods_id=?");
-  const markRecrawl = db.prepare("UPDATE shop_allocation SET status='recrawl' WHERE goods_id=?");
+  const markCrawled = db.prepare("UPDATE shop_allocation SET status='crawled' WHERE goods_id=? AND shop=?");
+  const markRecrawl = db.prepare("UPDATE shop_allocation SET status='recrawl' WHERE goods_id=? AND shop=?");
 
   log(`🌙 BẮT ĐẦU cào đêm qua Chrome ${CDP}. ${shops.length} shop, nghỉ ${Math.round(DELAY_MS / 1000)}s/listing, tối đa ${maxProducts === Infinity ? "∞" : maxProducts} sp.`);
 
@@ -140,12 +140,21 @@ const main = async () => {
     done++;
 
     if (!r.ok) {
-      markRecrawl.run(gid);
+      markRecrawl.run(gid, shop);
       held++;
       if (att >= MAX_ATTEMPTS) maxed.add(gid);
       log(`❌ HOLD [${shortShop}] ${(it.name || "").slice(0, 34)} — ${r.reason} (thử ${att}/${MAX_ATTEMPTS})`);
     } else {
       const data = r.data;
+      // HARD GATE: hỏng nặng (thiếu product_name/ảnh/màu) → recrawl, KHÔNG ghi JSON hỏng.
+      const hard = hardScrapeError(data);
+      if (hard) {
+        markRecrawl.run(gid, shop);
+        held++;
+        if (att >= MAX_ATTEMPTS) maxed.add(gid);
+        log(`⚠️ HOLD [${shortShop}] ${(it.name || "").slice(0, 30)} — hỏng: ${hard} (thử ${att}/${MAX_ATTEMPTS})`);
+        continue;
+      }
       const m = data._meta || {};
       const expected = m.expectedColors || 0;
       const processed = m.processedColors || 0;
@@ -154,17 +163,17 @@ const main = async () => {
       const hasSize = !!(sc && ((sc.sections && sc.sections.length) || (sc.data && sc.data.length)));
 
       if (!complete) {
-        markRecrawl.run(gid);
+        markRecrawl.run(gid, shop);
         held++;
         if (att >= MAX_ATTEMPTS) maxed.add(gid);
         log(`⚠️ HOLD [${shortShop}] ${(data.product_name || "").slice(0, 30)} — THIẾU màu ${processed}/${expected} (thử ${att}/${MAX_ATTEMPTS})`);
       } else if (!hasSize && it.status !== "recrawl") {
-        markRecrawl.run(gid);
+        markRecrawl.run(gid, shop);
         held++;
         log(`⚠️ HOLD [${shortShop}] ${(data.product_name || "").slice(0, 30)} — đủ ${processed} màu nhưng thiếu size_chart → retry sau`);
       } else {
         await dispatchScrapedData(baseDir, data, [shop]);
-        markCrawled.run(gid);
+        markCrawled.run(gid, shop);
         ok++;
         log(`✅ OK   [${shortShop}] ${(data.product_name || "").slice(0, 30)} — ${data.listing_variations.colors.length} màu, size_chart ${hasSize ? "có" : "KHÔNG (chấp nhận)"}`);
       }

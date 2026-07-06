@@ -54,8 +54,15 @@ export async function runDripCycle(opts: DripOptions): Promise<DripCycleResult> 
     try {
       // 4Seller trả data=null khi shop không còn draft (hoặc shop đóng) → coi như 0 draft.
       const resp = await getDraftPage(opts.cookieUser, { shopId: shop.id });
-      const drafts = resp?.records ?? [];
-      if (!drafts.length) continue;
+      const all = (resp?.records ?? []) as any[];
+      // CHỈ publish draft đang "publishable". Draft "publishing" (đang publish dở) → batch-publish
+      // báo "status does not support modification" → nếu lấy nhầm sẽ KẸT vĩnh viễn ở draft đầu.
+      const drafts = all.filter((d) => d.publishStatus === "publishable" || !d.publishStatus);
+      if (!drafts.length) {
+        const stuck = all.filter((d) => d.publishStatus === "publishing").length;
+        if (stuck) log(`  ⏳ ${shop.shopName}: ${stuck} draft đang 'publishing', 0 publishable → bỏ qua cycle`);
+        continue;
+      }
       const batch = drafts.slice(0, per);
       const ids = batch.map((d) => d.id);
       await batchPublish(opts.cookieUser, ids as any);

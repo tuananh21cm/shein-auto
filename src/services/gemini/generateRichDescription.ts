@@ -80,25 +80,57 @@ Return JSON.`;
 }
 
 /**
- * Compose HTML mô tả: headline → bullet → banner đan xen → ... Dùng <p>• thay <ul> để
- * chèn <figure> banner xen giữa được. bannerUrls[i] = URL public (imgbb) hoặc null.
+ * Compose HTML mô tả theo SECTION (heading emoji + <h3>) thay vì bullet trơn:
+ *
+ *   ✨ Why You'll Love It   — headline + bullet Feature + Style
+ *   [banner hero/mid]
+ *   🧵 Material & Care      — bullet Material
+ *   [banner còn lại]
+ *   👗 Style It Your Way    — bullet Occasion & Match
+ *
+ * - Heading dùng <h3><strong> thuần (KHÔNG inline style) — editor 4Seller strip style
+ *   không đều → chỗ to chỗ nhỏ; h3 bị strip thì vẫn còn <strong> giữ bold.
+ * - KHÔNG bọc <p><br></p> quanh figure: nếu ảnh chết/bị editor strip, các thẻ đệm
+ *   mồ côi thành mấy dòng trống giữa mô tả. Spacing để figure margin tự lo.
+ * - opts.heroFirst: true = banner "feature" (hero trái + panel phải) đưa lên NGAY sau
+ *   headline làm ấn tượng đầu, collage xuống giữa. false = collage trước (nếp cũ).
+ *
+ * bannerUrls: [0]=collage, [1]=feature (URL imgbb đã verify, hoặc null).
  */
-export function composeRichHtml(rich: RichDescription, bannerUrls: (string | null)[] = []): string {
-  const b = rich.bullets;
+export function composeRichHtml(
+  rich: RichDescription,
+  bannerUrls: (string | null)[] = [],
+  opts?: { heroFirst?: boolean }
+): string {
+  const b = rich.bullets || [];
+  const byLabel = (re: RegExp, fallbackIdx: number) =>
+    b.find((x) => re.test(x?.label || "")) ?? b[fallbackIdx];
+  const material = byLabel(/material/i, 0);
+  const feature = byLabel(/feature/i, 1);
+  const style = byLabel(/style/i, 2);
+  const occasion = byLabel(/occasion/i, 3);
+
+  const h = (t: string) => `<h3><strong>${t}</strong></h3>`;
   const li = (x?: { label: string; text: string }) =>
     x ? `<p>• <strong>${x.label}:</strong> ${x.text}</p>` : "";
-  const banner = (i: number) =>
-    bannerUrls[i]
-      ? `<p><br></p><figure class="image"><img src="${bannerUrls[i]}" alt="${rich.bannerTitle}"></figure><p><br></p>`
-      : "";
+  const fig = (url?: string | null) =>
+    url ? `<figure class="image"><img src="${url}" alt="${rich.bannerTitle}"></figure>` : "";
+
+  const collage = bannerUrls[0];
+  const featureBanner = bannerUrls[1];
+  const first = opts?.heroFirst ? featureBanner : collage;
+  const second = opts?.heroFirst ? collage : featureBanner;
+
   return (
-    `<p style="font-size:17px;"><strong>${rich.headline}</strong></p><p><br></p>` +
-    li(b[0]) +
-    banner(0) +
-    li(b[1]) +
-    li(b[2]) +
-    banner(1) +
-    li(b[3]) +
-    `<p><br></p>`
+    h("✨ Why You'll Love It") +
+    `<p><strong>${rich.headline}</strong></p>` +
+    fig(first) +
+    li(feature) +
+    li(style) +
+    h("🧵 Material & Care") +
+    li(material) +
+    fig(second) +
+    h("👗 Style It Your Way") +
+    li(occasion)
   );
 }

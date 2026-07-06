@@ -41,8 +41,8 @@ const main = () => {
   ).get(shop) as any;
 
   if (markDone && rows.length) {
-    const upd = db.prepare("UPDATE shop_allocation SET status='listed', listed_at=? WHERE goods_id=?");
-    const tx = db.transaction(() => { for (const r of rows) upd.run(Date.now(), r.goods_id); });
+    const upd = db.prepare("UPDATE shop_allocation SET status='listed', listed_at=? WHERE goods_id=? AND shop=?");
+    const tx = db.transaction(() => { for (const r of rows) upd.run(Date.now(), r.goods_id, shop); });
     tx();
   }
 

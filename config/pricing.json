@@ -6,8 +6,8 @@
   "defaultQty": 5,
   "defaultWeight": "0.3",
   "defaultDimensions": {
-    "length": "9",
-    "width": "1",
-    "height": "6"
+    "length": "25",
+    "width": "20",
+    "height": "5"
   }
 }

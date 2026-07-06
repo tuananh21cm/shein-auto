@@ -59,7 +59,9 @@ const PRESETS: Record<RemakePreset, PresetParams> = {
   standard: {
     cropMin: 0.02, cropMax: 0.045, rotateMax: 1.2,
     brightness: 0.03, saturation: 0.04, hue: 3, contrast: 0.03,
-    qualityMin: 84, qualityMax: 94, noiseAlpha: 6, border: 0,
+    // noise=0: noise tile 64px nearest gây sạn/vón trên nền gradient (trời) → bỏ.
+    // quality 90-96: tránh banding vùng mượt. Dedup pHash vẫn mạnh nhờ crop+rotate+jitter màu.
+    qualityMin: 90, qualityMax: 96, noiseAlpha: 0, border: 0,
   },
   aggressive: {
     cropMin: 0.04, cropMax: 0.08, rotateMax: 1.8,

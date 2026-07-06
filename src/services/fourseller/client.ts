@@ -14,11 +14,25 @@ import path from "path";
 const BASE_URL = "https://www.4seller.com";
 const PER_USER_COOKIE_DIR = path.resolve(process.cwd(), "data", "cookies");
 
-/** Read raw cookie file của user và convert sang Cookie header string. */
-async function getCookieHeader(username: string): Promise<string> {
-  const file = path.join(PER_USER_COOKIE_DIR, `${username}.json`);
-  if (!(await fs.pathExists(file))) {
-    throw new Error(`User "${username}" chưa upload cookie 4Seller.`);
+/**
+ * Read raw cookie file và convert sang Cookie header string.
+ * principal:
+ *  - "acct:<uid>"  → cookie của TÀI KHOẢN 4Seller (data/cookies/accounts/<uid>.json) — cơ chế mới
+ *  - "<username>"  → cookie legacy theo login user (data/cookies/<username>.json)
+ */
+async function getCookieHeader(principal: string): Promise<string> {
+  let file: string;
+  if (principal.startsWith("acct:")) {
+    const uid = principal.slice(5).replace(/[^a-zA-Z0-9_-]/g, "");
+    file = path.join(PER_USER_COOKIE_DIR, "accounts", `${uid}.json`);
+    if (!(await fs.pathExists(file))) {
+      throw new Error(`Tài khoản 4Seller uid=${uid} chưa có cookie (tab Cookie 4Seller).`);
+    }
+  } else {
+    file = path.join(PER_USER_COOKIE_DIR, `${principal}.json`);
+    if (!(await fs.pathExists(file))) {
+      throw new Error(`User "${principal}" chưa upload cookie 4Seller.`);
+    }
   }
   const raw = await fs.readFile(file, "utf-8");
   const parsed = JSON.parse(raw);
@@ -266,6 +280,84 @@ export const getSalesByShop = (
     endTime: opts.endTime,
     shopIds: opts.shopIds,
   });
+
+/* ============= Category tree (TikTok) ============= */
+
+export interface CategoryNode {
+  categoryId: string;
+  categoryParentId: string;
+  categoryName: string;
+  nodePath: string;      // "Sports & Outdoor/Ball Sports/..."
+  leafCategory: number;  // 1 = leaf (chọn được), 0 = còn con
+  supportSizeChart?: number;
+}
+
+/** Lấy các category CON trực tiếp của parentId (0 = root). shopId bắt buộc (bất kỳ shop nào). */
+export const getCategoryList = (
+  principal: string,
+  parentId: string | number,
+  shopId: string | number,
+  site = "US"
+) =>
+  fourSellerPost<CategoryNode[]>(principal, "/api/meta/tiktok/get-category-list", {
+    site,
+    parentId,
+    shopId,
+  });
+
+/* ============= Marketing / Promotions (TikTok) ============= */
+
+export interface PromotionActivity {
+  id: number;
+  shopId: number;
+  shopName: string;
+  platformActivityId: string;
+  activityName: string;
+  discountType: "DIRECT_DISCOUNT" | "FLASHSALE" | string;
+  beginTime: number; // epoch ms
+  endTime: number;   // epoch ms
+  promotionStatus: "ONGOING" | "NOT_START" | string; // hết hạn = status khác (EXPIRED/END)
+  productLevel: string;
+  productCount: number;
+  productFailCount: number;
+  errorMessage?: string;
+}
+
+/** List promotion (Marketing → Product Discount / Flash Deal). discountType rỗng = cả 2 loại. */
+export const getPromotionPage = (
+  principal: string,
+  opts?: {
+    discountType?: "" | "DIRECT_DISCOUNT" | "FLASHSALE";
+    shopId?: string | number;
+    promotionStatus?: string;
+    pageCurrent?: number;
+    pageSize?: number;
+  }
+) =>
+  fourSellerPost<{ records: PromotionActivity[]; total?: number }>(
+    principal,
+    "/api/promotion/tiktok/activity/get-page",
+    {
+      pageCurrent: opts?.pageCurrent ?? 1,
+      pageSize: opts?.pageSize ?? 100,
+      discountType: opts?.discountType ?? "",
+      shopId: opts?.shopId ?? "",
+      promotionStatus: opts?.promotionStatus ?? "",
+      searchType: "activityName",
+      searchValue: "",
+    }
+  );
+
+/** Trigger sync promotion từ TikTok (nút "Sync promotion" trên UI). shopId rỗng = All Shop. */
+export const syncTiktokPromotions = (principal: string, shopId: string | number = "") =>
+  fourSellerGet<boolean>(
+    principal,
+    `/api/promotion/tiktok/activity/sync-tiktok-activity?shopId=${encodeURIComponent(String(shopId))}`
+  );
+
+/** Sync đang chạy? true = đang sync (poll đến khi false là data mới sẵn sàng). */
+export const getPromotionSyncSchedule = (principal: string) =>
+  fourSellerGet<boolean>(principal, "/api/promotion/tiktok/activity/get-sync-schedule");
 
 export const getListingPage = (
   username: string,

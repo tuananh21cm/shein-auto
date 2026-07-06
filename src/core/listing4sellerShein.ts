@@ -1,13 +1,14 @@
 import fs from "fs";
 import { chromium } from "playwright-core";
-import { configCookie } from "../utils/configCookie";
+import { configCookieForShop } from "../utils/configCookie";
 import { genTitleFromShein } from "../services/gemini/genTitleFromShein";
 import { generatePodTitle } from "../services/gemini/generatePodTitle";
 import { analyzeFitForSize, renderFitGuideHtml } from "../services/gemini/analyzeFitForSize";
 import { processMeasureGuideImage } from "./steps/measureGuideImage";
 import { generateRichDescription, composeRichHtml } from "../services/gemini/generateRichDescription";
-import { buildBannerFile, diverseImagesFromVariants } from "./steps/marketingBanner";
-import { uploadToImgbb } from "../utils/uploadToImgbb";
+import { buildBannerFile, buildTrustBannerFile, diverseImagesFromVariants } from "./steps/marketingBanner";
+import { uploadToImgbb, verifyImageUrl } from "../utils/uploadToImgbb";
+import { uploadToImgbbCached } from "../utils/imgbbCache";
 import { config } from "../config";
 import { cleanTitle, toTitleCase } from "../utils/cleanTitle";
 import { workerConfig } from "../config/appConfig";
@@ -22,6 +23,7 @@ import { fillTableData } from "./steps/fillTableData";
 import { uploadProductImages, uploadVariantImages, setVariantImageEnabled } from "./steps/uploadImages";
 import { handleBrand } from "./steps/handleBrand";
 import {
+  cleanupEditorHtml,
   fillDescription,
   generateDescriptionHtml,
   generateMeasureGuideHtml,
@@ -42,6 +44,56 @@ import { removeUnavailableVariants } from "./steps/removeUnavailableVariants";
 export { findCategory, handleBrand, fillVariations, fillTableData };
 export { uploadProductImages, uploadVariantImages };
 export { fillDescription, generateDescriptionHtml };
+
+/**
+ * Bật radio "Has Variations". Ngay sau selectCategory, ô hiển thị category (class
+ * `.line_ellipsis`) hoặc overlay popup xác nhận có thể còn ĐÈ lên radio → click bị
+ * "element intercepts pointer events" và timeout 30s. Xử lý:
+ *   1. Chờ mọi overlay Element Plus (message-box / dialog wrapper) ẩn.
+ *   2. Nếu radio đã bật rồi (do click category trước lỡ toggle) → bỏ qua.
+ *   3. Click vào cả LABEL `.el-radio` (vùng click lớn, chuẩn Element Plus), retry,
+ *      cuối cùng force nếu vẫn bị chặn.
+ */
+const clickHasVariations = async (page: any): Promise<void> => {
+  // 1. Đợi overlay tan (message-box của selectCategory, v.v.)
+  for (const sel of [".el-message-box__wrapper", ".el-overlay", ".el-loading-mask"]) {
+    await page
+      .locator(sel)
+      .first()
+      .waitFor({ state: "hidden", timeout: 4000 })
+      .catch(() => {});
+  }
+
+  // Ưu tiên click cả label .el-radio (Element Plus: click label = chọn radio).
+  const radio = page.locator(".el-radio", { hasText: "Has Variations" }).first();
+  const fallback = page.locator("span.el-radio__label", { hasText: "Has Variations" }).first();
+  const target = (await radio.count()) > 0 ? radio : fallback;
+
+  await target.waitFor({ state: "visible", timeout: 10000 });
+
+  // 2. Đã bật sẵn? (label cha có is-checked) → khỏi click.
+  const already = await target
+    .evaluate((el: HTMLElement) => {
+      const r = el.closest(".el-radio") ?? el;
+      return r.classList.contains("is-checked");
+    })
+    .catch(() => false);
+  if (already) {
+    console.log("ℹ️ 'Has Variations' đã bật sẵn, bỏ qua click.");
+    return;
+  }
+
+  // 3. Thử click thường (timeout ngắn để fail nhanh), rồi force.
+  await target.scrollIntoViewIfNeeded().catch(() => {});
+  try {
+    await target.click({ timeout: 8000 });
+  } catch {
+    console.warn("⚠️ 'Has Variations' bị element khác chặn click → thử lại sau khi cuộn + force.");
+    await page.waitForTimeout(600);
+    await target.scrollIntoViewIfNeeded().catch(() => {});
+    await target.click({ timeout: 8000, force: true });
+  }
+};
 
 /**
  * Sau mỗi major step, gọi để fail-fast nếu 4Seller đã hiện error toast.
@@ -69,8 +121,10 @@ export const listing4sellerShein = async (
     pricing?: { shipFee: number; multiplier: number; extraAdd: number };
   }
 ): Promise<void> => {
-  // Cookie load theo user (owner của file). Fallback global nếu user chưa upload.
-  const cookie = await configCookie(opts?.cookieUser ?? null);
+  // Cookie load THEO SHOP (đa tài khoản 4Seller): shop thuộc tài khoản nào dùng
+  // cookie tài khoản đó. Fallback cookie legacy theo user khi chưa setup tài khoản.
+  const targetProfileEarly = getProfileNameFromFolder(jsonFile);
+  const cookie = await configCookieForShop(targetProfileEarly, opts?.cookieUser ?? null);
   const headless = opts?.headless ?? workerConfig().headless;
   const browser = await chromium.launch({ headless });
   const browserContext = await browser.newContext({
@@ -127,6 +181,13 @@ export const listing4sellerShein = async (
     // POD: KHÔNG prepend brand/shop name vào title (giữ nguyên title AI). Thường: ghép brand đầu title.
     // Title Case: viết hoa ký tự đầu mỗi từ trước khi list lên 4Seller.
     const finalTitle = toTitleCase(data._pod ? String(aiTitle).trim() : cleanTitle(aiTitle, brand));
+    // Fail-fast: Gemini lỗi trả title rỗng + shop không có brand → điền title rỗng
+    // → chết mãi tận lúc publish với "Can not be empty" mù mờ. Throw sớm cho rõ.
+    if (!finalTitle) {
+      throw new Error(
+        `Title rỗng (Gemini không trả được title cho "${data.product_name}", brand="${brand}") — dừng trước khi fill form`
+      );
+    }
     console.log(finalTitle);
     await page.fill("#productInfo .el-input.mr_8 .el-input__inner", finalTitle);
     await page.waitForTimeout(2000);
@@ -136,7 +197,7 @@ export const listing4sellerShein = async (
     await selectCategory(page, categoryPath);
     await assertNoErrors(page, "selectCategory");
 
-    await page.click("span:has-text('Has Variations')");
+    await clickHasVariations(page);
     await page.waitForTimeout(2000);
 
     // Pre-process: size normalize, dedup, filter, merge product images
@@ -180,25 +241,28 @@ export const listing4sellerShein = async (
 
     // Ảnh GỘP Size Guide giờ chèn vào MÔ TẢ (ảnh đầu), không còn vào gallery.
     // Ảnh "nhiều màu" làm ảnh main (nếu bật + sản phẩm có ≥2 màu).
-    let colorShowcasePath: string | null = null;
-    const csCfg = workerConfig().colorShowcase;
-    if (csCfg?.enabled && !data._pod) {
-      // POD: mọi màu chung 1 ảnh → collage nhiều màu vô nghĩa, skip.
-      try {
-        colorShowcasePath = await buildColorShowcaseImageFile(
-          data.product_images,
-          data.variant_images,
-          csCfg.style || "C"
-        );
-      } catch (e: any) {
-        console.warn("⚠️ Không tạo được ảnh nhiều màu:", e?.message);
-      }
-    }
     // MD5 unique theo TỪNG listing: seed remake = shop + salt từ tên file JSON (unique mỗi
     // listing, ổn định khi chạy lại cùng file). Ảnh tái dùng (material POD / nguồn SHEIN chung)
     // ra MD5 KHÁC nhau mỗi listing → tránh bị TikTok quét trùng ảnh.
     const remakeSalt = (jsonFile.split(/[\\/]/).pop() || "rnd").replace(/\.json$/i, "");
     const remakeSeed = `${targetProfile}:${remakeSalt}`;
+
+    let colorShowcasePath: string | null = null;
+    const csCfg = workerConfig().colorShowcase;
+    if (csCfg?.enabled && !data._pod) {
+      // POD: mọi màu chung 1 ảnh → collage nhiều màu vô nghĩa, skip.
+      // bgSeed theo shop → ảnh NỀN collage xoay màu khác nhau giữa các shop (cùng 1 sp).
+      try {
+        colorShowcasePath = await buildColorShowcaseImageFile(
+          data.product_images,
+          data.variant_images,
+          csCfg.style || "C",
+          { bgSeed: remakeSeed }
+        );
+      } catch (e: any) {
+        console.warn("⚠️ Không tạo được ảnh nhiều màu:", e?.message);
+      }
+    }
     await uploadProductImages(page, mergedProductImages, remakeSeed, {
       prependLocalPath: colorShowcasePath,
     });
@@ -248,7 +312,14 @@ export const listing4sellerShein = async (
               rich.bannerTagline,
               rich.highlights
             );
-            bannerUrls.push(bp ? await uploadToImgbb(bp) : null);
+            // Verify URL sống trước khi chèn — URL chết render thành khoảng trống trong mô tả.
+            const bUrl = bp ? await uploadToImgbb(bp) : null;
+            if (bUrl && !(await verifyImageUrl(bUrl))) {
+              console.warn(`⚠️ banner ${style}: URL imgbb không serve được ảnh → bỏ slot banner này (${bUrl})`);
+              bannerUrls.push(null);
+            } else {
+              bannerUrls.push(bUrl);
+            }
           } catch (e: any) {
             console.warn("⚠️ banner lỗi:", e?.message);
             bannerUrls.push(null);
@@ -263,7 +334,9 @@ export const listing4sellerShein = async (
           }
         }
       }
-      richHtml = composeRichHtml(rich, bannerUrls);
+      richHtml = composeRichHtml(rich, bannerUrls, {
+        heroFirst: workerConfig().descriptionHeroFirst === true,
+      });
     }
     // Ảnh GỘP Size Guide (size chart + How To Measure + Size Suggestion) → imgbb → chèn mô tả.
     let sizeGuideHtml = "";
@@ -275,7 +348,13 @@ export const listing4sellerShein = async (
         const mg = data.measure_guide ? { items: data.measure_guide.items, image: mgImg } : undefined;
         gf = await buildSizeGuideImageFile(guideSections, mg, data.size_chart?.unit || "inch", fitGuide || undefined);
         const url = gf ? await uploadToImgbb(gf) : null;
-        if (url) sizeGuideHtml = `<p><br></p><figure class="image"><img src="${url}" alt="Size Guide"></figure><p><br></p>`;
+        if (url && (await verifyImageUrl(url))) {
+          sizeGuideHtml =
+            `<h3><strong>📏 Size Guide — Find Your Fit</strong></h3>` +
+            `<figure class="image"><img src="${url}" alt="Size Guide"></figure>`;
+        } else if (url) {
+          console.warn(`⚠️ Size Guide: URL imgbb không serve được ảnh → dùng fallback text (${url})`);
+        }
       } catch (e: any) {
         console.warn("⚠️ ảnh Size Guide lỗi:", e?.message);
       } finally {
@@ -303,18 +382,55 @@ export const listing4sellerShein = async (
     const descHtml = richHtml + sizeGuideHtml;
     await fillDescription(page, descHtml);
 
+    // Trust banner (shipping/quality/returns) chèn CUỐI mô tả — tĩnh, không phụ thuộc
+    // sản phẩm → uploadToImgbbCached: chỉ upload 1 lần, các listing sau cache hit.
+    let trustHtml = "";
+    if (config.imgbbApiKey && workerConfig().descriptionTrustBanner !== false) {
+      let tf: string | null = null;
+      try {
+        tf = await buildTrustBannerFile();
+        const tUrl = tf ? await uploadToImgbbCached(tf) : null;
+        if (tUrl && (await verifyImageUrl(tUrl))) {
+          trustHtml = `<figure class="image"><img src="${tUrl}" alt="Shop with confidence"></figure>`;
+        }
+      } catch (e: any) {
+        console.warn("⚠️ trust banner lỗi (bỏ qua):", e?.message);
+      } finally {
+        if (tf) {
+          try {
+            fs.unlinkSync(tf);
+          } catch {
+            /* ignore */
+          }
+        }
+      }
+    }
+
+    const descImagesHeading = `<h3><strong>📸 Details Up Close</strong></h3>`;
     if (data._pod) {
       // POD: chỉ có 1 ảnh gốc → mô tả chỉ cần đúng ảnh design đó.
       const designImg = (data.product_images || [])[0];
       if (designImg) {
         console.log(`📸 POD: dùng 1 ảnh design cho mô tả`);
-        await uploadDescriptionImages(page, [designImg]);
+        await uploadDescriptionImages(page, [designImg], {
+          headingHtml: descImagesHeading,
+          trailingHtml: trustHtml,
+        });
+      } else if (trustHtml) {
+        await uploadDescriptionImages(page, [], { trailingHtml: trustHtml });
       }
     } else if (data.variant_images && data.variant_images.length > 0) {
       const descImages = selectDescriptionImages(data.variant_images);
       console.log(`📸 Đã chọn ${descImages.length} ảnh cho mô tả từ ${data.variant_images.length} variants`);
-      await uploadDescriptionImages(page, descImages);
+      await uploadDescriptionImages(page, descImages, {
+        headingHtml: descImagesHeading,
+        trailingHtml: trustHtml,
+      });
+    } else if (trustHtml) {
+      await uploadDescriptionImages(page, [], { trailingHtml: trustHtml });
     }
+    // Lưới an toàn cuối cho mô tả: bỏ figure mất ảnh + gộp dòng trống thừa.
+    await cleanupEditorHtml(page);
 
     await fillShippingAndCertification(page);
     await handleSizeChartUpload(page, { size_chart: data.size_chart });

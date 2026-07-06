@@ -56,7 +56,7 @@ const main = () => {
   if (!bad.length) return;
 
   const db = new Database(path.join(process.cwd(), "data", "shein-auto.db"));
-  const reset = db.prepare("UPDATE shop_allocation SET status='allocated' WHERE goods_id=?");
+  const reset = db.prepare("UPDATE shop_allocation SET status='allocated' WHERE goods_id=? AND shop=?");
   let resetN = 0;
   let delN = 0;
   for (const b of bad) {
@@ -64,7 +64,7 @@ const main = () => {
     if (apply) {
       // CHỈ xử lý sp có goods_id (= sp SHEIN thật). goods=null → BỎ QUA, KHÔNG xoá (an toàn, tránh xoá nhầm).
       if (b.goodsId) {
-        reset.run(b.goodsId);
+        reset.run(b.goodsId, b.shop);
         resetN++;
         try { fs.unlinkSync(b.full); delN++; } catch { /* ignore */ }
       } else {

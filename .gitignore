@@ -29,3 +29,10 @@ temp_images_*/
 temp_variants_*/
 temp_size_chart_*.png
 .last_folder.txt
+config/proxies.txt
+
+# Generated artifacts (không commit)
+src/core/steps/*.png
+data/*.bak-*
+data/*.db.bak*
+config/*.backup-*

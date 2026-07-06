@@ -12,6 +12,8 @@ export function isLoginWall(url: string): boolean {
 
 export interface CrawlTiktokParams {
   profileId: string;
+  /** Tên shop (4Seller) gắn với run — để tag metrics multi-shop. */
+  shop?: string | null;
   db: TiktokDb;
   /** Bật discovery dump (data/_tiktok_discovery/<date>/). */
   discoverDir?: string;
@@ -37,7 +39,7 @@ export async function crawlTiktokSeller(params: CrawlTiktokParams): Promise<Craw
   const log = (m: string) => params.onLog?.(m);
   const runDate = todayStr();
   const startedAt = new Date().toISOString();
-  const runId = db.startRun(runDate);
+  const runId = db.startRun(runDate, params.shop ?? null);
 
   log(`Force-stop profile ${profileId}…`);
   await kiki.forceStop(profileId);
@@ -96,11 +98,24 @@ export async function crawlTiktokSeller(params: CrawlTiktokParams): Promise<Craw
           await page.waitForTimeout(route.settleMs ?? 3000);
         }
 
+        // Tương tác thêm (vd: click trang 2 Quản lý SP) — best-effort, lỗi không fail route
+        if (route.interact) {
+          await route.interact(page, bus, log).catch((e: any) => log(`  ⚠️ interact ${route.key}: ${e?.message ?? e}`));
+        }
+
         const caps = bus.snapshot();
         for (const c of caps) db.insertRawCapture(runId, route.key, c.url, c.status);
         rm.metrics = route.extractor(caps);
         rm.ok = true;
         db.insertMetrics(runId, route.key, rm.metrics);
+        // Snapshot per-listing (nếu route khai báo) → listing_views: time-series view từng SP
+        if (route.listingExtractor) {
+          const lvRows = route.listingExtractor(caps);
+          if (lvRows.length) {
+            db.upsertListingViews(runId, params.shop ?? null, runDate, lvRows);
+            log(`  ✓ lưu ${lvRows.length} listing view-snapshot (${runDate}).`);
+          }
+        }
         log(`  ✓ ${rm.metrics.length} chỉ số (${caps.length} capture).`);
       } catch (e: any) {
         rm.error = e?.message ?? String(e);

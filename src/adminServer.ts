@@ -28,7 +28,16 @@ import { crawlImages } from "./core/imageCrawler/crawlImages";
 import crypto from "crypto";
 import { eventBus } from "./state/eventBus";
 import { workerConfig, reloadAppConfig } from "./config/appConfig";
-import { configCookie, userCookiePath } from "./utils/configCookie";
+import { configCookie, configCookieForAccount, userCookiePath } from "./utils/configCookie";
+import {
+  listAccounts as fsAccounts,
+  saveAccountCookie,
+  refreshAccountShops,
+  deleteAccount as fsDeleteAccount,
+  setAccountLabel,
+  resolveAccountForShop,
+  bootstrapLegacyCookies,
+} from "./state/fourSellerAccounts";
 import {
   getShopList as fsGetShopList,
   getStatusCount as fsGetStatusCount,
@@ -36,6 +45,7 @@ import {
   getListingDetail as fsGetListingDetail,
   getCategoryById as fsGetCategoryById,
   getSalesByShop as fsGetSalesByShop,
+  type FourSellerShop as FourSellerShopT,
 } from "./services/fourseller/client";
 import {
   computeShopScore,
@@ -238,56 +248,97 @@ export const startAdminServer = async () => {
     next();
   };
 
-  // Cache shop list 4Seller per-user — extension poll /profiles mỗi 10s nên PHẢI
+  // Cache shop list 4Seller — extension poll /profiles mỗi 10s nên PHẢI
   // cache, tránh spam /api/shop/get-tidy-list (rate-limit/khoá cookie).
   const shopListCache = new Map<string, { ts: number; shops: string[]; source: string }>();
   const SHOP_CACHE_TTL = 5 * 60_000;
 
-  // Cache số listing LIVE (active) thật từ 4Seller per-user — getStatusCount/shop tốn ~16 call.
+  /**
+   * Danh sách principal để gọi 4Seller API: mỗi TÀI KHOẢN 4Seller đã upload là 1
+   * principal "acct:<uid>". Chưa setup tài khoản nào → fallback legacy cookie của
+   * user truyền vào (chuyển đổi mượt).
+   */
+  const fsPrincipals = async (legacyUser?: string): Promise<string[]> => {
+    const accounts = await fsAccounts();
+    if (accounts.length > 0) return accounts.map((a) => `acct:${a.uid}`);
+    return legacyUser ? [legacyUser] : [];
+  };
+
+  // Cache số listing LIVE (active) thật từ 4Seller — gộp MỌI tài khoản. Key cache cố định.
   const liveCountCache = new Map<string, { ts: number; byShop: Record<string, number> }>();
   /** Map shopName(lowercase) → activeCount thật trên TikTok (qua 4Seller). Best-effort, cache 5p. */
   async function fetchLiveCounts(username: string): Promise<Record<string, number>> {
-    const cached = liveCountCache.get(username);
+    const cached = liveCountCache.get("__all__");
     if (cached && Date.now() - cached.ts < SHOP_CACHE_TTL) return cached.byShop;
     const byShop: Record<string, number> = {};
-    try {
-      const list = await fsGetShopList(username);
-      const records = (list?.records ?? []).filter((s) => !s.platform || /tiktok/i.test(String(s.platform)));
-      await Promise.all(
-        records.map(async (s) => {
-          try {
-            const sc = await fsGetStatusCount(username, { shopId: s.id });
-            byShop[String(s.shopName).toLowerCase()] = sc?.activeCount ?? 0;
-          } catch { /* 1 shop lỗi → bỏ qua */ }
-        })
-      );
-    } catch { /* không có cookie / lỗi → trả map rỗng */ }
-    liveCountCache.set(username, { ts: Date.now(), byShop });
+    for (const principal of await fsPrincipals(username)) {
+      try {
+        const list = await fsGetShopList(principal);
+        const records = (list?.records ?? []).filter((s) => !s.platform || /tiktok/i.test(String(s.platform)));
+        await Promise.all(
+          records.map(async (s) => {
+            try {
+              const sc = await fsGetStatusCount(principal, { shopId: s.id });
+              byShop[String(s.shopName).toLowerCase()] = sc?.activeCount ?? 0;
+            } catch { /* 1 shop lỗi → bỏ qua */ }
+          })
+        );
+      } catch { /* 1 tài khoản lỗi cookie → bỏ qua, tài khoản khác vẫn lấy được */ }
+    }
+    liveCountCache.set("__all__", { ts: Date.now(), byShop });
     return byShop;
   }
 
-  // Cache số ĐƠN theo shop (4Seller Report → Sales by shop), cửa sổ 7 ngày gần nhất.
+  // Ảnh ĐẠI DIỆN theo shop = ảnh 1 listing active (mainImage[0]). Cache DÀI 30p (ảnh ít đổi).
+  // 4Seller không có sold theo sản phẩm → không rank được best-seller; lấy listing active gần nhất.
+  const SHOP_IMG_TTL = 30 * 60_000;
+  const shopImgCache = new Map<string, { ts: number; byShop: Record<string, string> }>();
+  async function fetchShopImages(username: string): Promise<Record<string, string>> {
+    const cached = shopImgCache.get("__all__");
+    if (cached && Date.now() - cached.ts < SHOP_IMG_TTL) return cached.byShop;
+    const byShop: Record<string, string> = {};
+    for (const principal of await fsPrincipals(username)) {
+      try {
+        const list = await fsGetShopList(principal);
+        const records = (list?.records ?? []).filter((s) => !s.platform || /tiktok/i.test(String(s.platform)));
+        await Promise.all(
+          records.map(async (s) => {
+            try {
+              const page = await fsGetListingPage(principal, { shopId: s.id, status: "active", pageSize: 1 });
+              const rec = (page?.records ?? [])[0] as any;
+              const img = rec?.mainImage ? String(rec.mainImage).split("|")[0].trim() : "";
+              if (img) byShop[String(s.shopName).toLowerCase()] = img;
+            } catch { /* 1 shop lỗi → bỏ qua */ }
+          })
+        );
+      } catch { /* 1 tài khoản lỗi → bỏ qua */ }
+    }
+    shopImgCache.set("__all__", { ts: Date.now(), byShop });
+    return byShop;
+  }
+
+  // Cache số ĐƠN theo shop (4Seller Report → Sales by shop), cửa sổ 7 ngày, gộp mọi tài khoản.
   const ordersCache = new Map<string, { ts: number; byShop: Record<string, number> }>();
   /** Map shopName(lowercase) → totalOrders 7 ngày gần nhất. Shop không có đơn → không có key (=0). */
   async function fetchOrdersByShop(username: string): Promise<Record<string, number>> {
-    const cached = ordersCache.get(username);
+    const cached = ordersCache.get("__all__");
     if (cached && Date.now() - cached.ts < SHOP_CACHE_TTL) return cached.byShop;
     const byShop: Record<string, number> = {};
-    try {
-      const list = await fsGetShopList(username);
-      const ids = (list?.records ?? []).map((s) => s.id).filter((x) => x != null);
-      if (ids.length) {
-        const end = new Date();
-        const start = new Date();
-        start.setDate(start.getDate() - 6); // 7 ngày gồm hôm nay
-        const fmt = (d: Date) => d.toISOString().slice(0, 10);
-        const rows = await fsGetSalesByShop(username, { startTime: fmt(start), endTime: fmt(end), shopIds: ids });
+    for (const principal of await fsPrincipals(username)) {
+      try {
+        const list = await fsGetShopList(principal);
+        const ids = (list?.records ?? []).map((s) => s.id).filter((x) => x != null);
+        if (!ids.length) continue;
+        // Mốc ngày theo giờ VN (đồng bộ với dashboard overview). 4Seller vẫn gom theo ngày US.
+        const vnDay = (off: number) =>
+          new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Ho_Chi_Minh" }).format(new Date(Date.now() - off * 864e5));
+        const rows = await fsGetSalesByShop(principal, { startTime: vnDay(6), endTime: vnDay(0), shopIds: ids });
         for (const r of rows ?? []) {
           if (r?.shopName) byShop[String(r.shopName).toLowerCase()] = r.totalOrders ?? 0;
         }
-      }
-    } catch { /* không cookie / lỗi → map rỗng */ }
-    ordersCache.set(username, { ts: Date.now(), byShop });
+      } catch { /* 1 tài khoản lỗi → bỏ qua */ }
+    }
+    ordersCache.set("__all__", { ts: Date.now(), byShop });
     return byShop;
   }
 
@@ -300,17 +351,24 @@ export const startAdminServer = async () => {
     const cached = shopListCache.get(user.username);
     if (cached && Date.now() - cached.ts < SHOP_CACHE_TTL) return cached;
 
-    // 1. 4Seller (cần cookie đã upload). Tên = shopName ("TA Scan152-Fashion Lace_US").
+    // 1. 4Seller — GỘP shop của MỌI tài khoản đã upload (đa tài khoản, mỗi tài khoản ~30 shop).
+    //    Tên = shopName thật ("TA Scan152-Fashion Lace_US").
     try {
-      const list = await fsGetShopList(user.username);
-      const records = list?.records ?? [];
-      let shops = records
-        .filter((s) => !s.platform || /tiktok/i.test(String(s.platform)))
-        .map((s) => s.shopName)
-        .filter(Boolean);
-      if (shops.length === 0) shops = records.map((s) => s.shopName).filter(Boolean);
-      if (shops.length > 0) {
-        shops.sort();
+      const merged = new Set<string>();
+      for (const principal of await fsPrincipals(user.username)) {
+        try {
+          const list = await fsGetShopList(principal);
+          const records = list?.records ?? [];
+          let shops = records
+            .filter((s) => !s.platform || /tiktok/i.test(String(s.platform)))
+            .map((s) => s.shopName)
+            .filter(Boolean);
+          if (shops.length === 0) shops = records.map((s) => s.shopName).filter(Boolean);
+          shops.forEach((s) => merged.add(s));
+        } catch { /* 1 tài khoản lỗi → vẫn lấy tài khoản khác */ }
+      }
+      if (merged.size > 0) {
+        const shops = Array.from(merged).sort();
         const out = { ts: Date.now(), shops, source: "4seller" };
         shopListCache.set(user.username, out);
         return out;
@@ -402,6 +460,15 @@ export const startAdminServer = async () => {
       if (!Array.isArray(shops) || shops.length === 0) {
         return res.status(400).json({ error: "Phải chọn ít nhất 1 shop" });
       }
+      // HARD GATE: extension cào hỏng (thiếu product_name/ảnh/màu) → TỪ CHỐI, KHÔNG ghi JSON
+      // vào queue (tránh case "Title rỗng vì product_name undefined" lúc list). Cùng chuẩn với
+      // path cào Chrome/Kiki. Extension nhận lỗi rõ → user cào lại sp đó.
+      const { hardScrapeError } = await import("./core/scrapeViaKiki");
+      const hard = hardScrapeError(data);
+      if (hard) {
+        console.warn(`⚠️ [INGEST] Từ chối data hỏng (${hard}) user=${user.username}`);
+        return res.status(422).json({ error: `Data cào hỏng: ${hard} — KHÔNG đưa vào queue. Cào lại sản phẩm này.` });
+      }
       const { getUserDirsByName } = await import("./state/userDirs");
       const dirs = await getUserDirsByName(user.username);
       if (!dirs?.baseSheinAutoDir) {
@@ -488,8 +555,9 @@ export const startAdminServer = async () => {
         const price = l.price != null && !isNaN(Number(l.price)) ? Number(l.price) : null;
         clean.push({ goods_id: gid, name: String(l.name || "").slice(0, 200), price, url, image: String(l.image || "") });
       }
-      // goods_id là PRIMARY KEY toàn cục → 1 sp chỉ thuộc 1 shop (dedup cross-shop tự nhiên).
-      // INSERT OR IGNORE: đã có (allocated/recrawl/crawled/listed ở BẤT KỲ shop) → bỏ qua.
+      // PK (goods_id, shop) → 1 sp có thể đẩy cho NHIỀU shop (mỗi shop 1 row). Đây là đẩy link
+      // THỦ CÔNG (extension chọn shop) nên KHÔNG áp maxShopsPerProduct — theo ý user chọn.
+      // INSERT OR IGNORE: (goods_id, shop) đã có → bỏ qua (không đè trạng thái crawled/listed).
       const ins = db.prepare(
         `INSERT OR IGNORE INTO shop_allocation
            (goods_id,shop,niche_key,name,win_score,opportunity_score,price,url,image,status,allocated_at)
@@ -609,20 +677,24 @@ export const startAdminServer = async () => {
     try {
       const { getDb } = await import("./state/db");
       const db = getDb();
-      const { action, goodsIds } = req.body as { action?: string; goodsIds?: string[] };
+      const { action, goodsIds, shop } = req.body as { action?: string; goodsIds?: string[]; shop?: string };
       if (!Array.isArray(goodsIds) || goodsIds.length === 0) {
         return res.status(400).json({ error: "Thiếu goodsIds" });
       }
       const ids = goodsIds.map(String).filter((x) => /^\d+$/.test(x));
       if (!ids.length) return res.status(400).json({ error: "goodsIds không hợp lệ" });
       const ph = ids.map(() => "?").join(",");
+      // PK (goods_id, shop): 1 sp có thể ở nhiều shop. Có shop → scope đúng shop (không đụng
+      // row 'crawled'/'listed' của shop khác cùng sp). Không shop → toàn cục (quản lý chung).
+      const shopScope = shop ? " AND shop = ?" : "";
+      const scopeArgs = shop ? [shop] : [];
       let affected = 0;
       if (action === "delete") {
-        affected = db.prepare(`DELETE FROM shop_allocation WHERE goods_id IN (${ph})`).run(...ids).changes;
+        affected = db.prepare(`DELETE FROM shop_allocation WHERE goods_id IN (${ph})${shopScope}`).run(...ids, ...scopeArgs).changes;
       } else if (action === "requeue") {
-        affected = db.prepare(`UPDATE shop_allocation SET status='allocated' WHERE goods_id IN (${ph})`).run(...ids).changes;
+        affected = db.prepare(`UPDATE shop_allocation SET status='allocated' WHERE goods_id IN (${ph})${shopScope}`).run(...ids, ...scopeArgs).changes;
       } else if (action === "recrawl") {
-        affected = db.prepare(`UPDATE shop_allocation SET status='recrawl' WHERE goods_id IN (${ph})`).run(...ids).changes;
+        affected = db.prepare(`UPDATE shop_allocation SET status='recrawl' WHERE goods_id IN (${ph})${shopScope}`).run(...ids, ...scopeArgs).changes;
       } else if (action === "exclude") {
         // Loại trừ vĩnh viễn: thêm excluded_products + xoá khỏi allocation (research/allocate sau sẽ bỏ qua).
         const now = Date.now();
@@ -685,9 +757,10 @@ export const startAdminServer = async () => {
       send(`   (Chrome phải đang mở với --remote-debugging-port=9222)`);
 
       const { scrapeBatchViaChrome } = await import("./core/scrapeViaChrome");
-      const { dispatchScrapedData } = await import("./core/scrapeViaKiki");
-      const markCrawled = db.prepare("UPDATE shop_allocation SET status='crawled' WHERE goods_id=?");
-      const markRecrawl = db.prepare("UPDATE shop_allocation SET status='recrawl' WHERE goods_id=?");
+      const { dispatchScrapedData, hardScrapeError } = await import("./core/scrapeViaKiki");
+      // PK (goods_id, shop) → mark ĐÚNG shop đang cào, không đụng shop khác cùng sp.
+      const markCrawled = db.prepare("UPDATE shop_allocation SET status='crawled' WHERE goods_id=? AND shop=?");
+      const markRecrawl = db.prepare("UPDATE shop_allocation SET status='recrawl' WHERE goods_id=? AND shop=?");
       const statusById: Record<string, string> = {};
       for (const it of items) statusById[it.goods_id] = it.status;
       let ok = 0, requeued = 0, failed = 0;
@@ -699,14 +772,21 @@ export const startAdminServer = async () => {
           onLog: (m) => send(m),
           onProduct: async (goodsId, data, error) => {
             if (data) {
+              // HARD GATE: hỏng nặng (thiếu product_name/ảnh/màu) → recrawl, KHÔNG ghi JSON hỏng.
+              const hard = hardScrapeError(data);
+              if (hard) {
+                markRecrawl.run(goodsId, shop); requeued++;
+                send(`⚠️ ${goodsId} hỏng: ${hard} → recrawl`);
+                return;
+              }
               const sc = (data as any).size_chart;
               const hasSize = !!(sc && ((sc.sections && sc.sections.length) || (sc.data && sc.data.length)));
               if (!hasSize && statusById[goodsId] !== "recrawl") {
-                markRecrawl.run(goodsId); requeued++;
+                markRecrawl.run(goodsId, shop); requeued++;
                 send(`⚠️ ${goodsId} thiếu size_chart → recrawl (cào lại lần sau)`);
               } else {
                 await dispatchScrapedData(baseDir, data, [shop]);
-                markCrawled.run(goodsId); ok++;
+                markCrawled.run(goodsId, shop); ok++;
                 send(`✅ ${goodsId} OK · ${data.listing_variations?.colors?.length || 0} màu → JSON → listing queue`);
               }
             } else {
@@ -727,51 +807,64 @@ export const startAdminServer = async () => {
     }
   });
 
+  // ── Promotion scan (Marketing → Product Discount / Flash Deal) ──────────
+  // Cào trạng thái promotion mọi shop (sync từ TikTok trước, như bấm "Sync promotion").
+  // Kết quả lưu memory + data/_promo_scan.json (sống qua restart); cron mỗi 2 giờ tự cào.
+  app.get("/admin/api/promotions", async (_req, res) => {
+    const { getLastPromoScan, isPromoScanRunning } = await import("./core/promotionScan");
+    res.json({ ok: true, running: isPromoScanRunning(), result: await getLastPromoScan() });
+  });
+
+  app.post("/admin/api/promotions/scan", async (req, res) => {
+    try {
+      const sessionUser = (req.session as any).user as SessionUser;
+      if (sessionUser.role === "viewer") return res.status(403).json({ error: "Viewer không thể scan" });
+      const sync = req.body?.sync !== false; // mặc định CÓ sync (data mới mỗi lần cào)
+      const { runAndStorePromoScan } = await import("./core/promotionScan");
+      const result = await runAndStorePromoScan({ sync, onLog: (m) => console.log("[promo]", m) });
+      res.json({ ok: true, result });
+    } catch (err: any) {
+      const busy = /Đang scan/.test(err?.message ?? "");
+      res.status(busy ? 409 : 500).json({ error: err?.message ?? "Lỗi scan promotion" });
+    }
+  });
+
+  // Kéo thêm data SHEIN từ RapidAPI cho 1 shop theo NGÁCH của shop → chấm điểm → đổ sp
+  // ĐẠT ngưỡng vào uncrawl queue (loại trừ data đã có). KHÔNG kéo bừa.
+  app.post("/admin/api/uncrawled/pull-more", async (req, res) => {
+    try {
+      const sessionUser = (req.session as any).user as SessionUser;
+      if (sessionUser.role === "viewer") return res.status(403).json({ error: "Viewer không thể kéo data" });
+      const { shop, pages, minScore, dryRun, resetCursor } = req.body as {
+        shop?: string; pages?: number; minScore?: number; dryRun?: boolean; resetCursor?: boolean;
+      };
+      if (!shop || !shop.trim()) return res.status(400).json({ error: "Thiếu shop" });
+      const { pullMoreForShop } = await import("./core/research/pullMoreData");
+      const result = await pullMoreForShop({
+        shop: shop.trim(),
+        pages: pages != null ? Number(pages) : undefined,
+        minOpportunity: minScore != null ? Number(minScore) : undefined,
+        resetCursor: !!resetCursor,
+        dryRun: !!dryRun,
+      });
+      if (result.totalInserted > 0) refreshQueueSnapshot().catch(() => {});
+      res.json({ ok: true, ...result });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? "Lỗi kéo data" });
+    }
+  });
+
   // Bật Chrome debug (cổng 9222) cho backend Chrome. Idempotent: đã chạy → trả luôn.
   app.post("/admin/api/chrome/launch", async (req, res) => {
     try {
-      const net = await import("net");
-      const HOST = "127.0.0.1", PORT = 9222;
-      const probe = (timeout = 1500): Promise<boolean> =>
-        new Promise((resolve) => {
-          const sock = net.connect({ host: HOST, port: PORT });
-          let done = false;
-          const fin = (v: boolean) => { if (!done) { done = true; try { sock.destroy(); } catch { /* ignore */ } resolve(v); } };
-          sock.once("connect", () => fin(true));
-          sock.once("error", () => fin(false));
-          sock.setTimeout(timeout, () => fin(false));
-        });
-
-      if (await probe()) return res.json({ ok: true, already: true, message: "Chrome debug đã chạy ở 9222." });
-
-      const candidates = [
-        "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
-        "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
-        path.join(process.env.LOCALAPPDATA || "", "Google\\Chrome\\Application\\chrome.exe"),
-      ];
-      let exe = "";
-      for (const c of candidates) { if (c && (await fs.pathExists(c))) { exe = c; break; } }
-      if (!exe) return res.status(500).json({ error: "Không tìm thấy chrome.exe (Program Files / LOCALAPPDATA)." });
-
-      const userDir = process.env.CHROME_DEBUG_DIR || "C:\\chrome-debug-shein";
-      const { spawn } = await import("child_process");
-      const child = spawn(exe, [
-        "--remote-debugging-port=9222",
-        "--remote-debugging-address=127.0.0.1",
-        `--user-data-dir=${userDir}`,
-        "https://us.shein.com",
-      ], { detached: true, stdio: "ignore" });
-      child.unref();
-
-      let up = false;
-      for (let i = 0; i < 16 && !up; i++) {
-        await new Promise((r) => setTimeout(r, 500));
-        up = await probe();
+      const { ensureChromeDebug } = await import("./core/chromeDebug");
+      const cdpUrl = process.env.CHROME_CDP || "http://127.0.0.1:9222";
+      const r = await ensureChromeDebug(cdpUrl);
+      if (r.ok) {
+        return res.json({ ok: true, already: r.already, launched: r.launched, exe: r.exe,
+          message: r.already ? "Chrome debug đã chạy." : "Đã bật Chrome debug." });
       }
-      if (up) return res.json({ ok: true, launched: true, exe, message: "Đã bật Chrome debug ở 9222." });
-      return res.status(500).json({
-        error: "Đã spawn Chrome nhưng cổng 9222 chưa lên. Có thể Chrome đang mở user-data-dir này ở instance khác — tắt hết Chrome rồi thử lại.",
-      });
+      return res.status(500).json({ error: r.error ?? "Lỗi bật Chrome debug" });
     } catch (err: any) {
       res.status(500).json({ error: err?.message ?? "Lỗi bật Chrome debug" });
     }
@@ -909,6 +1002,171 @@ export const startAdminServer = async () => {
     }
   });
 
+  // ── Dashboard OVERVIEW: tổng quan shop (live/đơn/doanh thu + Δ so hôm qua, health,
+  //    promotion, queue). Đơn & DT theo NGÀY lấy thẳng từ 4Seller sales API (chính xác);
+  //    Live Δ so hôm qua dựa trên snapshot hằng ngày (bảng dashboard_snapshot).
+  const dayOrdersCache = new Map<string, { ts: number; byShop: Record<string, { orders: number; revenue: number }> }>();
+  /** Đơn + doanh thu của 1 NGÀY (YYYY-MM-DD) per shop, gộp mọi tài khoản. Cache 5p. */
+  async function fetchDaySales(day: string, legacyUser: string): Promise<Record<string, { orders: number; revenue: number }>> {
+    const cached = dayOrdersCache.get(day);
+    if (cached && Date.now() - cached.ts < SHOP_CACHE_TTL) return cached.byShop;
+    const byShop: Record<string, { orders: number; revenue: number }> = {};
+    for (const principal of await fsPrincipals(legacyUser)) {
+      try {
+        const list = await fsGetShopList(principal);
+        const ids = (list?.records ?? []).map((s) => s.id).filter((x) => x != null);
+        if (!ids.length) continue;
+        const rows = await fsGetSalesByShop(principal, { startTime: day, endTime: day, shopIds: ids });
+        for (const r of rows ?? []) {
+          if (r?.shopName) {
+            byShop[String(r.shopName).toLowerCase()] = {
+              orders: r.totalOrders ?? 0,
+              revenue: r.totalSales ?? 0,
+            };
+          }
+        }
+      } catch { /* 1 tài khoản lỗi → bỏ qua */ }
+    }
+    dayOrdersCache.set(day, { ts: Date.now(), byShop });
+    return byShop;
+  }
+
+  app.get("/admin/api/dashboard/overview", async (req, res) => {
+    try {
+      const sessionUser = (req.session as any).user as SessionUser;
+      const { getDb } = await import("./state/db");
+      const db = getDb();
+      db.exec(
+        `CREATE TABLE IF NOT EXISTS dashboard_snapshot (
+           day TEXT NOT NULL, shop TEXT NOT NULL, live INTEGER, orders REAL, revenue REAL,
+           PRIMARY KEY (day, shop))`
+      );
+
+      // Mốc ngày theo GIỜ VN (Asia/Ho_Chi_Minh) — rollover nửa đêm VN, khớp lịch làm việc VN.
+      // LƯU Ý: 4Seller gom đơn theo NGÀY US (không có granularity giờ) nên sáng VN (~00:00-14:00),
+      // ngày US cùng số CHƯA sang → "hôm nay" có thể ~0; số thật của đêm US nằm ở "hôm qua".
+      // (User chọn mốc VN chấp nhận đánh đổi này — xem AskUserQuestion 2026-07-06.)
+      const vnDay = (offsetDays = 0) =>
+        new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Ho_Chi_Minh" }).format(
+          new Date(Date.now() - offsetDays * 864e5)
+        );
+      const today = vnDay(0);
+      const yesterday = vnDay(1);
+
+      // Nguồn song song: folder đĩa (pending/fail), live 4Seller, đơn hôm nay/hôm qua, đơn 7 ngày, ảnh đại diện
+      const [diskShops, liveByShop, salesToday, salesYesterday, orders7d, imgByShop] = await Promise.all([
+        scanShopsSummary({ username: ownerScope(req) }),
+        fetchLiveCounts(sessionUser.username),
+        fetchDaySales(today, sessionUser.username),
+        fetchDaySales(yesterday, sessionUser.username),
+        fetchOrdersByShop(sessionUser.username),
+        fetchShopImages(sessionUser.username),
+      ]);
+
+      // Health (shop_analysis, tiktok.db) — best-effort
+      const healthByShop = new Map<string, any>();
+      try {
+        const { TiktokDb } = await import("./services/tiktok/db");
+        const tdb = new TiktokDb();
+        try {
+          for (const a of tdb.listShopAnalysis()) {
+            healthByShop.set(String(a.shop).toLowerCase(), {
+              overall: a.overall ?? null,
+              alerts: (() => { try { return JSON.parse(a.alerts_json).length; } catch { return 0; } })(),
+            });
+          }
+        } finally { tdb.close(); }
+      } catch { /* chưa có phân tích */ }
+
+      // Promotion (scan gần nhất — cron mỗi 2 giờ tự cào)
+      const { getLastPromoScan } = await import("./core/promotionScan");
+      const promo = await getLastPromoScan();
+      const promoByShop = new Map<string, { flashExpired: boolean; uncovered: number | null; noDiscount: boolean }>();
+      for (const r of promo?.rows ?? []) {
+        promoByShop.set(r.shop.toLowerCase(), {
+          flashExpired: r.flashExpired,
+          uncovered: r.uncoveredProducts,
+          noDiscount: r.discountOngoing === 0,
+        });
+      }
+
+      // Danh sách shop: ưu tiên shop 4Seller thật (union tài khoản); folder đĩa để lấy pending/fail
+      const diskByName = new Map(diskShops.map((s) => [s.folder.toLowerCase(), s]));
+      const cfg = await loadAdminConfig();
+      const u = cfg.users.find((x) => x.username === sessionUser.username);
+      const shopSource = u ? await resolveUserShops(u as any) : { shops: [] as string[], source: "empty" };
+      const shopNames = shopSource.shops.length ? shopSource.shops : diskShops.map((s) => s.folder);
+
+      // Snapshot: upsert hôm nay + đọc hôm qua (Δ live)
+      const upsert = db.prepare(
+        `INSERT INTO dashboard_snapshot (day, shop, live, orders, revenue) VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT(day, shop) DO UPDATE SET live=excluded.live, orders=excluded.orders, revenue=excluded.revenue`
+      );
+      const getSnap = db.prepare("SELECT live FROM dashboard_snapshot WHERE day=? AND shop=?");
+
+      // Series 7 ngày (orders/revenue) cho SPARKLINE mỗi shop — 1 query, map theo shop.
+      const days7 = [6, 5, 4, 3, 2, 1, 0].map((d) => vnDay(d)); // cũ → mới (hôm nay cuối)
+      const snap7 = db.prepare(
+        `SELECT shop, day, orders, revenue FROM dashboard_snapshot WHERE day >= ?`
+      ).all(days7[0]) as any[];
+      const seriesByShop = new Map<string, Map<string, { o: number; r: number }>>();
+      for (const s of snap7) {
+        const lc = String(s.shop).toLowerCase();
+        if (!seriesByShop.has(lc)) seriesByShop.set(lc, new Map());
+        seriesByShop.get(lc)!.set(s.day, { o: s.orders ?? 0, r: s.revenue ?? 0 });
+      }
+
+      const accounts = await fsAccounts().catch(() => []);
+      const normShop = (x: string) => (x || "").toLowerCase().replace(/[\s—–-]+/g, "");
+      const accountByShop = new Map<string, string>();
+      for (const a of accounts) for (const s of a.shops) accountByShop.set(normShop(s), a.label);
+
+      const rows = shopNames.map((name) => {
+        const lc = name.toLowerCase();
+        const disk = diskByName.get(lc);
+        const live = lc in liveByShop ? liveByShop[lc] : null;
+        const st = salesToday[lc] ?? { orders: 0, revenue: 0 };
+        const sy = salesYesterday[lc] ?? { orders: 0, revenue: 0 };
+        const liveYesterday = (getSnap.get(yesterday, name) as any)?.live ?? null;
+        if (live != null) upsert.run(today, name, live, st.orders, st.revenue);
+        const pr = promoByShop.get(lc);
+        // Sparkline 7 ngày (orders). Hôm nay lấy giá trị LIVE (st.orders) vì snapshot mới upsert.
+        const ser = seriesByShop.get(lc);
+        const sparkOrders = days7.map((d, i) => (i === days7.length - 1 ? st.orders : ser?.get(d)?.o ?? 0));
+        return {
+          shop: name,
+          account: accountByShop.get(normShop(name)) ?? null,
+          image: imgByShop[lc] ?? null,
+          live,
+          liveYesterday,
+          ordersToday: st.orders,
+          ordersYesterday: sy.orders,
+          revenueToday: st.revenue,
+          revenueYesterday: sy.revenue,
+          orders7d: orders7d[lc] ?? 0,
+          sparkOrders,
+          health: healthByShop.get(lc) ?? null,
+          flashExpired: pr?.flashExpired ?? null,
+          uncovered: pr?.uncovered ?? null,
+          noDiscount: pr?.noDiscount ?? null,
+          pending: disk?.pending ?? 0,
+          fail: disk?.fail ?? 0,
+        };
+      });
+
+      res.json({
+        ok: true,
+        today,
+        yesterday,
+        promoScannedAt: promo?.scannedAt ?? null,
+        worker: workerState.get(),
+        rows,
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? "Lỗi dashboard overview" });
+    }
+  });
+
   // ── SSE: live log + events ───────────────────────────────
   app.get("/admin/api/events/stream", (req, res) => {
     res.set({
@@ -1014,11 +1272,12 @@ export const startAdminServer = async () => {
 
   app.get("/admin/api/listings/shops", async (req, res) => {
     try {
-      let shops = await scanShopsSummary({ username: ownerScope(req) });
+      const diskShops = await scanShopsSummary({ username: ownerScope(req) });
       let liveByShop: Record<string, number> = {};
       let ordersByShop: Record<string, number> = {};
-      // CHỈ hiện shop thuộc 4Seller account HIỆN TẠI (theo cookie). Ẩn hẳn shop của
-      // account 4Seller khác (P1/P5 cũ) dù còn lịch sử trên ổ đĩa.
+      // BASE = danh sách 4Seller (mọi shop của account hiện tại, KỂ CẢ shop mới chưa có
+      // folder/listing) → merge data đĩa vào. Không có cookie 4Seller → fallback folder đĩa.
+      let shops = diskShops;
       try {
         const sessionUser = (req.session as any).user as SessionUser | undefined;
         if (sessionUser) {
@@ -1026,9 +1285,14 @@ export const startAdminServer = async () => {
           const u = cfg.users.find((x) => x.username === sessionUser.username);
           if (u) {
             const r = await resolveUserShops(u as any);
-            if (r.source === "4seller" || r.source === "explicit") {
-              const set = new Set(r.shops.map((s) => s.toLowerCase()));
-              shops = shops.filter((s) => set.has(s.folder.toLowerCase()));
+            if ((r.source === "4seller" || r.source === "explicit") && r.shops.length) {
+              const diskByName = new Map(diskShops.map((s) => [s.folder.toLowerCase(), s]));
+              // 1 dòng/shop 4Seller; có folder đĩa → dùng summary, không → 0.
+              shops = r.shops.map((name) =>
+                diskByName.get(name.toLowerCase()) ?? {
+                  owner: u.username, folder: name, pending: 0, success: 0, fail: 0, total: 0, lastActivityMs: 0, cover: null,
+                }
+              );
             }
             // active thật + số đơn 7 ngày từ 4Seller (mỗi cái cache 5p), gọi song song.
             [liveByShop, ordersByShop] = await Promise.all([
@@ -1056,17 +1320,58 @@ export const startAdminServer = async () => {
         }
       } catch { /* best-effort */ }
 
+      // Kiki-TikTok profile per-shop (tiktok.db) — để gán/hiển thị ngay trên Listings.
+      const kikiByShop = new Map<string, string>();
+      try {
+        const edb = new EditDb();
+        try { for (const p of edb.allProfiles()) kikiByShop.set(String(p.shop).toLowerCase(), p.kiki_profile); }
+        finally { edb.close(); }
+      } catch { /* best-effort */ }
+
+      // Phân tích sức khỏe TikTok per-shop (shop_analysis) — cho badge + tab Phân tích.
+      const sj = (s: any, d: any) => { try { return JSON.parse(s); } catch { return d; } };
+      const healthByShop = new Map<string, any>();
+      try {
+        const { TiktokDb } = await import("./services/tiktok/db");
+        const tdb = new TiktokDb();
+        try {
+          for (const a of tdb.listShopAnalysis()) {
+            healthByShop.set(String(a.shop).toLowerCase(), {
+              overall: a.overall ?? null, status: a.status ?? null, summary: a.summary ?? "",
+              alerts: sj(a.alerts_json, []), areas: sj(a.areas_json, []), metrics: sj(a.metrics_json, {}),
+              reportPath: a.report_path ?? "", runDate: a.run_date ?? null, updatedAt: a.updated_at ?? null,
+            });
+          }
+        } finally { tdb.close(); }
+      } catch { /* best-effort */ }
+
+      // Gắn TÀI KHOẢN 4Seller cho từng shop (tab lọc theo tài khoản trên UI).
+      const accounts = await fsAccounts().catch(() => []);
+      const accountUidByShop = new Map<string, string>();
+      const normShop = (x: string) => (x || "").toLowerCase().replace(/[\s—–-]+/g, "");
+      for (const acc of accounts) {
+        for (const shopName of acc.shops) accountUidByShop.set(normShop(shopName), acc.uid);
+      }
+
       const enriched = shops.map((s) => {
         const lc = s.folder.toLowerCase();
+        const accUid = accountUidByShop.get(normShop(s.folder)) ?? (accounts.length === 1 ? accounts[0].uid : null);
         return {
           ...s,
           niche: nicheByShop.get(lc) ?? null,
           uncrawled: uncrawledByShop.get(lc) ?? 0,
           live: lc in liveByShop ? liveByShop[lc] : null, // null = chưa lấy được (no cookie)
           orders: lc in ordersByShop ? ordersByShop[lc] : (Object.keys(ordersByShop).length ? 0 : null),
+          kikiProfile: kikiByShop.get(lc) ?? "",
+          health: healthByShop.get(lc) ?? null,
+          accountUid: accUid,
+          accountLabel: accUid ? (accounts.find((a) => a.uid === accUid)?.label ?? null) : null,
         };
       });
-      res.json({ shops: enriched });
+      res.json({
+        shops: enriched,
+        accounts: accounts.map((a) => ({ uid: a.uid, label: a.label, shopCount: a.shops.length })),
+      });
     } catch (err: any) {
       res.status(500).json({ error: err?.message ?? "Lỗi scan shops" });
     }
@@ -1130,6 +1435,51 @@ export const startAdminServer = async () => {
       res.json({ ok: true, newStatus: "pending", folder: resolved.folder });
     } catch (err: any) {
       res.status(500).json({ error: err?.message ?? "Lỗi retry" });
+    }
+  });
+
+  // Retry HÀNG LOẠT file Fail → đẩy về folder shop (pending) để cron pick lên lại.
+  // body.folder: chỉ retry fail của 1 shop; bỏ trống = TẤT CẢ shop trong scope của user.
+  app.post("/admin/api/listings/retry-fails", async (req, res) => {
+    try {
+      const sessionUser = (req.session as any).user as SessionUser;
+      if (sessionUser.role === "viewer") return res.status(403).json({ error: "Viewer không thể retry" });
+
+      const folder = (req.body?.folder as string) || undefined;
+      const fails = await scanListings({ status: "fail", folder, username: ownerScope(req) });
+      if (fails.length === 0) {
+        return res.json({ ok: true, retried: 0, skipped: [], message: "Không có file Fail nào" });
+      }
+
+      let retried = 0;
+      const skipped: { id: string; reason: string }[] = [];
+      for (const card of fails) {
+        try {
+          // resolveListingPath validate lại path (chống traversal) như retry đơn lẻ
+          const resolved = await resolveListingPath(card.id);
+          if (!resolved || resolved.status !== "fail") {
+            skipped.push({ id: card.id, reason: "id không hợp lệ" });
+            continue;
+          }
+          if (!(await fs.pathExists(resolved.full))) {
+            skipped.push({ id: card.id, reason: "file không còn ở Fail" });
+            continue;
+          }
+          const target = path.join(resolved.baseDir, resolved.folder, resolved.file);
+          await fs.move(resolved.full, target, { overwrite: true });
+          const errLog = `${resolved.full}.error.log`;
+          if (await fs.pathExists(errLog)) await fs.remove(errLog).catch(() => {});
+          retried++;
+        } catch (e: any) {
+          skipped.push({ id: card.id, reason: e?.message ?? "lỗi move" });
+        }
+      }
+      console.log(
+        `↻ [retry-fails] ${sessionUser.username} retry ${retried}/${fails.length} file fail${folder ? ` (shop ${folder})` : " (tất cả shop)"}`
+      );
+      res.json({ ok: true, retried, total: fails.length, skipped });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? "Lỗi retry hàng loạt" });
     }
   });
 
@@ -1308,6 +1658,40 @@ export const startAdminServer = async () => {
       }
     } catch (err: any) {
       res.status(500).json({ error: err?.message ?? "Lỗi load listing đã edit" });
+    }
+  });
+
+  // Trend view per-listing của 1 shop: hôm nay vs hôm qua + tăng trưởng ~7 ngày
+  // (nguồn: listing_views, route product-manage ghi mỗi lần crawl TikTok).
+  app.get("/admin/api/tiktok/listing-views", async (req, res) => {
+    try {
+      const shop = ((req.query.shop as string) || "").trim();
+      if (!shop) return res.status(400).json({ error: "Thiếu shop" });
+      const { TiktokDb } = await import("./services/tiktok/db");
+      const tdb = new TiktokDb();
+      try {
+        res.json(tdb.getListingViewTrends(shop));
+      } finally {
+        tdb.close();
+      }
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? "Lỗi load listing views" });
+    }
+  });
+
+  // Chạy phân tích sức khỏe TikTok cho 1 shop (onlyShop) hoặc TẤT CẢ (chạy nền, không chờ).
+  app.post("/admin/api/shop-analysis/run", async (req, res) => {
+    try {
+      const sessionUser = (req.session as any).user as SessionUser;
+      if (sessionUser.role === "viewer") return res.status(403).json({ error: "Viewer không thể chạy phân tích" });
+      const { shop } = req.body as { shop?: string };
+      const { runTiktokJob } = await import("./core/tiktokCron");
+      // Fire-and-forget — crawl Kiki mất vài phút/shop. Guard 'running' bên trong tự chống chạy chồng.
+      runTiktokJob({ onlyShop: shop?.trim() || undefined, onLog: (m) => console.log("[tiktok-ui]", m) })
+        .catch((e) => console.error("[tiktok-ui] lỗi:", e?.message ?? e));
+      res.json({ ok: true, message: shop ? `Đang phân tích "${shop}" (chạy nền).` : "Đang phân tích TẤT CẢ shop (chạy nền)." });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? "Lỗi chạy phân tích" });
     }
   });
 
@@ -1855,8 +2239,14 @@ export const startAdminServer = async () => {
         return res.json({ ...cached.data, cached: true });
       }
 
-      const shopList = await fsGetShopList(sessionUser.username);
-      let shops = shopList.records;
+      // Gộp shop từ MỌI tài khoản 4Seller (nhớ principal của từng shop để đếm đúng cookie)
+      let shops: (FourSellerShopT & { _principal: string })[] = [];
+      for (const principal of await fsPrincipals(sessionUser.username)) {
+        try {
+          const shopList = await fsGetShopList(principal);
+          shops.push(...(shopList.records ?? []).map((s) => ({ ...s, _principal: principal })));
+        } catch { /* 1 tài khoản lỗi → bỏ qua */ }
+      }
 
       // Filter theo accessibleFolders nếu non-admin
       const accessible = await accessibleFolders(req);
@@ -1877,7 +2267,7 @@ export const startAdminServer = async () => {
       const withCounts = await Promise.all(
         shops.map(async (s) => {
           try {
-            const c = await fsGetStatusCount(sessionUser.username, { shopId: s.id });
+            const c = await fsGetStatusCount(s._principal, { shopId: s.id });
             return { ...s, counts: c };
           } catch (err: any) {
             return { ...s, counts: null, error: err?.message ?? "unknown" };
@@ -2680,64 +3070,116 @@ export const startAdminServer = async () => {
     }
   });
 
-  // ── Cookie 4Seller (per-user) ─────────────────────────
-  // GET: cho UI biết user hiện tại đã upload cookie chưa
-  app.get("/admin/api/cookie/status", async (req, res) => {
+  // ── Cookie 4Seller (ĐA TÀI KHOẢN — auto-detect qua cookie `uid`) ─────────
+  // GET: danh sách tài khoản đã upload + shop của từng tài khoản
+  app.get("/admin/api/cookie/status", async (_req, res) => {
     try {
-      const sessionUser = (req.session as any).user as SessionUser;
-      const file = userCookiePath(sessionUser.username);
-      const exists = await fs.pathExists(file);
-      let count = 0;
-      let mtime: number | null = null;
-      if (exists) {
-        try {
-          const stat = await fs.stat(file);
-          mtime = stat.mtimeMs;
-          const raw = await fs.readFile(file, "utf-8");
-          const parsed = JSON.parse(raw);
-          const arr = Array.isArray(parsed) ? parsed : parsed?.cookies ?? [];
-          count = arr.length;
-        } catch {
-          // ignore parse fail
-        }
-      }
+      const accounts = await fsAccounts();
       res.json({
-        username: sessionUser.username,
-        userCookie: { exists, count, mtime, path: file },
+        accounts: accounts.map((a) => ({
+          uid: a.uid,
+          label: a.label,
+          shops: a.shops,
+          shopCount: a.shops.length,
+          cookieCount: a.cookieCount,
+          cookieUpdatedAt: a.cookieUpdatedAt,
+          shopsUpdatedAt: a.shopsUpdatedAt,
+        })),
       });
     } catch (err: any) {
       res.status(500).json({ error: err?.message ?? "Lỗi đọc status cookie" });
     }
   });
 
+  // POST: nhận 1 file cookie export (paste hoặc kéo-thả). Tự detect tài khoản qua
+  // cookie `uid` → kéo 2 file của 2 tài khoản vào là ra 2 tài khoản riêng.
   app.post("/admin/api/cookie", async (req, res) => {
     try {
       const sessionUser = (req.session as any).user as SessionUser;
       if (sessionUser.role === "viewer") return res.status(403).json({ error: "Viewer không thể upload cookie" });
 
-      const body = req.body as { cookie: any[] };
-      if (!Array.isArray(body.cookie)) {
-        return res.status(400).json({ error: "Body phải có field 'cookie' là array" });
-      }
-      // Mỗi user lưu vào file riêng — không ghi đè user khác
-      const targetFile = userCookiePath(sessionUser.username);
-      await fs.ensureDir(path.dirname(targetFile));
-      await fs.writeFile(targetFile, JSON.stringify(body.cookie, null, 2), "utf-8");
-      // Đổi cookie → account 4Seller có thể khác → XOÁ cache shop-list (5p) để Listings
-      // phản ánh tài khoản mới NGAY, không phải chờ cache hết hạn.
-      shopListCache.delete(sessionUser.username);
-      res.json({ ok: true, count: body.cookie.length, savedTo: targetFile });
+      const body = req.body as { cookie: any };
+      const { account, shopSyncError } = await saveAccountCookie(body.cookie);
+      // Đổi cookie / thêm shop → xoá cache để Listings phản ánh ngay
+      shopListCache.clear();
+      liveCountCache.clear();
+      ordersCache.clear();
+      res.json({
+        ok: true,
+        uid: account.uid,
+        label: account.label,
+        cookieCount: account.cookieCount,
+        shopCount: account.shops.length,
+        shopSyncError: shopSyncError ?? null,
+      });
     } catch (err: any) {
-      res.status(500).json({ error: err?.message ?? "Lỗi lưu cookie" });
+      res.status(400).json({ error: err?.message ?? "Lỗi lưu cookie" });
     }
   });
 
+  // Đổi nhãn tài khoản ("Tài khoản 1" → tên dễ nhớ)
+  app.post("/admin/api/cookie/label", async (req, res) => {
+    try {
+      const sessionUser = (req.session as any).user as SessionUser;
+      if (sessionUser.role === "viewer") return res.status(403).json({ error: "Viewer không thể sửa" });
+      const { uid, label } = req.body as { uid: string; label: string };
+      await setAccountLabel(uid, label);
+      res.json({ ok: true });
+    } catch (err: any) {
+      res.status(400).json({ error: err?.message ?? "Lỗi đổi nhãn" });
+    }
+  });
+
+  // Sync lại shop list của 1 tài khoản từ 4Seller
+  app.post("/admin/api/cookie/refresh-shops", async (req, res) => {
+    try {
+      const { uid } = req.body as { uid: string };
+      const shops = await refreshAccountShops(uid);
+      shopListCache.clear();
+      res.json({ ok: true, shopCount: shops.length, shops });
+    } catch (err: any) {
+      res.status(400).json({ error: err?.message ?? "Lỗi sync shop" });
+    }
+  });
+
+  // Xoá 1 tài khoản (cookie + registry)
+  app.delete("/admin/api/cookie", async (req, res) => {
+    try {
+      const sessionUser = (req.session as any).user as SessionUser;
+      if (sessionUser.role !== "admin") return res.status(403).json({ error: "Chỉ admin xoá được tài khoản" });
+      const { uid } = req.body as { uid: string };
+      await fsDeleteAccount(uid);
+      shopListCache.clear();
+      liveCountCache.clear();
+      ordersCache.clear();
+      res.json({ ok: true });
+    } catch (err: any) {
+      res.status(400).json({ error: err?.message ?? "Lỗi xoá tài khoản" });
+    }
+  });
+
+  // Test cookie 1 tài khoản (mở page 4Seller headless xem có bị đá về login không)
   app.post("/admin/api/cookie/test", async (req, res) => {
     let browser: any = null;
     try {
-      const sessionUser = (req.session as any).user as SessionUser;
-      // Test cookie của user đang đăng nhập (fallback global nếu chưa upload riêng)
-      const cookie = await configCookie(sessionUser.username);
+      const { uid } = req.body as { uid?: string };
+      let cookie: any[];
+      let source: string;
+      if (uid) {
+        cookie = await configCookieForAccount(uid);
+        source = `acct:${uid}`;
+      } else {
+        // Không truyền uid: test tài khoản đầu tiên (hoặc legacy user nếu chưa có tài khoản)
+        const accounts = await fsAccounts();
+        if (accounts.length > 0) {
+          cookie = await configCookieForAccount(accounts[0].uid);
+          source = `acct:${accounts[0].uid}`;
+        } else {
+          const sessionUser = (req.session as any).user as SessionUser;
+          cookie = await configCookie(sessionUser.username);
+          source = sessionUser.username;
+        }
+      }
       browser = await chromium.launch({ headless: true });
       const ctx = await browser.newContext();
       await ctx.addCookies(cookie);
@@ -2749,13 +3191,17 @@ export const startAdminServer = async () => {
       const finalUrl = page.url();
       const ok = !!resp && resp.status() < 400 && !finalUrl.includes("login");
       await ctx.close();
-      res.json({ ok, finalUrl, status: resp?.status() ?? null, source: sessionUser.username });
+      res.json({ ok, finalUrl, status: resp?.status() ?? null, source });
     } catch (err: any) {
       res.status(500).json({ ok: false, error: err?.message ?? "Lỗi test cookie" });
     } finally {
       if (browser) await browser.close().catch(() => {});
     }
   });
+
+  // Chuyển đổi mượt: import cookie legacy (data/cookies/<user>.json) vào registry
+  // tài khoản 1 lần khi start (file có uid/userToken mới import được).
+  bootstrapLegacyCookies().catch(() => {});
 
   const port = Number(process.env.ADMIN_PORT ?? 3000);
   // Bind tường minh: resolve khi listening, REJECT khi lỗi (vd EADDRINUSE = đã có

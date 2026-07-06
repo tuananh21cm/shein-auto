@@ -1,4 +1,4 @@
-import type { RouteDef } from "./types";
+import type { RouteDef, Capture } from "./types";
 import { extractHomepage } from "./extractors/homepage";
 import { extractShopOverview } from "./extractors/shopOverview";
 import { extractPromotion } from "./extractors/promotion";
@@ -8,7 +8,7 @@ import { extractChat } from "./extractors/chat";
 import { extractOrders } from "./extractors/orders";
 import { extractReturns } from "./extractors/returns";
 import { extractProductOpportunity } from "./extractors/productOpportunity";
-import { extractProductManage } from "./extractors/productManage";
+import { extractProductManage, extractListingRows } from "./extractors/productManage";
 
 /**
  * Registry route cào hằng ngày. Mở rộng = thêm 1 entry + 1 extractor.
@@ -19,6 +19,58 @@ import { extractProductManage } from "./extractors/productManage";
  *   data fire trước overlay → dùng `skipCaptcha` (capture-first): load, hứng, đóng nhanh,
  *   KHÔNG chờ giải captcha. Extractor compassOverview (legacy) giữ cho phase sau.
  */
+/**
+ * Click sang TRANG 2 của Quản lý sản phẩm khi shop >50 SP (mỗi trang 50, shop hiện ~100 SP)
+ * → app tự fire products/list?page_number=2, captureBus hứng thêm capture, extractor gộp 2 trang.
+ * Best-effort: không thấy nút / capture không về → giữ trang 1, log cảnh báo.
+ */
+export async function paginateProductManage(
+  page: any,
+  bus: { snapshot(): Capture[] },
+  log: (m: string) => void
+): Promise<void> {
+  const listCaps = () => bus.snapshot().filter((c) => /product\/local\/products\/list/.test(c.url));
+  const first = listCaps()[0];
+  const total = Number(first?.body?.data?.total_product_count ?? first?.body?.total_product_count ?? 0);
+  if (!total || total <= 50) return; // 1 trang là đủ
+  const before = listCaps().length;
+
+  // pagination nằm dưới đáy danh sách → cuộn xuống cho nút render
+  await page.mouse.wheel(0, 5000).catch(() => {});
+  await page.waitForTimeout(800);
+
+  // DOM thật (xác minh 2026-07-06): <div data-tid="m4b_pagination" class="core-pagination">
+  //   <li class="core-pagination-item" aria-label="Page 2">2</li> · next = li.core-pagination-item-next
+  const candidates = [
+    page.locator('li.core-pagination-item[aria-label="Page 2"]').first(),
+    page.locator('[data-tid="m4b_pagination"] li[aria-label="Page 2"]').first(),
+    // fallback khi TikTok đổi class/tid: li số "2" trong khối pagination bất kỳ, rồi nút Next
+    page.locator('[class*="pagination"] li:not([class*="prev"]):not([class*="next"])', { hasText: /^2$/ }).first(),
+    page.locator('li[class*="pagination-item-next"]:not([class*="disabled"])').first(),
+  ];
+  let clicked = false;
+  for (const loc of candidates) {
+    if (!(await loc.count().catch(() => 0))) continue;
+    await loc.scrollIntoViewIfNeeded().catch(() => {});
+    clicked = await loc.click({ timeout: 5000 }).then(() => true).catch(() => false);
+    if (clicked) break;
+  }
+  if (!clicked) {
+    log(`  ⚠️ ${total} SP (>50) nhưng không thấy nút trang 2 — snapshot chỉ có trang đầu.`);
+    return;
+  }
+  log(`  → ${total} SP: đã click trang 2, chờ capture…`);
+  const start = Date.now();
+  while (Date.now() - start < 15_000 && listCaps().length <= before) {
+    await page.waitForTimeout(1000);
+  }
+  log(
+    listCaps().length > before
+      ? `  ✓ trang 2 đã về (${listCaps().length} capture products/list).`
+      : `  ⚠️ click trang 2 nhưng không thấy capture mới sau 15s — dùng trang đầu.`
+  );
+}
+
 export const ROUTES: RouteDef[] = [
   {
     key: "homepage",
@@ -61,6 +113,10 @@ export const ROUTES: RouteDef[] = [
     skipCaptcha: true,
     waitForEndpoint: "product/local/products/list",
     extractor: extractProductManage,
+    // Snapshot per-listing (pv/order 28d) → listing_views (diff hôm qua / 7 ngày)
+    listingExtractor: extractListingRows,
+    // Shop >50 SP → click trang 2 hứng đủ (~100 SP, 50/trang)
+    interact: paginateProductManage,
   },
   {
     key: "shop-overview",

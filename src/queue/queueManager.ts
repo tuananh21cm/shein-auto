@@ -7,8 +7,7 @@ import { workerState } from "../state/workerState";
 import { refreshQueueSnapshot } from "../state/queueState";
 import { historyStore } from "../state/historyStore";
 import { notifyFail } from "../services/notification/telegram";
-import { getAllUsersForCron, UserDirs, getEffectiveSettings } from "../state/userDirs";
-import { loadAdminConfig } from "../adminConfig";
+import { getAllUserDirs, UserDirs, getEffectiveSettings } from "../state/userDirs";
 
 const LAST_FOLDER_FILE_NAME = ".last_folder.txt";
 
@@ -34,26 +33,14 @@ const getOldestJsonFile = async (dir: string): Promise<string | null> => {
 };
 
 /**
- * Liệt kê shop folders trong baseDir mà user hiện tại được phép cron:
- *  - profiles non-empty → đúng list trong profiles
- *  - profiles empty (catch-all) → tất cả shop NHƯNG loại shops đã được user khác claim
- *    (tránh admin với profiles=[] cướp shop của test)
+ * Liệt kê TẤT CẢ shop folders trong baseDir. Cơ chế claim/chia user đã bỏ —
+ * cookie giờ resolve theo shop (đa tài khoản 4Seller), worker chỉ cần quét folder.
  */
-const listShopFolders = async (
-  baseDir: string,
-  profiles: string[],
-  claimedByOthers: Set<string>
-): Promise<string[]> => {
+const listShopFolders = async (baseDir: string): Promise<string[]> => {
   const entries = await fs.readdir(baseDir);
   const result: string[] = [];
   for (const name of entries) {
     if (name === "Success" || name === "Fail" || name.startsWith(".")) continue;
-    if (profiles.length > 0) {
-      if (!profiles.includes(name)) continue;
-    } else {
-      // Empty profiles = catch-all, nhưng không touch shop của user khác
-      if (claimedByOthers.has(name)) continue;
-    }
     try {
       const stats = await fs.stat(path.join(baseDir, name));
       if (stats.isDirectory()) result.push(name);
@@ -218,7 +205,7 @@ const processOldestInFolder = async (
 };
 
 const tickForUser = async (dirs: UserDirs, slotsAvailable: number): Promise<number> => {
-  const { username, baseSheinAutoDir, profiles } = dirs;
+  const { username, baseSheinAutoDir } = dirs;
   if (slotsAvailable <= 0) return 0;
   if (!(await fs.pathExists(baseSheinAutoDir))) return 0;
 
@@ -229,16 +216,8 @@ const tickForUser = async (dirs: UserDirs, slotsAvailable: number): Promise<numb
     return 0;
   }
 
-  // Build set shops đã được user khác claim explicit (qua profiles).
-  // Khi current user có empty profiles, không được lấn các shop này.
-  const cfg = await loadAdminConfig();
-  const claimedByOthers = new Set<string>();
-  for (const u of cfg.users) {
-    if (u.username === username) continue;
-    for (const shop of u.profiles ?? []) claimedByOthers.add(shop);
-  }
-
-  const folders = await listShopFolders(baseSheinAutoDir, profiles, claimedByOthers);
+  // Không còn chia shop theo user — cookie resolve theo shop (đa tài khoản 4Seller).
+  const folders = await listShopFolders(baseSheinAutoDir);
   if (folders.length === 0) return 0;
 
   const lastFolderFile = path.join(baseSheinAutoDir, LAST_FOLDER_FILE_NAME);
@@ -294,7 +273,9 @@ export const runQueueManagerOnce = async (): Promise<void> => {
 
   await refreshQueueSnapshot();
 
-  const allDirs = await getAllUsersForCron();
+  // getAllUserDirs dedup theo baseDir → mỗi thư mục gốc tick đúng 1 lần
+  // (2 login user chung baseDir không còn tick trùng).
+  const allDirs = await getAllUserDirs();
   if (allDirs.length === 0) {
     console.log("Không có user nào có baseSheinAutoDir.");
     return;

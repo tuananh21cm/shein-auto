@@ -13,7 +13,8 @@
     "crawl:tiktok": "tsx src/scripts/crawlTiktok.ts",
     "discover:tiktok": "tsx src/scripts/discoverRoutes.ts",
     "publish:drip": "tsx src/scripts/dripPublishOnce.ts",
-    "crawl:auto": "tsx src/scripts/crawlAutoOnce.ts"
+    "crawl:auto": "tsx src/scripts/crawlAutoOnce.ts",
+    "harvest": "tsx src/scripts/harvestOnce.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.101.0",
@@ -29,6 +30,7 @@
     "node-cron": "^3.0.3",
     "node-html-to-image": "^5.0.0",
     "playwright-core": "^1.55.1",
+    "proxy-chain": "^3.0.0",
     "sharp": "^0.34.5"
   },
   "devDependencies": {

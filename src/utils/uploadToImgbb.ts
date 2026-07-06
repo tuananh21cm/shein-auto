@@ -12,6 +12,20 @@ let _keyIdx = 0; // con trỏ xoay vòng key (round-robin để rải tải đ�
 const MIN_GAP_MS = 1200;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+/**
+ * Verify URL ảnh thật sự sống + trả content-type image (HEAD request).
+ * imgbb thi thoảng trả URL nhưng ảnh không serve được → chèn vào mô tả
+ * thành khoảng trống. Dùng ngay sau upload để loại URL chết.
+ */
+export async function verifyImageUrl(url: string): Promise<boolean> {
+  try {
+    const res = await axios.head(url, { timeout: 8000 });
+    return /^image\//i.test(String(res.headers["content-type"] || ""));
+  } catch {
+    return false;
+  }
+}
+
 export async function uploadToImgbb(filePath: string): Promise<string | null> {
   const keys = config.imgbbApiKeys;
   if (!keys.length) {

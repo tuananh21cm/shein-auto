@@ -99,21 +99,46 @@ export const selectProfile = async (page: any, targetProfile: string): Promise<v
  */
 export const selectCategory = async (page: any, categoryPath: string): Promise<void> => {
   await page.click("span:has-text('Browse Categories')");
-  const categories = categoryPath.split("/").map((item) => item.trim());
+  // Tách theo " / " (dấu phân cấp trong config) — KHÔNG dùng "/" vì vài tên category
+  // chứa "/" bên trong (vd "Breast Cream/Lotion", "Coffee Beans/Tea Leaves").
+  const categories = categoryPath.split(" / ").map((item) => item.trim()).filter(Boolean);
   console.log("Bắt đầu quy trình chọn Category...", categories);
+
+  const norm = (s: string) => (s || "").toLowerCase().replace(/\s+/g, " ").replace(/\s*&\s*/g, " & ").trim();
 
   for (let i = 0; i < categories.length; i++) {
     const catName = categories[i];
     console.log(`Đang xử lý cấp ${i}: ${catName}`);
-    const itemSelector = `.category_select[index="${i}"] .category_select__item[title="${catName}"]`;
-    const targetItem = page.locator(itemSelector);
+    // 1. Khớp title chính xác (nhanh nhất — tên config lấy từ chính API 4Seller nên thường trúng).
+    let targetItem = page.locator(`.category_select[index="${i}"] .category_select__item[title="${catName}"]`);
     try {
       await targetItem.waitFor({ state: "visible", timeout: 5000 });
+    } catch {
+      // 2. Fallback: khớp CHUẨN HOÁ với mọi option ở cấp này (chịu lệch hoa/thường/space/&).
+      const items = page.locator(`.category_select[index="${i}"] .category_select__item`);
+      const cnt = await items.count().catch(() => 0);
+      const target = norm(catName);
+      let matchIdx = -1;
+      const avail: string[] = [];
+      for (let k = 0; k < cnt; k++) {
+        const t = ((await items.nth(k).getAttribute("title").catch(() => "")) ?? "").trim();
+        avail.push(t);
+        if (matchIdx < 0 && norm(t) === target) matchIdx = k;
+      }
+      if (matchIdx < 0) {
+        throw new Error(
+          `Không tìm thấy category "${catName}" ở cấp ${i}. Option có sẵn: ${avail.join(" | ")}`
+        );
+      }
+      console.log(`🔎 Category cấp ${i} khớp chuẩn-hoá: "${catName}" → "${avail[matchIdx]}"`);
+      targetItem = items.nth(matchIdx);
+    }
+    try {
       await targetItem.scrollIntoViewIfNeeded();
       await targetItem.click();
       await page.waitForTimeout(800);
     } catch {
-      throw new Error(`Không tìm thấy category "${catName}" ở cấp ${i}.`);
+      throw new Error(`Category "${catName}" cấp ${i} không click được (bị chặn?).`);
     }
   }
 

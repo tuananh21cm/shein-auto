@@ -1,0 +1,9 @@
+{
+  "_comment": "Cào DANH SÁCH sp theo NGÁCH qua API gốc SHEIN (get_select_product_list / real_category_goods_list) bằng Chrome CDP. Chỉ ngách có selectId/catId trong research.json mới cào được. SHEIN category dùng PHÂN TRANG SỐ (.sui-pagination), KHÔNG infinite-scroll → module CLICK nút page 2,3… (không cuộn). maxScrolls = số page kế cần lấy: 2 = lấy thêm page 2,3 (tổng ~page 3). LƯU Ý: maxProductsPerNiche PHẢI > page1 (~120), nếu không vòng dừng ngay vì đầy trần → để 360 (~3 page). Click sâu = rủi ro captcha_type=909 cao hơn; gặp captcha tự dừng giữ hàng. interNicheDelayMs giãn cách giữa ngách.",
+  "enabled": true,
+  "cdpUrl": "http://127.0.0.1:9222",
+  "maxProductsPerNiche": 360,
+  "maxScrolls": 2,
+  "minOpportunity": 55,
+  "interNicheDelayMs": 8000
+}

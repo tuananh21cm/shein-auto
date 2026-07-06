@@ -120,6 +120,38 @@ export const uploadImageToEditor = async (
   }
 };
 
+/**
+ * Dọn HTML mô tả trong editor (chạy SAU khi điền xong toàn bộ text + ảnh):
+ *  - Xoá <figure> không còn <img> bên trong (ảnh bị editor strip → khung rỗng)
+ *  - Gộp 2+ paragraph trống liên tiếp thành 1 (nguồn gốc "trống mấy dòng" giữa mô tả)
+ * Thao tác qua CKEditor instance API (getData/setData) để model + view đồng bộ —
+ * sửa DOM trực tiếp sẽ bị CKEditor bỏ qua khi save.
+ */
+export const cleanupEditorHtml = async (page: any): Promise<void> => {
+  try {
+    const changed = await page.evaluate(() => {
+      const el = document.querySelector(".ck-editor__editable_inline") as any;
+      const inst = el && el.ckeditorInstance;
+      if (!inst || typeof inst.getData !== "function") return false;
+      const before = inst.getData();
+      let html = before;
+      // figure không chứa img → bỏ cả figure
+      html = html.replace(/<figure(?:(?!<img)[\s\S])*?<\/figure>/g, "");
+      // 2+ paragraph trống liên tiếp (<p></p>, <p>&nbsp;</p>, <p><br></p>...) → 1
+      const emptyP = "<p>(?:&nbsp;|\\s|<br[^>]*>)*</p>\\s*";
+      html = html.replace(new RegExp(`(?:${emptyP}){2,}`, "g"), "<p><br></p>");
+      if (html !== before) {
+        inst.setData(html);
+        return true;
+      }
+      return false;
+    });
+    if (changed) console.log("🧹 Đã dọn mô tả: bỏ figure rỗng / gộp dòng trống thừa.");
+  } catch (e: any) {
+    console.warn("⚠️ cleanupEditorHtml lỗi (bỏ qua):", e?.message);
+  }
+};
+
 export const fillDescription = async (page: any, text: string): Promise<void> => {
   const editor = page.locator(".ck-editor__editable_inline").first();
   const html = `<div style="font-family: Arial;">${text}</div>`;
@@ -180,60 +212,69 @@ export const fillDescription = async (page: any, text: string): Promise<void> =>
 };
 
 /**
- * Chọn ảnh đại diện từ variant_images để chèn vào description.
- * - Round 1: 1 ảnh random mỗi variant (shuffle để random thứ tự)
- * - Round 2: nếu chưa đủ maxImages, random thêm từ pool ảnh chưa dùng
+ * Chọn ảnh đại diện từ variant_images để chèn vào description — CÓ CHỦ ĐÍCH
+ * (bỏ random cũ dễ trúng 2 ảnh na ná / bỏ sót màu):
+ * - Round 1: ảnh HERO (ảnh đầu) của TỪNG màu, theo thứ tự → khoe đủ màu.
+ * - Round 2: 1 ảnh DETAIL = ảnh CUỐI của màu đầu (SHEIN thường để ảnh zoom chất liệu cuối).
+ * - Round 3: nếu còn slot, bù ảnh thứ 2/3... của từng màu (vẫn deterministic).
  */
 export const selectDescriptionImages = (variantImages: any[], maxImages?: number): string[] => {
   const limit = maxImages ?? workerConfig().descriptionImagesCount;
   const allVariants: { color: string; urls: string[] }[] = [];
   for (const item of variantImages) {
     for (const [color, urls] of Object.entries(item)) {
-      allVariants.push({ color, urls: urls as string[] });
+      allVariants.push({ color, urls: (urls as string[]).filter(Boolean) });
     }
   }
 
   const selected: string[] = [];
   const usedUrls = new Set<string>();
-
-  const shuffled = [...allVariants].sort(() => Math.random() - 0.5);
-  for (const variant of shuffled) {
-    if (selected.length >= limit) break;
-    const idx = Math.floor(Math.random() * variant.urls.length);
-    selected.push(variant.urls[idx]);
-    usedUrls.add(variant.urls[idx]);
-  }
-
-  if (selected.length < limit) {
-    const pool: string[] = [];
-    for (const variant of allVariants) {
-      for (const url of variant.urls) {
-        if (!usedUrls.has(url)) pool.push(url);
-      }
+  const push = (u?: string) => {
+    if (u && !usedUrls.has(u) && selected.length < limit) {
+      selected.push(u);
+      usedUrls.add(u);
     }
-    const shuffledPool = pool.sort(() => Math.random() - 0.5);
-    for (const url of shuffledPool) {
-      if (selected.length >= limit) break;
-      selected.push(url);
-    }
+  };
+
+  // 1. Hero mỗi màu
+  for (const v of allVariants) push(v.urls[0]);
+  // 2. Ảnh detail (cuối của màu đầu)
+  if (allVariants.length > 0) push(allVariants[0].urls[allVariants[0].urls.length - 1]);
+  // 3. Bù ảnh phụ theo vòng nếu còn slot
+  for (let idx = 1; selected.length < limit; idx++) {
+    const before = selected.length;
+    for (const v of allVariants) push(v.urls[idx]);
+    if (selected.length === before) break; // hết ảnh để bù
   }
   return selected;
 };
 
-export const uploadDescriptionImages = async (page: any, imageUrls: string[]): Promise<void> => {
-  if (!imageUrls || imageUrls.length === 0) return;
+export const uploadDescriptionImages = async (
+  page: any,
+  imageUrls: string[],
+  opts?: {
+    /** HTML chèn TRƯỚC cụm ảnh (vd heading "📸 Details Up Close"). */
+    headingHtml?: string;
+    /** HTML chèn SAU cụm ảnh (vd trust banner cuối mô tả). */
+    trailingHtml?: string;
+  }
+): Promise<void> => {
+  if ((!imageUrls || imageUrls.length === 0) && !opts?.trailingHtml) return;
 
   console.log(`--- Bắt đầu chèn ${imageUrls.length} ảnh vào mô tả sản phẩm ---`);
   const editor = page.locator(".ck-editor__editable_inline").first();
 
+  // 4Seller chỉ nhận JPG/JPEG/PNG ở ảnh mô tả. Ảnh SHEIN là .webp → đổi đuôi sang .jpg
+  // (CDN ltwebstatic trả image/jpeg cho cùng path .jpg → không cần tải/reupload).
+  const toJpg = (u: string) => u.replace(/\.webp(\?|$)/i, ".jpg$1");
+  const figures = (imageUrls || [])
+    .map(
+      (url, i) =>
+        `<figure class="image"><img src="${toJpg(url)}" alt="Product image ${i + 1}"></figure>`
+    )
+    .join("");
   const imgHtml =
-    "<p></p>" +
-    imageUrls
-      .map(
-        (url, i) =>
-          `<figure class="image"><img src="${url}" alt="Product image ${i + 1}"></figure>`
-      )
-      .join("");
+    (figures ? (opts?.headingHtml || "") : "") + figures + (opts?.trailingHtml || "");
 
   await editor.click();
 

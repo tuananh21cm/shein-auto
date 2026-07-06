@@ -12,7 +12,7 @@ import path from "path";
 import Database from "better-sqlite3";
 import { config } from "../config";
 import { readKikiConfig } from "../services/kiki/config";
-import { scrapeBatchViaKiki, dispatchScrapedData } from "../core/scrapeViaKiki";
+import { scrapeBatchViaKiki, dispatchScrapedData, hardScrapeError } from "../core/scrapeViaKiki";
 import { scrapeBatchViaChrome } from "../core/scrapeViaChrome";
 
 const out = (o: any) => console.log(JSON.stringify(o, null, 1));
@@ -51,8 +51,9 @@ const main = async () => {
   ).all(shop, n) as any[];
   if (!items.length) { db.close(); return out({ ok: false, error: `Không có sp 'allocated'/'recrawl' cho ${shop}.` }); }
 
-  const markCrawled = db.prepare("UPDATE shop_allocation SET status='crawled' WHERE goods_id=?");
-  const markRecrawl = db.prepare("UPDATE shop_allocation SET status='recrawl' WHERE goods_id=?");
+  // PK (goods_id, shop) → mark theo đúng shop, không đụng shop khác cùng sp.
+  const markCrawled = db.prepare("UPDATE shop_allocation SET status='crawled' WHERE goods_id=? AND shop=?");
+  const markRecrawl = db.prepare("UPDATE shop_allocation SET status='recrawl' WHERE goods_id=? AND shop=?");
   const nameById: Record<string, string> = {};
   const statusById: Record<string, string> = {};
   for (const it of items) { nameById[it.goods_id] = it.name; statusById[it.goods_id] = it.status; }
@@ -62,16 +63,23 @@ const main = async () => {
   const onProduct = async (goodsId: string, data: any, error?: string) => {
     const nm = (nameById[goodsId] || "").slice(0, 45);
     if (data) {
+      // HARD GATE: hỏng nặng (thiếu product_name/ảnh/màu) → recrawl, KHÔNG ghi JSON hỏng.
+      const hard = hardScrapeError(data);
+      if (hard) {
+        markRecrawl.run(goodsId, shop);
+        results.push({ goods_id: goodsId, name: nm, ok: false, requeued: true, reason: `hỏng: ${hard} → recrawl` });
+        return;
+      }
       const sc = (data as any).size_chart;
       const hasSize = !!(sc && ((sc.sections && sc.sections.length) || (sc.data && sc.data.length)));
       if (!hasSize && statusById[goodsId] !== "recrawl") {
         // Lần đầu thiếu size_chart (SHEIN có thể ẩn khi nghi bot) → KHÔNG ghi JSON, đưa vào HÀNG ĐỢI cào lại.
-        markRecrawl.run(goodsId);
+        markRecrawl.run(goodsId, shop);
         results.push({ goods_id: goodsId, name: nm, ok: false, requeued: true, reason: "thiếu size_chart → recrawl" });
       } else {
         // Có size_chart HOẶC đã retry (recrawl) vẫn thiếu → chấp nhận: ghi JSON + đánh dấu crawled.
         const written = await dispatchScrapedData(baseDir, data, [shop]);
-        markCrawled.run(goodsId);
+        markCrawled.run(goodsId, shop);
         results.push({ goods_id: goodsId, name: nm, ok: true, file: written[0]?.file, colors: data.listing_variations?.colors?.length, images: data.product_images?.length, sizeChart: hasSize ? "có" : "KHÔNG (đã retry, chấp nhận)" });
       }
     } else {

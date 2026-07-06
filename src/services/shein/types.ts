@@ -21,7 +21,15 @@ export interface SheinProduct {
   /** Điểm rating trung bình (0-5) */
   rating: number | null;
   labels: string[];
-  source: "shein-data-api" | "shein-online-data";
+  /** % người mua báo "true to size" (0-100). Chỉ có từ nguồn category (SSR gbRawData). */
+  trueToSize?: number | null;
+  /** SHEIN gắn cờ "bán chạy nhất" trong list. Chỉ nguồn category. */
+  isHighestSales?: boolean;
+  /** SHEIN gắn cờ "giá thấp nhất". Chỉ nguồn category. */
+  isLowestPrice?: boolean;
+  /** Hết hàng. Chỉ nguồn category. */
+  soldOutStatus?: boolean;
+  source: "shein-data-api" | "shein-online-data" | "shein-category";
 }
 
 /** Chi tiết đầy đủ 1 sản phẩm. */

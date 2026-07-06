@@ -311,6 +311,25 @@ export async function scrapeBatchViaKiki(
 }
 
 /**
+ * Kiểm data cào có HỎNG NẶNG không (thiếu trường sống-còn → chắc chắn fail lúc list).
+ * Trả lý do nếu hỏng, null nếu OK. Dùng làm HARD GATE ở mọi path cào: hỏng → requeue recrawl,
+ * KHÔNG ghi JSON vào hàng đợi listing (tránh case "Title rỗng vì product_name undefined").
+ * KHÁC size_chart (soft — thiếu vẫn chấp nhận sau retry): các trường ở đây thiếu là fail chắc.
+ */
+export function hardScrapeError(data: any): string | null {
+  if (!data) return "data rỗng";
+  const name = String(data.product_name ?? "").trim();
+  if (!name || name.toLowerCase() === "undefined" || name.toLowerCase() === "null") {
+    return `product_name rỗng/không hợp lệ ("${data.product_name}")`;
+  }
+  const nImg = Array.isArray(data.product_images) ? data.product_images.length : 0;
+  if (nImg === 0) return "0 ảnh (product_images rỗng)";
+  const nColor = data.listing_variations?.colors?.length ?? 0;
+  if (nColor === 0) return "0 màu (listing_variations.colors rỗng)";
+  return null;
+}
+
+/**
  * Ghi data đã cào vào baseSheinAutoDir/<shop>/<shop>_<ts>.json — y như ingest,
  * để queueManager nhặt và publish lên 4Seller.
  */

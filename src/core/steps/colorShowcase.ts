@@ -68,14 +68,25 @@ function showcaseHtml(
 </div></body></html>`;
 }
 
+/** Hash chuỗi → uint (chọn ảnh nền xoay theo shop, ổn định). */
+function hashStr(s: string): number {
+  let h = 2166136261 >>> 0;
+  for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619);
+  return h >>> 0;
+}
+
 /**
  * Tạo ảnh "nhiều màu" từ product_images + variant_images → file PNG tạm (caller xoá sau khi upload).
  * Trả null nếu < 2 màu (không cần). Style A/B/C.
+ *
+ * opts.bgSeed: nếu có → ẢNH NỀN (style B/C) chọn theo seed (xoay màu theo shop) thay vì
+ * dùng chung productImages[0] → cùng 1 sp list ở shop khác nhau ra ảnh main NỀN KHÁC màu.
  */
 export async function buildColorShowcaseImageFile(
   productImages: string[] | undefined,
   variantImages: Record<string, string[]>[] | undefined,
-  style: ColorShowcaseStyle = "C"
+  style: ColorShowcaseStyle = "C",
+  opts?: { bgSeed?: string }
 ): Promise<string | null> {
   const mainUrl = orig(productImages?.[0] || "");
   const variantUrls = (variantImages || [])
@@ -88,7 +99,6 @@ export async function buildColorShowcaseImageFile(
 
   // Tải ảnh SHEIN → base64 data URI. SHEIN chặn hotlink từ Chrome headless → URL remote không load
   // (ảnh showcase trắng). Nhúng base64 → render khỏi cần mạng.
-  const main = mainUrl ? (await fetchAsDataUri(mainUrl)) || "" : "";
   const variants = (
     await Promise.all(
       variantUrls.map(async (v) => ({ color: v.color, img: (await fetchAsDataUri(v.img)) || "" }))
@@ -97,6 +107,16 @@ export async function buildColorShowcaseImageFile(
   if (variants.length < 2) {
     console.warn(`⚠️ color showcase: chỉ tải được ${variants.length}/${variantUrls.length} ảnh → bỏ qua`);
     return null;
+  }
+
+  // Ảnh NỀN: có bgSeed → chọn hero của 1 màu theo shop (xoay, không dùng chung productImages[0]).
+  let main = "";
+  if (opts?.bgSeed) {
+    const idx = hashStr(opts.bgSeed) % variants.length;
+    main = variants[idx].img;
+    console.log(`🎨 Color showcase nền theo shop: màu "${variants[idx].color}" (idx ${idx}/${variants.length})`);
+  } else {
+    main = mainUrl ? (await fetchAsDataUri(mainUrl)) || variants[0].img : variants[0].img;
   }
   if (!main && style !== "A") return null;
 

@@ -1,0 +1,10 @@
+{
+  "_comment": "Auto link-harvester: shop có uncrawl < threshold → tự kéo thêm link SHEIN theo ngách (Gemini sinh keyword + Chrome search + RapidAPI). Tự bật Chrome. Chạy nền mỗi intervalMinutes.",
+  "enabled": false,
+  "threshold": 20,
+  "useChrome": true,
+  "keywordsPerNiche": 8,
+  "resultsPerKeyword": 60,
+  "cdpUrl": "http://127.0.0.1:9222",
+  "intervalMinutes": 30
+}

@@ -9,7 +9,7 @@ import { extractChat } from "./chat";
 import { extractOrders } from "./orders";
 import { extractReturns } from "./returns";
 import { extractProductOpportunity } from "./productOpportunity";
-import { extractProductManage } from "./productManage";
+import { extractProductManage, extractListingRows } from "./productManage";
 import type { Capture } from "../types";
 
 // Fixtures dựa trên payload THẬT từ discovery 2026-06-05 (đã rút gọn).
@@ -402,6 +402,76 @@ describe("extractProductManage (real shape)", () => {
   });
   it("không vỡ khi captures rỗng", () => {
     expect(extractProductManage([])).toEqual([]);
+  });
+
+  it("gộp products từ 2 trang (paginate) + dedupe khi đếm", () => {
+    const page2: Capture = {
+      url: "https://seller-us.tiktok.com/api/v1/product/local/products/list?page_number=2",
+      status: 200,
+      body: {
+        data: {
+          products: [
+            { product_name: "A", product_performance: { last_28days_pv: "94" } }, // trùng trang 1 → bỏ
+            { product_name: "C", product_performance: { last_28days_pv: "0", last_28days_order: "0" }, total_available_stock: 0, product_low_stock: { out_of_stock_sku_count: 2, low_stock_sku_count: 0 } },
+          ],
+        },
+      },
+    };
+    const m = extractProductManage([...caps, page2]);
+    expect(m.find((x) => x.key === "products_no_views_28d")?.valueNum).toBe(2); // B + C
+    expect(m.find((x) => x.key === "products_out_of_stock")?.valueNum).toBe(2); // B + C
+    expect(m.find((x) => x.key === "products_total")?.valueNum).toBe(153); // vẫn từ trang 1
+  });
+});
+
+describe("extractListingRows (per-listing snapshot, real shape)", () => {
+  const caps: Capture[] = [
+    {
+      url: "https://seller-us.tiktok.com/api/v1/product/local/products/list?page_number=1",
+      status: 200,
+      body: {
+        data: {
+          products: [
+            {
+              product_id: "1729476222365701376",
+              product_name: "LushLace Bodysuit",
+              product_performance: { last_28days_pv: "94", last_28days_order: "2", last_28days_gmv: "$1,234.56" },
+              product_sales: { total_sales: 2 },
+              total_available_stock: 23,
+            },
+            { product_name: "thiếu product_id — bỏ qua", product_performance: { last_28days_pv: "10" } },
+          ],
+        },
+      },
+    },
+    {
+      // trang 2 (nếu capture được) + trùng id trang 1 → dedupe
+      url: "https://seller-us.tiktok.com/api/v1/product/local/products/list?page_number=2",
+      status: 200,
+      body: {
+        data: {
+          products: [
+            { product_id: "1729476222365701376", product_name: "DUP", product_performance: { last_28days_pv: "999" } },
+            { product_id: "222", product_name: "SP trang 2", product_performance: { last_28days_pv: "0", last_28days_order: "0", last_28days_gmv: "$0.00" } },
+          ],
+        },
+      },
+    },
+  ];
+  it("bóc id/pv/order/gmv/stock, dedupe theo product_id, bỏ SP thiếu id", () => {
+    const rows = extractListingRows(caps);
+    expect(rows.length).toBe(2);
+    const a = rows.find((r) => r.productId === "1729476222365701376")!;
+    expect(a.productName).toBe("LushLace Bodysuit"); // giữ bản đầu, không bị DUP đè
+    expect(a.pv28d).toBe(94);
+    expect(a.orders28d).toBe(2);
+    expect(a.gmv28d).toBe(1234.56);
+    expect(a.salesTotal).toBe(2);
+    expect(a.stock).toBe(23);
+    expect(rows.find((r) => r.productId === "222")?.gmv28d).toBe(0);
+  });
+  it("không vỡ khi captures rỗng", () => {
+    expect(extractListingRows([])).toEqual([]);
   });
 });
 

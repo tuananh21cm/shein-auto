@@ -13,6 +13,8 @@ import { scheduleResearchCron } from "./core/research/researchCron";
 import { scheduleTiktokCron } from "./core/tiktokCron";
 import { scheduleDripPublisher } from "./core/dripPublisher";
 import { scheduleAutoCrawler } from "./core/autoCrawler";
+import { scheduleHarvester } from "./core/linkHarvester";
+import { schedulePromotionCron } from "./core/promotionScan";
 
 // Pipe console.* lên eventBus để SSE stream xuống UI. Phải gọi sớm.
 installConsoleTap();
@@ -42,6 +44,8 @@ const bootstrap = async () => {
   scheduleTiktokCron();
   scheduleDripPublisher();
   scheduleAutoCrawler();
+  scheduleHarvester();
+  schedulePromotionCron();
   console.log("⏰ Đã đăng ký cron (instance này giữ port → chạy cron).");
 };
 bootstrap().catch((err: any) => {
@@ -73,3 +77,4 @@ process.on("unhandledRejection", (reason) => {
 process.on("uncaughtException", (err) => {
   console.error("💥 Uncaught exception (server vẫn chạy):", err?.stack || err);
 });
+

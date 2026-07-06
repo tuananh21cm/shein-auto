@@ -21,6 +21,18 @@ export interface RouteMetrics {
   error?: string;
 }
 
+/** Snapshot view/đơn của 1 listing tại 1 ngày cào (nguồn: product/local/products/list). */
+export interface ListingViewRow {
+  productId: string;
+  productName: string;
+  /** last_28days_pv — cửa sổ TRƯỢT 28 ngày (không phải view trong ngày). */
+  pv28d: number;
+  orders28d: number;
+  gmv28d: number | null;
+  salesTotal: number | null;
+  stock: number | null;
+}
+
 /** Khai báo 1 route trong registry. */
 export interface RouteDef {
   key: string;
@@ -35,6 +47,12 @@ export interface RouteDef {
   waitForEndpoint?: string;
   /** Bóc chỉ số từ captures của route. Thuần, không phụ thuộc browser. */
   extractor: (caps: Capture[]) => Metric[];
+  /** Nếu set → bóc thêm snapshot per-listing, crawler lưu vào bảng listing_views
+   *  (time-series view từng SP để diff hôm qua / 7 ngày). */
+  listingExtractor?: (caps: Capture[]) => ListingViewRow[];
+  /** Tương tác thêm SAU khi endpoint chính fire, TRƯỚC khi bóc (vd: click trang 2
+   *  phân trang để hứng đủ SP). Lỗi trong interact không làm fail route. */
+  interact?: (page: any, bus: { snapshot(): Capture[] }, log: (m: string) => void) => Promise<void>;
 }
 
 export type CrawlStatus = "ok" | "partial" | "login_required" | "error";

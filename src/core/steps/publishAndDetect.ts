@@ -67,13 +67,46 @@ export const checkPageErrors = async (
       if (await loc.isVisible({ timeout: 200 }).catch(() => false)) {
         const txt = (await loc.textContent({ timeout: 500 }).catch(() => "")) ?? "";
         const trimmed = txt.trim();
-        if (trimmed) return `${sel}: ${trimmed}`;
+        if (trimmed) {
+          // Inline error: kèm label của field để biết NGAY field nào trống
+          // (thay vì "Can not be empty" mù mờ).
+          if (sel === ".el-form-item__error") {
+            const label = await loc
+              .evaluate((el: HTMLElement) => {
+                const item = el.closest(".el-form-item");
+                const lbl = item?.querySelector(".el-form-item__label");
+                return lbl?.textContent?.trim() || "";
+              })
+              .catch(() => "");
+            if (label) return `${sel}: [${label}] ${trimmed}`;
+          }
+          return `${sel}: ${trimmed}`;
+        }
       }
     } catch {
       // tiếp tục
     }
   }
   return null;
+};
+
+/**
+ * Scroll error element đầu tiên vào viewport trước khi chụp screenshot.
+ * 4Seller create page cuộn trong container nội bộ nên fullPage screenshot
+ * KHÔNG capture ngoài viewport — không scroll thì screenshot không thấy lỗi.
+ */
+export const scrollFirstErrorIntoView = async (page: any): Promise<void> => {
+  try {
+    const err = page
+      .locator(".el-form-item__error, .el-notification--error, .el-message--error")
+      .first();
+    if (await err.isVisible({ timeout: 200 }).catch(() => false)) {
+      await err.scrollIntoViewIfNeeded({ timeout: 2000 });
+      await page.waitForTimeout(300);
+    }
+  } catch {
+    // best-effort, không chặn việc chụp screenshot
+  }
 };
 
 /**
@@ -142,6 +175,7 @@ export const detectPublishOutcome = async (
       if (page.isClosed()) return { ok: false, reason: "Page bị đóng sau khi Save", finalUrl: "" };
       const errMsg = await checkPageErrors(page, true);
       if (errMsg) {
+        await scrollFirstErrorIntoView(page);
         const sc = await captureScreenshot(page, "save-error");
         return { ok: false, reason: errMsg, finalUrl: page.url(), screenshotPath: sc ?? undefined };
       }
@@ -210,6 +244,7 @@ export const detectPublishOutcome = async (
     // Error toast/notification/inline → fail ngay (đã click publish nên inline error có nghĩa)
     const errMsg = await checkPageErrors(page, true);
     if (errMsg) {
+      await scrollFirstErrorIntoView(page);
       const sc = await captureScreenshot(page, "publish-error");
       return { ok: false, reason: errMsg, finalUrl: currentUrl, screenshotPath: sc ?? undefined };
     }

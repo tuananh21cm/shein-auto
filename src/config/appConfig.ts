@@ -27,6 +27,11 @@ interface WorkerFile {
   imageUploadMaxImages: number;
   descriptionImagesCount: number;
   descriptionMaxAttributes: number;
+  /** Banner "feature" (hero) đưa lên NGAY sau headline mô tả, collage xuống giữa.
+   *  false/bỏ trống = collage trước (nếp cũ). Dùng để A/B layout mô tả. */
+  descriptionHeroFirst?: boolean;
+  /** Chèn banner trust badges (shipping/quality/returns) CUỐI mô tả. Mặc định false. */
+  descriptionTrustBanner?: boolean;
   /** Bật/tắt chèn ảnh GỘP Size Guide (bảng + How To Measure) vào gallery sau ảnh main.
    *  Mặc định false: TikTok hiện không cho dùng ảnh dạng này làm ảnh sản phẩm. */
   sizeGuideGalleryImage?: boolean;
@@ -59,10 +64,31 @@ export interface ResearchNiche {
   key: string;
   group: string;
   query: string;
+  /** select_id ngách SHEIN (từ URL .../-sc-<id>.html, RecommendSelection). Cào bằng categoryClient. */
+  selectId?: string;
+  /** cat_id category thật (từ URL .../-c-<id>.html). Ưu tiên hơn selectId nếu cả hai có. */
+  catId?: string;
+}
+
+/** config/category-crawl.json — cào list theo NGÁCH qua API gốc SHEIN (browser CDP). */
+export interface CategoryCrawlFile {
+  enabled: boolean;
+  cdpUrl: string;
+  /** Trần sp gom mỗi ngách/lần. */
+  maxProductsPerNiche: number;
+  /** Số lần cuộn người-hoá để kéo page kế (0 = chỉ batch đầu ~120 sp). */
+  maxScrolls: number;
+  /** Ngưỡng opportunity để nạp vào shop_allocation. */
+  minOpportunity: number;
+  /** Nghỉ giữa 2 ngách (ms) — tránh dồn request kích captcha. */
+  interNicheDelayMs: number;
 }
 export interface ResearchFile {
   country: string;
   perNichePerPage: number;
+  /** Trần số SHOP mà 1 sản phẩm được phép list (dedup cũ = 1 shop/sp; nay cho nhiều shop).
+   *  <=0 hoặc thiếu = không giới hạn. Mặc định dùng 3 khi không cấu hình. */
+  maxShopsPerProduct?: number;
   niches: ResearchNiche[];
   weights: { win: number; nicheHeat: number; margin: number; demandFit: number };
   margin: { sweetLow: number; sweetHigh: number; hardMax: number };
@@ -124,6 +150,23 @@ export interface CrawlFile {
   idleSeconds: number;
   cdpUrl: string;
   maxAttempts: number;
+  captchaHoldMinutes?: number;
+  // Proxy pool (nhiều Chrome, mỗi cái 1 proxy) — chống captcha dồn 1 IP.
+  useProxyPool?: boolean;
+  proxyFile?: string;
+  proxyScheme?: string;   // socks5 | http
+  concurrency?: number;   // số Chrome/proxy song song
+  headless?: boolean;
+}
+
+export interface HarvestFile {
+  enabled: boolean;
+  threshold: number;
+  useChrome: boolean;
+  keywordsPerNiche: number;
+  resultsPerKeyword: number;
+  cdpUrl: string;
+  intervalMinutes: number;
 }
 
 /** Template POD T-shirt (config/pod.json). Mọi áo POD dùng chung; chỉ khác title + random màu. */
@@ -191,6 +234,14 @@ let _crawl: CrawlFile | null = null;
 export const crawlConfig = (): CrawlFile =>
   (_crawl ??= readJson<CrawlFile>("crawl.json"));
 
+let _harvest: HarvestFile | null = null;
+export const harvestConfig = (): HarvestFile =>
+  (_harvest ??= readJson<HarvestFile>("harvest.json"));
+
+let _categoryCrawl: CategoryCrawlFile | null = null;
+export const categoryCrawlConfig = (): CategoryCrawlFile =>
+  (_categoryCrawl ??= readJson<CategoryCrawlFile>("category-crawl.json"));
+
 /**
  * Tính giá bán cuối cùng từ giá gốc: (price + shipFee) × multiplier + extraAdd.
  * Đọc từ pricing.json global (đã bỏ per-user override + formula legacy offset/divisor).
@@ -212,4 +263,6 @@ export const reloadAppConfig = (): void => {
   _categories = null;
   _research = null;
   _pod = null;
+  _crawl = null;
+  _categoryCrawl = null;
 };

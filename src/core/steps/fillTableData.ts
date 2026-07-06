@@ -65,6 +65,9 @@ export const fillTableData = async (
     }
   }
   const processedVariants = new Set();
+  // Variant không match được giá (lookup miss / giá NaN) → ô Retail Price bị bỏ trống
+  // → publish fail "Can not be empty". Gom lại để throw rõ ràng thay vì skip im lặng.
+  const missingPriceVariants: string[] = [];
   let isEnd = false;
 
   // 4Seller có thể CHÈN cột checkbox đầu bảng → index td lệch. Xác định cột theo HEADER
@@ -127,7 +130,11 @@ export const fillTableData = async (
             const priceInput = row.locator("td").nth(priceCol).locator("input").first();
             await priceInput.fill(finalPrice.toFixed(2));
             console.log(`✅ finalPrice: ${finalPrice.toFixed(2)}${surcharge ? ` (size ${sizeText} +$${surcharge})` : ""}`);
+          } else {
+            missingPriceVariants.push(`${variantText} (giá không parse được: "${priceToFill}")`);
           }
+        } else {
+          missingPriceVariants.push(`${variantText} (không có key "${colorKey}" trong variant_price)`);
         }
 
         const skuInput = row.locator("td").nth(skuCol).locator("input").first();
@@ -152,5 +159,12 @@ export const fillTableData = async (
     const checkAgain = page.locator("table.custom_draft_table tbody tr.custom_draft_table_body_tr");
     const lastRowText = await checkAgain.last().locator("td").nth(variantCol).innerText();
     if (processedVariants.has(lastRowText)) isEnd = true;
+  }
+
+  if (missingPriceVariants.length > 0) {
+    throw new Error(
+      `fillTableData: ${missingPriceVariants.length}/${processedVariants.size} variant không điền được giá — ` +
+        `Retail Price trống sẽ fail publish "Can not be empty". Chi tiết: ${missingPriceVariants.join("; ")}`
+    );
   }
 };

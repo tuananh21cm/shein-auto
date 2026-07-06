@@ -2,7 +2,7 @@
   "_comment": "profileId: id profile Kiki đã login TikTok Shop US. cron: lịch chạy. model: model Claude.",
   "enabled": true,
   "profileId": "689f0d1b479a6fcb4c013180",
-  "cron": "0 8 * * *",
+  "cron": "0 6 * * *",
   "timezone": "Asia/Ho_Chi_Minh",
   "model": "claude-opus-4-8",
   "analyze": true

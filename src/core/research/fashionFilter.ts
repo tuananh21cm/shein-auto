@@ -7,3 +7,16 @@ export function isFashionCategory(name: string): boolean {
   if (NONFASHION_RE.test(n)) return false;
   return FASHION_RE.test(n);
 }
+
+// Đồ TRẺ EM (khó list, chỉ giữ thời trang người lớn). Bắt theo tên SP + breadcrumb category.
+// HARD_KIDS: tín hiệu kids CHẮC CHẮN. LƯU Ý: KHÔNG bắt "baby" đơn lẻ vì "baby tee/baby blue/
+// baby pink" là đồ NGƯỜI LỚN → chỉ bắt "baby girl/boy" + toddler/kids/children/tween…
+const HARD_KIDS = /\b(toddlers?|infants?|newborn|nursery|babies|children'?s?|kids?|youth|junior|preschool|tween)\b|\bbaby\s+(girl|boy)\b|\blittle\s+(girl|boy)\b|\b\d+\s?-\s?\d+\s?(months?|years?)\b|\b\d{1,2}t\b/i;
+// girls/boys (số NHIỀU hoặc sở hữu) = kids; KHÔNG bắt "boy" đơn (boy shorts/boyfriend là đồ người lớn).
+const GIRLBOY = /\b(girls|boys)\b|\b(girl|boy)'s\b/i;
+
+/** true nếu là hàng trẻ em → LOẠI khỏi harvest/allocate/listing. Dùng cả tên + breadcrumb category. */
+export function isKidsProduct(name?: string | null, catName?: string | null): boolean {
+  const t = `${name || ""} ${catName || ""}`.toLowerCase();
+  return HARD_KIDS.test(t) || GIRLBOY.test(t);
+}

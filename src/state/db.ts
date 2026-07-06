@@ -259,6 +259,75 @@ const MIGRATIONS: ((db: Database.Database) => void)[] = [
       CREATE INDEX IF NOT EXISTS idx_shopniche_shop ON shop_niche(shop);
     `);
   },
+  // v12: con trỏ phân trang RapidAPI theo NGÁCH — kéo tiếp trang kế mỗi lần thay vì
+  // luôn từ trang 1 (tránh 40%+ trùng data đã có). Key theo niche vì kết quả SHEIN
+  // giống nhau mọi shop → 2 shop cùng ngách tự lấy trang khác nhau.
+  (db) => {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS niche_pull_cursor (
+        niche_key TEXT PRIMARY KEY,
+        last_page INTEGER NOT NULL DEFAULT 0,
+        exhausted INTEGER NOT NULL DEFAULT 0,  -- 1 = đã hết trang (hasNext=false) → vòng lại từ 1
+        updated_at INTEGER NOT NULL
+      );
+    `);
+  },
+  // v13: shop_allocation PK goods_id → (goods_id, shop) để 1 SP list được cho NHIỀU SHOP.
+  //   Bảng này được tạo lazy ngoài migrations (shopAllocate.ts CREATE IF NOT EXISTS), nên
+  //   migration phải phòng cả 3 case: chưa có bảng / PK đơn cũ / đã composite (idempotent).
+  //   Giữ nguyên data cũ (copy đúng các cột đang tồn tại, kể cả crawl_attempts nếu có).
+  (db) => {
+    const row = db
+      .prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='shop_allocation'")
+      .get() as { sql?: string } | undefined;
+
+    // Chưa có bảng → tạo mới luôn với PK composite (khớp shopAllocate.ts).
+    if (!row) {
+      db.exec(`
+        CREATE TABLE shop_allocation (
+          goods_id TEXT NOT NULL,
+          shop TEXT NOT NULL,
+          niche_key TEXT,
+          name TEXT, win_score INTEGER, opportunity_score INTEGER,
+          price REAL, url TEXT, image TEXT,
+          status TEXT DEFAULT 'allocated',
+          allocated_at INTEGER, listed_at INTEGER,
+          crawl_attempts INTEGER DEFAULT 0,
+          PRIMARY KEY (goods_id, shop)
+        );
+      `);
+      return;
+    }
+
+    // Đã composite rồi → bỏ qua (idempotent).
+    if (/PRIMARY\s+KEY\s*\(\s*goods_id\s*,\s*shop\s*\)/i.test(row.sql ?? "")) return;
+
+    // PK đơn cũ (goods_id TEXT PRIMARY KEY) → recreate + copy data.
+    const cols = (db.prepare("PRAGMA table_info(shop_allocation)").all() as any[]).map((c) => c.name);
+    const hasAttempts = cols.includes("crawl_attempts");
+    db.exec(`
+      CREATE TABLE shop_allocation_new (
+        goods_id TEXT NOT NULL,
+        shop TEXT NOT NULL,
+        niche_key TEXT,
+        name TEXT, win_score INTEGER, opportunity_score INTEGER,
+        price REAL, url TEXT, image TEXT,
+        status TEXT DEFAULT 'allocated',
+        allocated_at INTEGER, listed_at INTEGER,
+        crawl_attempts INTEGER DEFAULT 0,
+        PRIMARY KEY (goods_id, shop)
+      );
+    `);
+    const attemptsSel = hasAttempts ? "crawl_attempts" : "0";
+    db.exec(`
+      INSERT INTO shop_allocation_new
+        (goods_id, shop, niche_key, name, win_score, opportunity_score, price, url, image, status, allocated_at, listed_at, crawl_attempts)
+      SELECT goods_id, shop, niche_key, name, win_score, opportunity_score, price, url, image, status, allocated_at, listed_at, ${attemptsSel}
+      FROM shop_allocation;
+    `);
+    db.exec(`DROP TABLE shop_allocation;`);
+    db.exec(`ALTER TABLE shop_allocation_new RENAME TO shop_allocation;`);
+  },
 ];
 
 const runMigrations = (db: Database.Database): void => {

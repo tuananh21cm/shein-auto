@@ -97,7 +97,8 @@ export const uploadProductImages = async (
     );
     console.log(`⬇️ [${uniqueId}] Download${workerConfig().imageRemake?.enabled ? "+remake" : ""} ${imageUrls.length} ảnh mất ${Math.round((Date.now() - t0) / 1000)}s`);
 
-    // Ảnh "nhiều màu" làm ảnh MAIN (index 0) — KHÔNG remake.
+    // Ảnh "nhiều màu" làm ảnh MAIN (index 0) — KHÔNG remake (giữ collage sắc nét).
+    // Khác biệt giữa shop đến từ ẢNH NỀN collage xoay màu theo shop (buildColorShowcaseImageFile bgSeed).
     if (opts?.prependLocalPath && fs.existsSync(opts.prependLocalPath)) {
       localFilePaths.unshift(opts.prependLocalPath);
       console.log(`🎨 [${uniqueId}] Prepend ảnh nhiều màu làm ảnh main (vị trí 0)`);

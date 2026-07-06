@@ -91,6 +91,43 @@ function bannerHtml(
 }
 
 /**
+ * Banner "trust badges" tĩnh (1200×280) chèn CUỐI mô tả: shipping / quality / returns.
+ * KHÔNG phụ thuộc sản phẩm/shop → nội dung cố định → PNG deterministic → upload qua
+ * uploadToImgbbCached là cache hit từ lần 2 (không tốn quota imgbb).
+ * Caller xoá file sau khi upload.
+ */
+export async function buildTrustBannerFile(): Promise<string | null> {
+  const badges = [
+    { icon: "🚚", label: "Fast US Shipping", sub: "Ships within 1-3 days" },
+    { icon: "✓", label: "Quality Checked", sub: "Inspected before dispatch" },
+    { icon: "↺", label: "Easy Returns", sub: "Hassle-free within 30 days" },
+    { icon: "🔒", label: "Secure Checkout", sub: "TikTok Shop protected" },
+  ];
+  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>
+*{margin:0;padding:0;box-sizing:border-box;}body{width:1200px;height:280px;font-family:'Helvetica Neue',Arial,sans-serif;}
+.wrap{width:1200px;height:280px;background:linear-gradient(135deg,#f8f4ee,#ece2d3);display:flex;align-items:center;justify-content:center;gap:26px;padding:0 40px;}
+.card{flex:1;background:#fff;border:1px solid #e3dccc;border-radius:12px;padding:26px 18px;text-align:center;box-shadow:0 2px 8px rgba(0,0,0,.06);}
+.ic{width:52px;height:52px;border-radius:50%;background:${ACCENT};color:#fff;display:flex;align-items:center;justify-content:center;font-size:24px;margin:0 auto 14px;}
+.lb{font-size:19px;font-weight:800;color:#2a2723;margin-bottom:6px;}
+.sub{font-size:14px;color:#8a8272;}
+</style></head><body><div class="wrap">
+${badges
+    .map(
+      (bd) =>
+        `<div class="card"><div class="ic">${bd.icon}</div><div class="lb">${bd.label}</div><div class="sub">${bd.sub}</div></div>`
+    )
+    .join("")}
+</div></body></html>`;
+  const out = path.join(__dirname, `temp_trust_${crypto.randomBytes(6).toString("hex")}.png`);
+  await renderHtmlToImage({
+    output: out,
+    html,
+    viewport: { width: 1200, height: 280 },
+  });
+  return out;
+}
+
+/**
  * Render 1 banner marketing NGANG (1200×750) từ ảnh SHEIN + text highlight → file PNG tạm.
  * Trả null nếu < 2 ảnh. Caller xoá file sau khi upload.
  */

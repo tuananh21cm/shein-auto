@@ -5,14 +5,34 @@ import { geminiCache } from "./geminiCache";
 
 const genAI = new GoogleGenerativeAI(config.geminiApiKey);
 
+// Số biến thể tiêu đề gen 1 lần (mỗi shop lấy random 1 cái → tránh trùng tiêu đề).
+const VARIANT_COUNT = 6;
+
+const pickRandom = (arr: string[]): string => arr[Math.floor(Math.random() * arr.length)] || "";
+
+// Cache có thể là JSON mảng biến thể (mới) hoặc 1 string tiêu đề (cũ) → chuẩn hoá về mảng.
+const parseVariants = (raw: string): string[] => {
+  try {
+    const v = JSON.parse(raw);
+    if (Array.isArray(v)) return v.filter((x) => typeof x === "string" && x.trim());
+  } catch {
+    // không phải JSON → tiêu đề đơn bản cũ
+  }
+  return raw && raw.trim() ? [raw] : [];
+};
+
 export async function genTitleFromShein(title: string): Promise<string> {
   if (!title) return "";
 
-  // Cache lookup trước khi gọi Gemini — tiết kiệm token cho listing trùng tên
+  // Cache lookup — lưu MẢNG biến thể theo product_name; mỗi lần gọi trả về 1 biến
+  // thể NGẪU NHIÊN → 1 listing đẩy lên nhiều shop sẽ ra tiêu đề khác nhau.
   const cached = await geminiCache.getTitle(title);
   if (cached) {
-    console.log(`💾 [Title Cache] Hit: "${title.slice(0, 60)}..."`);
-    return cached;
+    const variants = parseVariants(cached);
+    if (variants.length) {
+      console.log(`💾 [Title Cache] Hit (${variants.length} biến thể): "${title.slice(0, 50)}..."`);
+      return pickRandom(variants);
+    }
   }
 
   const systemInstruction = `
@@ -37,7 +57,6 @@ export async function genTitleFromShein(title: string): Promise<string> {
         - Front-load the strongest buyer search keyword near the start.
         - NO punctuation between keyword segments (use single spaces).
         - If the original title is in German or French, return the title in that language.
-        - Return ONLY the final title string, no explanation.
         - SPORTS PRODUCT DISGUISE (critical — TikTok Shop requires certifications for sports items):
           • This product must NOT look like sportswear. Convert all sports-related terms to casual/fashion equivalents:
             "Jersey" → "Top" or "Tee", "Football/Soccer Jersey" → "Mesh Top" or "Graphic Tee",
@@ -56,6 +75,11 @@ export async function genTitleFromShein(title: string): Promise<string> {
           • For replica jerseys with numbers: keep the number but remove player association.
             E.g. "Messi #10 Argentina Jersey" → "Number 10 Argentina Graphic Tee".
           • The final title should read like a FASHION / CASUAL item, not a sports item.
+        - OUTPUT ${VARIANT_COUNT} DISTINCT variants of the title (a JSON array). Every variant must follow
+          ALL rules above, but each must DIFFER meaningfully from the others in wording, keyword order, and
+          choice of SEO / occasion keywords — so the SAME product listed on multiple shops does NOT get
+          identical titles. Do NOT produce trivial reorderings; genuinely vary the SEO/vibe keywords while
+          keeping the core product description intact. No explanation, array of strings only.
     `;
 
   const prompt = `Original Title: ${title}`;
@@ -69,24 +93,29 @@ export async function genTitleFromShein(title: string): Promise<string> {
         responseSchema: {
           type: SchemaType.OBJECT,
           properties: {
-            newTitle: {
-              type: SchemaType.STRING,
-              description: "The optimized title string only",
+            titles: {
+              type: SchemaType.ARRAY,
+              items: { type: SchemaType.STRING },
+              description: `${VARIANT_COUNT} distinct optimized title variants`,
             },
           },
-          required: ["newTitle"],
+          required: ["titles"],
         },
       },
     });
 
     const result = await retryGemini(() => model.generateContent(prompt));
     const data = JSON.parse(result.response.text());
-    const newTitle = data.newTitle ?? "";
+    const variants: string[] = Array.isArray(data.titles)
+      ? data.titles.filter((x: any) => typeof x === "string" && x.trim())
+      : [];
 
-    if (newTitle) {
-      await geminiCache.setTitle(title, newTitle);
+    if (variants.length) {
+      await geminiCache.setTitle(title, JSON.stringify(variants));
+      console.log(`✍️ Gen ${variants.length} biến thể tiêu đề (mỗi shop lấy random 1).`);
+      return pickRandom(variants);
     }
-    return newTitle;
+    return "";
   } catch (error) {
     console.error("genTitleFromShein failed:", error);
     return "";

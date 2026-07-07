@@ -106,6 +106,21 @@ export const preprocessData = (data: any): { mergedProductImages: string[] } => 
     }
   }
 
+  // 2c. MULTI-COLOR: chọn NGẪU NHIÊN 1 màu làm ảnh Main → mỗi shop (mỗi lần chạy
+  // worker riêng) ra bộ ảnh khác nhau, tránh trùng ảnh hiển thị khi đẩy 1 listing
+  // lên nhiều shop. Sản phẩm 1 màu (<=1 variant) → bỏ qua.
+  const vimgs: VariantImageParam[] = data.variant_images || [];
+  if (vimgs.length > 1) {
+    const pick = vimgs[Math.floor(Math.random() * vimgs.length)];
+    const colorName = Object.keys(pick)[0];
+    const picked = pick[colorName];
+    const urls = Array.isArray(picked) ? picked : [picked];
+    if (urls.length) {
+      data.product_images = urls.slice(); // ảnh Main = trọn bộ ảnh màu này
+      console.log(`🎲 Multi-color: chọn màu "${colorName}" làm ảnh Main (${urls.length} ảnh) — tránh trùng giữa shop.`);
+    }
+  }
+
   // 3. MERGE PRODUCT IMAGES với hero shot từ mỗi variant
   const allVariantUrls: string[] = [];
   const usedUrls = new Set<string>((data.product_images || []) as string[]);

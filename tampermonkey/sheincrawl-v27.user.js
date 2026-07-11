@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SHEIN Scraper v27 - Direct API + SSE + Background
 // @namespace    http://tampermonkey.net/
-// @version      28.0.0
+// @version      28.1.0
 // @description  Cào SHEIN → POST thẳng lên shein-auto worker. Sync profile từ server. Realtime SSE. Detect out-of-stock per (color × size). Background tab vẫn cào nhờ silent audio.
 // @author       shein-auto
 // @match        *://*.shein.com/*
@@ -473,6 +473,12 @@
         #tm-panel{position:fixed;bottom:10px;right:10px;z-index:999999;background:#fff;border:2px solid #ae122a;padding:12px;border-radius:10px;font-family:sans-serif;width:300px;box-shadow:0 6px 20px rgba(0,0,0,0.25);}
         #tm-panel .head{font-weight:bold;color:#ae122a;text-align:center;border-bottom:1px solid #eee;padding-bottom:6px;display:flex;justify-content:space-between;align-items:center;}
         #tm-panel .head .settings{cursor:pointer;font-size:18px;}
+        #tm-panel .head .head-btns{display:flex;align-items:center;gap:8px;}
+        #tm-panel .head .minimize{cursor:pointer;font-size:20px;line-height:1;color:#ae122a;padding:0 4px;border-radius:4px;}
+        #tm-panel .head .minimize:hover{background:#fff5f5;}
+        /* Nút nổi để mở lại panel khi đã ẩn */
+        #tm-fab{position:fixed;bottom:10px;right:10px;z-index:999999;width:44px;height:44px;border-radius:50%;background:#ae122a;color:#fff;display:none;align-items:center;justify-content:center;cursor:pointer;font-weight:bold;font-family:sans-serif;font-size:18px;box-shadow:0 4px 14px rgba(0,0,0,0.3);}
+        #tm-fab:hover{background:#000;}
         .tm-btn-pro{background:#ae122a;color:#fff;border:none;padding:10px;cursor:pointer;font-weight:bold;width:100%;border-radius:6px;margin-top:8px;transition:0.2s;}
         .tm-btn-pro:hover{background:#000;}
         .tm-grid{display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-top:8px;max-height:160px;overflow-y:auto;padding-right:4px;}
@@ -521,7 +527,10 @@
         panel.innerHTML = `
             <div class="head">
                 <span>SHEIN SCRAPER v28</span>
-                <span class="settings" title="Settings">⚙</span>
+                <span class="head-btns">
+                    <span class="settings" title="Settings">⚙</span>
+                    <span class="minimize" title="Ẩn panel">–</span>
+                </span>
             </div>
             <label class="tm-acc-item" style="background:#fff5f5;padding:5px;border:1px dashed #ae122a;border-radius:4px;">
                 <input type="checkbox" id="tm-divide-4"> Price divider (/4)
@@ -535,6 +544,23 @@
             <div id="tm-status-text" style="font-size:10px;color:#666;text-align:center;margin-top:6px;font-style:italic;min-height:14px;">READY</div>
         `;
         document.body.appendChild(panel);
+
+        // Nút nổi để mở lại panel sau khi ẩn
+        const fab = document.createElement('div');
+        fab.id = 'tm-fab';
+        fab.title = 'Mở SHEIN Scraper';
+        fab.textContent = 'S';
+        document.body.appendChild(fab);
+
+        // Ẩn/hiện panel — nhớ trạng thái qua GM_setValue
+        const setPanelHidden = (hidden) => {
+            panel.style.display = hidden ? 'none' : '';
+            fab.style.display = hidden ? 'flex' : 'none';
+            GM_setValue('panelHidden', !!hidden);
+        };
+        panel.querySelector('.minimize').onclick = () => setPanelHidden(true);
+        fab.onclick = () => setPanelHidden(false);
+        setPanelHidden(GM_getValue('panelHidden', false));
 
         document.getElementById('tm-start').onclick = scrapeProduct;
         panel.querySelector('.settings').onclick = () => { modal.style.display = 'flex'; };

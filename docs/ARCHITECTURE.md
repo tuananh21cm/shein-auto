@@ -452,3 +452,11 @@ Module gen video TikTok từ ảnh sản phẩm 4Seller — spec: `docs/superpow
 **Vị trí code:** `src/core/videoStudio/` (queue, render, routes) · `src/services/tts/` · `src/state/videoDb.ts` (SQLite `data/videos.db`, status: queued→generating→ready|error, ready→posted).
 
 **Data:** video ra `data/videos/<shop>/<productId>_<id>.mp4`; ảnh cache `data/videos/assets/<productId>/`; nhạc nền user tự bỏ vào `data/videos/music/*.mp3` (rỗng = chỉ voice). Smoke test: `npx tsx src/scripts/testVideoRender.ts --variant=all`.
+
+### Auto-publish video (Video Studio, 2026-07)
+
+`publishVideo.ts` đăng 1 video lên TikTok Studio (`/tiktokstudio/upload`) qua **Kiki profile của shop** (map ở bảng `shop_tiktok_profile`, set tại tab TikTok Edit): setInputFiles → dialog optional (Turn on / Got it) → chờ "Uploaded" → điền Description (caption + hashtag) → Add link → chọn sản phẩm theo `product_id` → Post. Fail bước nào → screenshot `data/screenshots/publish-<id>-<step>.png` + lưu error, giữ status `ready` để retry.
+
+**Bẫy đã xử lý:** DraftJS editor của TikTok nuốt ký tự khi gõ nhanh → gõ delay 70ms + đọc lại verify + gõ lại (tối đa 3 lần, lần cuối dùng `insertText`). Kiki cần vài giây sau `stop` mới giải phóng profile → `forceStop` chờ 3s.
+
+`publishScheduler.ts` đăng **nhỏ giọt**: mỗi shop ≤ 5 video/24h, giãn cách ≥2h ±30′ jitter, chỉ trong khung 8h–23h, cron mỗi 25′ (mặc định TẮT, bật ở tab "🚀 Đăng bài" của `/admin/videos`). Test an toàn: `npx tsx src/scripts/testPublishVideo.ts --id=N --profile=<kikiProfileId> --dry-run` (làm hết trừ nút Post).

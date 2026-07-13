@@ -9,6 +9,43 @@ import { VideoDb } from "../../state/videoDb";
 import { TiktokDb } from "../../services/tiktok/db";
 import { suggestProducts } from "./suggestProducts";
 import { videoQueue, CreateVideoItem } from "./videoQueue";
+import { EditDb } from "../../services/tiktok/editDb";
+import { publishVideo } from "./publishVideo";
+import { buildCaption } from "./buildCaption";
+import {
+  publishStatus, runPublishTick, isAutoPublishOn, setAutoPublish, DEFAULT_SCHEDULER,
+} from "./publishScheduler";
+
+/** Đăng 1 video ngay (nút "Đăng ngay" trên UI). Chạy nền, log ra SSE. */
+async function publishOne(id: number, dryRun: boolean): Promise<void> {
+  const vdb = new VideoDb();
+  const edb = new EditDb();
+  try {
+    const row = vdb.get(id);
+    if (!row) throw new Error(`Không có video #${id}`);
+    if (!row.file) throw new Error(`Video #${id} chưa render xong`);
+    const profile = edb.getProfile(row.shop);
+    if (!profile) throw new Error(`Shop "${row.shop}" chưa map Kiki profile (tab TikTok Edit)`);
+
+    const script = row.script_json ? JSON.parse(row.script_json) : null;
+    const r = await publishVideo({
+      profileId: profile,
+      videoId: id,
+      videoFile: row.file,
+      caption: buildCaption({ title: row.title, seed: row.seed, script }),
+      productId: row.product_id,
+      dryRun,
+      onLog: (m) => console.log(m),
+    });
+    if (r.posted) vdb.markPosted(id);
+  } catch (e: any) {
+    vdb.setPostError(id, String(e?.message ?? e));
+    console.error(`❌ [Publish #${id}] ${e?.message ?? e}`);
+  } finally {
+    vdb.close();
+    edb.close();
+  }
+}
 
 export function registerVideoRoutes(app: express.Express): void {
   // Shops có data view để đề xuất
@@ -85,5 +122,36 @@ export function registerVideoRoutes(app: express.Express): void {
       db.remove(parseInt(req.params.id));
       res.json({ ok: true });
     } finally { db.close(); }
+  });
+
+  /* ── Auto-publish ────────────────────────────────────────── */
+
+  // Trạng thái quota từng shop + cờ auto
+  app.get("/admin/api/videos/publish/status", (_req, res) => {
+    try {
+      res.json({ auto: isAutoPublishOn(), cfg: DEFAULT_SCHEDULER, shops: publishStatus() });
+    } catch (e: any) { res.status(500).json({ error: e?.message ?? String(e) }); }
+  });
+
+  // Bật/tắt cron auto-publish
+  app.post("/admin/api/videos/publish/auto", (req, res) => {
+    setAutoPublish(!!req.body?.on);
+    res.json({ auto: isAutoPublishOn() });
+  });
+
+  // Chạy 1 tick ngay (không đợi cron). ?dryRun=1 = không bấm Post.
+  app.post("/admin/api/videos/publish/tick", (req, res) => {
+    const dryRun = !!req.body?.dryRun;
+    res.json({ started: true, dryRun }); // chạy nền, tiến độ xem qua log SSE
+    runPublishTick({ dryRun, onLog: (m) => console.log(m) })
+      .catch((e: any) => console.error(`❌ [PublishTick] ${e?.message ?? e}`));
+  });
+
+  // Đăng ngay 1 video (bỏ qua quota/giãn cách — user chủ động)
+  app.post("/admin/api/videos/:id/publish", (req, res) => {
+    const id = parseInt(req.params.id);
+    const dryRun = !!req.body?.dryRun;
+    res.json({ started: true, id, dryRun });
+    publishOne(id, dryRun).catch(() => {});
   });
 }

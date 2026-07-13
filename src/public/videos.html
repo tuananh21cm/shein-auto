@@ -48,6 +48,7 @@
 <div class="tabs">
   <div class="tab active" data-tab="suggest">💡 Đề xuất</div>
   <div class="tab" data-tab="library">📚 Thư viện</div>
+  <div class="tab" data-tab="publish">🚀 Đăng bài</div>
 </div>
 <main>
   <section id="tab-suggest">
@@ -69,6 +70,22 @@
     </div>
     <div id="libBody" class="empty">Đang tải…</div>
   </section>
+  <section id="tab-publish" style="display:none">
+    <div class="bar">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+        <input type="checkbox" id="autoToggle" style="width:16px;height:16px">
+        <span>Tự động đăng (cron mỗi 25′)</span>
+      </label>
+      <button id="btnTickDry">🧪 Chạy thử 1 lượt (dry-run)</button>
+      <button id="btnTick" class="primary">🚀 Chạy 1 lượt ngay</button>
+      <span id="pubInfo" style="color:var(--text-mute)"></span>
+    </div>
+    <div id="pubBody" class="empty">Đang tải…</div>
+    <div style="margin-top:14px;color:var(--text-mute);font-size:0.8rem">
+      Quy tắc: mỗi shop tối đa <b>5 video/24h</b>, cách nhau <b>≥2h ±30′</b>, chỉ đăng trong khung <b>8h–23h</b>.
+      Shop phải được map Kiki profile ở tab <b>TikTok Edit</b> của trang admin. Tiến độ đăng xem ở log realtime trang admin.
+    </div>
+  </section>
 </main>
 <script>
 const $ = (s) => document.querySelector(s);
@@ -83,9 +100,10 @@ const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<
 // Tabs
 document.querySelectorAll(".tab").forEach((t) => t.onclick = () => {
   document.querySelectorAll(".tab").forEach((x) => x.classList.toggle("active", x === t));
-  $("#tab-suggest").style.display = t.dataset.tab === "suggest" ? "" : "none";
-  $("#tab-library").style.display = t.dataset.tab === "library" ? "" : "none";
+  for (const name of ["suggest", "library", "publish"])
+    $("#tab-" + name).style.display = t.dataset.tab === name ? "" : "none";
   if (t.dataset.tab === "library") loadLibrary();
+  if (t.dataset.tab === "publish") loadPublish();
 });
 
 // Shops
@@ -164,8 +182,9 @@ async function loadLibrary() {
         <span style="color:var(--text-mute);font-size:0.72rem"> #${v.id} · ${esc(v.shop)}</span>
         ${v.error ? `<div class="err-detail">${esc(v.error)}</div>` : ""}
         <div class="actions">
+          ${v.status === "ready" ? `<button class="primary" onclick="publishNow(${v.id})">🚀 Đăng ngay</button>` : ""}
           ${v.status === "ready" || v.status === "posted" ? `<a href="/admin/api/videos/file/${v.id}" download="video_${v.id}.mp4"><button>⬇ Tải</button></a>` : ""}
-          ${v.status === "ready" ? `<button onclick="markPosted(${v.id})">✅ Đã đăng</button>` : ""}
+          ${v.status === "ready" ? `<button onclick="markPosted(${v.id})">✅ Đánh dấu đã đăng</button>` : ""}
           ${v.status === "error" ? `<button onclick="retryVid(${v.id})">🔄 Retry</button>` : ""}
           <button onclick="delVid(${v.id})">🗑</button>
         </div>
@@ -180,6 +199,48 @@ $("#libStatus").onchange = loadLibrary;
 window.markPosted = async (id) => { await api(`/admin/api/videos/${id}/posted`, { method: "POST", body: "{}" }); loadLibrary(); };
 window.retryVid = async (id) => { await api(`/admin/api/videos/${id}/retry`, { method: "POST", body: "{}" }); loadLibrary(); };
 window.delVid = async (id) => { if (confirm("Xóa video #" + id + "?")) { await api(`/admin/api/videos/${id}`, { method: "DELETE" }); loadLibrary(); } };
+window.publishNow = async (id) => {
+  if (!confirm(`Đăng THẬT video #${id} lên TikTok qua Kiki profile của shop?\n(Kiki phải đang chạy. Tiến độ xem ở log trang admin.)`)) return;
+  await api(`/admin/api/videos/${id}/publish`, { method: "POST", body: JSON.stringify({ dryRun: false }) });
+  alert(`Đang đăng video #${id} — theo dõi log realtime ở trang /admin. Xong sẽ chuyển sang "posted".`);
+};
+
+// ── Đăng bài ──
+async function loadPublish() {
+  try {
+    const d = await api("/admin/api/videos/publish/status");
+    $("#autoToggle").checked = !!d.auto;
+    $("#pubInfo").textContent = `${d.shops.length} shop có video chờ đăng`;
+    if (!d.shops.length) { $("#pubBody").innerHTML = '<div class="empty">Chưa có video ready nào để đăng.</div>'; return; }
+    $("#pubBody").innerHTML = `<table><thead><tr>
+      <th>Shop</th><th>Kiki profile</th><th>Đã đăng 24h</th><th>Video chờ</th><th>Đăng gần nhất</th><th>Được đăng tiếp</th>
+    </tr></thead><tbody>${d.shops.map((s) => {
+      const ok = !!s.profile;
+      const full = s.postedToday >= s.quota;
+      const wait = s.minutesUntilNext > 0;
+      return `<tr>
+        <td>${esc(s.shop)}</td>
+        <td>${ok ? `<span class="mono" style="font-size:0.72rem">${esc(s.profile)}</span>` : '<span style="color:var(--err)">chưa map</span>'}</td>
+        <td class="mono">${s.postedToday}/${s.quota}</td>
+        <td class="mono">${s.ready}</td>
+        <td class="mono">${s.lastPostedAt ? new Date(s.lastPostedAt).toLocaleString("vi-VN", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit" }) : "—"}</td>
+        <td>${!ok ? "—" : full ? '<span class="badge b-posted">hết quota hôm nay</span>' : wait ? `<span class="badge b-queued">sau ${s.minutesUntilNext}′</span>` : '<span class="badge b-ready">sẵn sàng</span>'}</td>
+      </tr>`;
+    }).join("")}</tbody></table>`;
+  } catch (e) { $("#pubBody").innerHTML = `<div class="empty">❌ ${esc(e.message)}</div>`; }
+}
+$("#autoToggle").onchange = async (e) => {
+  await api("/admin/api/videos/publish/auto", { method: "POST", body: JSON.stringify({ on: e.target.checked }) });
+};
+$("#btnTick").onclick = async () => {
+  if (!confirm("Chạy 1 lượt đăng THẬT ngay (mỗi shop đủ điều kiện đăng 1 video)?")) return;
+  await api("/admin/api/videos/publish/tick", { method: "POST", body: JSON.stringify({ dryRun: false }) });
+  alert("Đang chạy — theo dõi log realtime ở trang /admin.");
+};
+$("#btnTickDry").onclick = async () => {
+  await api("/admin/api/videos/publish/tick", { method: "POST", body: JSON.stringify({ dryRun: true }) });
+  alert("Dry-run: làm hết trừ nút Post. Theo dõi log ở trang /admin.");
+};
 </script>
 </body>
 </html>

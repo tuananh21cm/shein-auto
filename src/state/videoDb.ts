@@ -112,8 +112,43 @@ export class VideoDb {
   }
 
   markPosted(id: number): void {
-    this.db.prepare(`UPDATE videos SET status='posted', posted_at=?, updated_at=? WHERE id=?`)
+    this.db.prepare(`UPDATE videos SET status='posted', posted_at=?, updated_at=?, error=NULL WHERE id=?`)
       .run(Date.now(), Date.now(), id);
+  }
+
+  /** Lỗi khi auto-publish (giữ status ready để retry đăng lại). */
+  setPostError(id: number, error: string): void {
+    this.db.prepare(`UPDATE videos SET error=?, updated_at=? WHERE id=?`)
+      .run(error.slice(0, 500), Date.now(), id);
+  }
+
+  /** Số video đã đăng của shop trong 24h qua (quota 5/ngày/shop). */
+  postedTodayCount(shop: string, sinceMs: number): number {
+    return (this.db.prepare(
+      `SELECT COUNT(*) c FROM videos WHERE shop=? AND status='posted' AND posted_at >= ?`
+    ).get(shop, sinceMs) as any).c as number;
+  }
+
+  /** Thời điểm đăng gần nhất của shop (để giãn cách giữa 2 lần đăng). */
+  lastPostedAt(shop: string): number | null {
+    const r = this.db.prepare(
+      `SELECT MAX(posted_at) t FROM videos WHERE shop=? AND status='posted'`
+    ).get(shop) as any;
+    return r?.t ?? null;
+  }
+
+  /** Video ready cũ nhất của shop chưa đăng (FIFO) — ứng viên đăng tiếp theo. */
+  nextReadyForShop(shop: string): VideoRow | undefined {
+    return this.db.prepare(
+      `SELECT * FROM videos WHERE shop=? AND status='ready' ORDER BY id LIMIT 1`
+    ).get(shop) as VideoRow | undefined;
+  }
+
+  /** Các shop đang có video ready chờ đăng. */
+  shopsWithReady(): string[] {
+    return (this.db.prepare(
+      `SELECT DISTINCT shop FROM videos WHERE status='ready' ORDER BY shop`
+    ).all() as { shop: string }[]).map((r) => r.shop);
   }
 
   remove(id: number): void {

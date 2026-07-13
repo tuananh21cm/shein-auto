@@ -168,6 +168,20 @@ export async function publishVideo(opts: PublishOptions): Promise<PublishResult>
     await sleep(3000);
     await waitCaptcha(page, log);
 
+    // Profile Kiki có thể CHƯA login tiktok.com (login Seller Center là phiên KHÁC).
+    // Bắt sớm để báo rõ, không phải đợi timeout tìm input file.
+    step = "check-login";
+    const loggedOut = await page.locator('text=/Log in to TikTok/i').first()
+      .isVisible({ timeout: 5000 }).catch(() => false);
+    if (loggedOut || /\/login/i.test(page.url())) {
+      const f = await shot(page, opts.videoId, "not-logged-in");
+      throw new Error(
+        `Profile Kiki chưa đăng nhập tiktok.com (đang ở màn "Log in to TikTok"). ` +
+        `Mở profile trong Kiki → vào tiktok.com → đăng nhập tài khoản TikTok của shop → chạy lại. ` +
+        `Lưu ý: login Seller Center KHÁC login tiktok.com. Screenshot: ${f}`
+      );
+    }
+
     step = "select-file";
     const fileInput = page.locator('input[type="file"]').first();
     await fileInput.waitFor({ state: "attached", timeout: 30_000 });

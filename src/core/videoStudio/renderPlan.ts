@@ -21,16 +21,43 @@ const FADE = 0.4;
 const TARGET_SEG = 3.5;   // giây/ảnh lý tưởng
 const MIN_SEG = 2.0;
 const MAX_SEG = 6.5;
+// Hook giữ chân: intro cắt nhanh 3 ảnh đầu (~0.9s/ảnh) tạo nhịp giật 2.5s đầu,
+// sau đó mới vào Ken Burns chậm. Chỉ áp dụng khi video đủ dài.
+const INTRO_N = 3;
+const INTRO_DUR = 0.9;
+const INTRO_MIN_TOTAL = 12;
 
 export function planSegments(imageCount: number, voiceMs: number): SegmentPlan {
   const totalSec = voiceMs / 1000 + 0.8; // tail 0.8s sau khi voice hết
-  let n = Math.max(2, Math.round(totalSec / TARGET_SEG));
-  // gross mỗi segment = (total + fade*(n-1)) / n — chỉnh n để nằm trong [MIN,MAX]
-  const gross = (k: number) => (totalSec + FADE * (k - 1)) / k;
-  while (n > 2 && gross(n) < MIN_SEG) n--;
-  while (gross(n) > MAX_SEG) n++;
-  const d = gross(n);
-  return { n, durations: Array.from({ length: n }, () => Math.round(d * 100) / 100), fade: FADE, totalSec: Math.round(totalSec * 100) / 100 };
+  const round2 = (x: number) => Math.round(x * 100) / 100;
+
+  if (totalSec < INTRO_MIN_TOTAL) {
+    // Video ngắn: chia đều như cũ, không intro.
+    let n = Math.max(2, Math.round(totalSec / TARGET_SEG));
+    const gross = (k: number) => (totalSec + FADE * (k - 1)) / k;
+    while (n > 2 && gross(n) < MIN_SEG) n--;
+    while (gross(n) > MAX_SEG) n++;
+    const d = gross(n);
+    return { n, durations: Array.from({ length: n }, () => round2(d)), fade: FADE, totalSec: round2(totalSec) };
+  }
+
+  // Intro 3 cắt nhanh + k segment chính:
+  // sum(durations) = totalSec + FADE*(n-1) với n = INTRO_N + k
+  const introSum = INTRO_N * INTRO_DUR;
+  const grossMain = (k: number) => (totalSec + FADE * (INTRO_N + k - 1) - introSum) / k;
+  let k = Math.max(2, Math.round((totalSec - introSum) / TARGET_SEG));
+  while (k > 2 && grossMain(k) < MIN_SEG) k--;
+  while (grossMain(k) > MAX_SEG) k++;
+  const d = grossMain(k);
+  return {
+    n: INTRO_N + k,
+    durations: [
+      ...Array.from({ length: INTRO_N }, () => INTRO_DUR),
+      ...Array.from({ length: k }, () => round2(d)),
+    ],
+    fade: FADE,
+    totalSec: round2(totalSec),
+  };
 }
 
 /** Path Windows → dạng ffmpeg filter chấp nhận: slash + escape ':'. */

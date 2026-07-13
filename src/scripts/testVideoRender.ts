@@ -21,11 +21,13 @@ const SAMPLE_DIR = path.resolve(process.cwd(), "src", "core", "steps", "temp_ima
 const OUT_DIR = path.resolve(process.cwd(), "data", "videos", "_smoke");
 
 const SCRIPT: VideoScript = {
-  hook: "POV: you found the perfect summer dress",
+  hook: "Wait till you see the back of this dress",
+  openLoop: "Stay till the end, the last detail sold me.",
   lines: [
     "The fabric is so soft it feels like a cloud.",
     "That ruched waist? Flattering on literally everyone.",
     "Wear it to brunch, the beach, or date night.",
+    "And THAT back detail? Yeah. That's what sold me.",
   ],
   cta: "Tap the cart before it sells out!",
 };
@@ -65,7 +67,7 @@ const main = async () => {
   const segImages = Array.from({ length: plan.n }, (_, i) => ordered[i % ordered.length]);
 
   const assPath = path.join(OUT_DIR, "captions.ass");
-  await fs.writeFile(assPath, buildAss({ words, hook: SCRIPT.hook, cta: SCRIPT.cta, totalMs: Math.round(plan.totalSec * 1000), seed }), "utf-8");
+  await fs.writeFile(assPath, buildAss({ words, hook: SCRIPT.hook, cta: SCRIPT.cta, openLoop: SCRIPT.openLoop, totalMs: Math.round(plan.totalSec * 1000), seed }), "utf-8");
 
   const outPath = path.join(OUT_DIR, "smoke.mp4");
   console.log(`🎬 Render ${plan.n} segments, ${plan.totalSec}s…`);

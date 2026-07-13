@@ -70,21 +70,31 @@ export function buildAss(opts: {
   cta: string;
   totalMs: number;
   seed: string;
+  /** Dòng open-loop treo giữa video ("wait for the end...") giữ chân xem hết. */
+  openLoop?: string;
 }): string {
   const preset = seededPick(seededRng(`style:${opts.seed}`), STYLE_PRESETS);
   const lines = groupWords(opts.words, opts.seed);
 
+  // Tag animation đặt TRƯỚC text đã escape (escapeAss loại {} \ khỏi nội dung user).
+  const popIn = "{\\fscx55\\fscy55\\t(0,180,\\fscx105\\fscy105)\\t(180,280,\\fscx100\\fscy100)}";
+
   const events: string[] = [];
-  // Hook overlay 0 → min(2200ms, 1/4 video)
-  const hookEnd = Math.min(2200, Math.round(opts.totalMs / 4));
-  events.push(`Dialogue: 0,${msToAssTime(0)},${msToAssTime(hookEnd)},Hook,,0,0,0,,${escapeAss(opts.hook.toUpperCase())}`);
+  // Hook overlay 0 → min(3000ms, 1/3 video), pop-in để bắt mắt ngay frame đầu
+  const hookEnd = Math.min(3000, Math.round(opts.totalMs / 3));
+  events.push(`Dialogue: 0,${msToAssTime(0)},${msToAssTime(hookEnd)},Hook,,0,0,0,,${popIn}${escapeAss(opts.hook.toUpperCase())}`);
+  // Open-loop nhỏ treo trên màn hình từ sau hook tới ~65% video (nhắc payoff cuối)
+  if (opts.openLoop) {
+    const olEnd = Math.round(opts.totalMs * 0.65);
+    events.push(`Dialogue: 0,${msToAssTime(hookEnd)},${msToAssTime(olEnd)},Hook,,0,0,0,,{\\fs54\\alpha&H30&}${escapeAss(opts.openLoop)}`);
+  }
   // Caption theo timestamps
   for (const l of lines) {
     events.push(`Dialogue: 0,${msToAssTime(l.startMs)},${msToAssTime(l.endMs)},Caption,,0,0,0,,${escapeAss(l.text)}`);
   }
-  // CTA 2.5s cuối
+  // CTA 2.5s cuối, cũng pop-in
   const ctaStart = Math.max(0, opts.totalMs - 2500);
-  events.push(`Dialogue: 0,${msToAssTime(ctaStart)},${msToAssTime(opts.totalMs)},Hook,,0,0,0,,${escapeAss(opts.cta)}`);
+  events.push(`Dialogue: 0,${msToAssTime(ctaStart)},${msToAssTime(opts.totalMs)},Hook,,0,0,0,,${popIn}${escapeAss(opts.cta)}`);
 
   return [
     "[Script Info]",

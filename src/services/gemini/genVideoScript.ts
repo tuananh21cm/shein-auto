@@ -39,30 +39,64 @@ export function validateScript(raw: any): VideoScript {
 export const scriptToText = (s: VideoScript): string =>
   [s.hook, ...(s.openLoop ? [s.openLoop] : []), ...s.lines, s.cta].join(" ").replace(/\s+/g, " ").trim();
 
-export async function genVideoScript(title: string, extras?: { price?: string; attributes?: string }): Promise<VideoScript> {
+/**
+ * Các "kịch bản" hook để A/B test retention — queue random theo seed, lưu vào DB
+ * để sau này đối chiếu style nào giữ chân/ra đơn tốt nhất.
+ */
+export type HookStyle = "social_proof" | "viral" | "tease" | "callout" | "storytime" | "listicle";
+
+export const HOOK_STYLES: Record<HookStyle, string> = {
+  social_proof: `Open with sales/popularity momentum ("here's why everyone's ordering this").
+    If "Stats" numbers are provided in the prompt, lead the hook with those REAL numbers
+    (e.g. "2,000 of you viewed this last month"). If NO stats are provided, use hot-but-unverifiable
+    phrasing ("orders keep rolling in", "almost sold out again") — do NOT invent specific numbers.
+    Structure: hook momentum → "here's why" → 3 reasons, the BEST reason LAST.`,
+  viral: `Open like the product is blowing up on TikTok ("TikTok made me buy it",
+    "you've seen this everywhere this week"). FOMO energy, trend language, casual confession tone.`,
+  tease: `Open by teasing ONE specific detail that is only revealed at the END
+    ("wait till you see the back"). openLoop promises it, the LAST line reveals it.`,
+  callout: `Open by calling out the exact target buyer's pain point
+    ("If every dress swallows your waist, stop scrolling"). Then position the product as the fix,
+    with the strongest proof at the end.`,
+  storytime: `Open mid-story in first person ("Three strangers stopped me at brunch over this").
+    Tell a mini story across the lines; the story's punchline lands in the LAST line.`,
+  listicle: `Open with a numbered promise ("3 reasons this is THE dress of summer").
+    Each line starts "One:", "Two:", "Three:" — the viewer stays to hear the last number.
+    Put the most surprising reason at number three.`,
+};
+
+export async function genVideoScript(
+  title: string,
+  extras?: { price?: string; attributes?: string; stats?: { pv28d?: number; orders28d?: number } },
+  style: HookStyle = "tease"
+): Promise<VideoScript> {
   const systemInstruction = `
     You write 30-second TikTok Shop US product video voiceover scripts (2025-2026 style).
     The video shows close-up product photos with Ken Burns zoom effects.
     GOAL: maximum watch-time retention — viewer must want to watch to the END.
+
+    HOOK SCENARIO for this script (follow it strictly):
+    ${HOOK_STYLES[style]}
+
     RULES:
-    - "hook": <= 10 words, pattern-interrupt opener. Pick ONE formula that fits the product:
-      (a) audience callout: "If you're obsessed with [X], stop scrolling"
-      (b) curiosity gap: "Nobody talks about this [product] secret"
-      (c) tease: "Wait till you see the [detail]"
-      (d) bold claim: "This is the most flattering [product] of 2026"
-      (e) POV: "POV: you finally found [outcome]". No emoji.
+    - "hook": <= 12 words, pattern-interrupt opener following the scenario above. No emoji.
     - "openLoop": <= 12 words, spoken RIGHT AFTER the hook. Promise a specific payoff
-      that comes at the END ("stay till the end for the best part", "the last detail sold me").
+      that comes at the END ("stay till the end for the best part", "number three sold me").
     - "lines": 3-5 short spoken sentences selling the product: material/fit feel, occasions
       to wear, why it's trending. The LAST line MUST deliver the openLoop payoff explicitly.
       Casual spoken English, contractions OK.
     - "cta": <= 12 words, urgency + tap-the-cart style call to action.
     - Total across hook+openLoop+lines+cta: 70-100 words (about 30 seconds spoken).
-    - NO brand/supplier names (SHEIN etc.), no prices unless provided, no hashtags, no emoji.
+    - NO brand/supplier names (SHEIN etc.), no hashtags, no emoji. Prices only if provided.
   `;
+  const stats = extras?.stats;
+  const statsLine = stats && (stats.pv28d || stats.orders28d)
+    ? `\nStats (REAL, last 28 days): ${stats.pv28d ? `${stats.pv28d} product views` : ""}${stats.pv28d && stats.orders28d ? ", " : ""}${stats.orders28d ? `${stats.orders28d} orders` : ""}`
+    : "";
   const prompt = `Product title: ${title}` +
     (extras?.price ? `\nPrice: ${extras.price}` : "") +
-    (extras?.attributes ? `\nAttributes: ${extras.attributes}` : "");
+    (extras?.attributes ? `\nAttributes: ${extras.attributes}` : "") +
+    statsLine;
 
   const model = genAI.getGenerativeModel({
     model: "gemini-2.5-flash",

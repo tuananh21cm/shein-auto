@@ -30,9 +30,18 @@ class KikiClient {
     return this._http;
   }
 
-  /** Start profile → trả CDP websocket URL. */
+  /**
+   * Start profile → trả CDP websocket URL.
+   * Kiki trả HTTP 500 kèm body {reason} khi profile bận (SOME_PROGRAM_IS_USING_THIS_PROFILE)
+   * → validateStatus nới ra để ĐỌC ĐƯỢC reason, nếu không message chỉ là "status code 500"
+   * và startWithRetry không nhận ra là "bận" để force-stop rồi thử lại.
+   */
   async startProfile(profileId: string): Promise<KikiStartResult> {
-    const { data } = await this.http().post("/api/local-api/profile/start", { profileId });
+    const { data } = await this.http().post(
+      "/api/local-api/profile/start",
+      { profileId },
+      { validateStatus: (s) => s < 600 }
+    );
     if (!data?.success) {
       const reason = data?.reason ?? JSON.stringify(data);
       throw new Error(`Kiki start failed: ${reason}`);
@@ -48,11 +57,16 @@ class KikiClient {
     }
   }
 
-  /** Stop 2 lần để chắc chắn profile được giải phóng. */
+  /**
+   * Stop 2 lần để chắc chắn profile được giải phóng.
+   * Kiki cần vài giây để đóng hẳn browser process sau khi stop trả 200 — start ngay
+   * sẽ dính SOME_PROGRAM_IS_USING_THIS_PROFILE. Chờ 3s sau lần stop cuối.
+   */
   async forceStop(profileId: string): Promise<void> {
     await this.stopProfile(profileId);
-    await sleep(800);
+    await sleep(1200);
     await this.stopProfile(profileId);
+    await sleep(3000);
   }
 
   /**
@@ -75,7 +89,7 @@ class KikiClient {
         if (busy && attempt < maxAttempts) {
           onLog?.(`Profile bận, chờ rồi thử lại (${attempt}/${maxAttempts})…`);
           await this.stopProfile(profileId);
-          await sleep(2500);
+          await sleep(5000); // browser process cần vài giây để đóng hẳn
         } else if (attempt < maxAttempts) {
           await sleep(1500);
         } else {

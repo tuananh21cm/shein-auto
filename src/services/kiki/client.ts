@@ -85,6 +85,12 @@ class KikiClient {
         return r;
       } catch (e: any) {
         lastErr = e;
+        // Session Kiki hết hạn → retry vô ích, phải đăng nhập lại app Kiki. Fail sớm, báo rõ.
+        if (/INVALID_SESSION|UNAUTHORIZED|NOT_LOGIN/i.test(e?.message ?? "")) {
+          throw new Error(
+            `Kiki chưa đăng nhập / session hết hạn (${e.message}). Mở app Kiki và đăng nhập lại, rồi chạy lại.`
+          );
+        }
         const busy = /SOME_PROGRAM|busy|already/i.test(e?.message ?? "");
         if (busy && attempt < maxAttempts) {
           onLog?.(`Profile bận, chờ rồi thử lại (${attempt}/${maxAttempts})…`);

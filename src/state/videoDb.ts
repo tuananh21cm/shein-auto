@@ -137,6 +137,21 @@ export class VideoDb {
     return r?.t ?? null;
   }
 
+  /**
+   * NHẬN việc nguyên tử: đổi 1 video queued → generating và trả về nó.
+   * Bắt buộc atomic vì NHIỀU TIẾN TRÌNH cùng chạy queue (script gen hàng loạt + cron
+   * server) — đọc-rồi-ghi tách rời sẽ khiến 2 process cùng render 1 video.
+   * Trả undefined nếu không còn video queued.
+   */
+  claimNextQueued(): VideoRow | undefined {
+    const row = this.db.prepare(
+      `UPDATE videos SET status='generating', step='images', updated_at=?
+       WHERE id = (SELECT id FROM videos WHERE status='queued' ORDER BY id LIMIT 1)
+       RETURNING *`
+    ).get(Date.now()) as VideoRow | undefined;
+    return row;
+  }
+
   /** Video ready cũ nhất của shop chưa đăng (FIFO) — ứng viên đăng tiếp theo. */
   nextReadyForShop(shop: string): VideoRow | undefined {
     return this.db.prepare(

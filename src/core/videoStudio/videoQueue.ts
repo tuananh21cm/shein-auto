@@ -84,8 +84,10 @@ class VideoQueue {
 
   private async loop(): Promise<void> {
     for (;;) {
+      // NHẬN việc nguyên tử (UPDATE…RETURNING) — nhiều tiến trình cùng chạy queue
+      // (script gen hàng loạt + cron server) nên đọc-rồi-ghi sẽ render trùng video.
       const db = new VideoDb();
-      const next = db.list({ status: "queued" }).pop(); // FIFO: id nhỏ trước (list DESC)
+      const next = db.claimNextQueued();
       db.close();
       if (!next) return;
       try {
@@ -99,8 +101,9 @@ class VideoQueue {
   private async process(id: number): Promise<void> {
     const db = new VideoDb();
     try {
+      // Video đã được claimNextQueued() đổi sang 'generating' → KHÔNG check 'queued' nữa.
       const row = db.get(id);
-      if (!row || row.status !== "queued") return;
+      if (!row) return;
       const seed = row.seed;
       const account = await resolveAccountForShop(row.shop);
       if (!account) throw new Error(`Shop "${row.shop}" không có tài khoản 4Seller`);

@@ -21,6 +21,7 @@ import fs from "fs-extra";
 import path from "path";
 import { chromium } from "playwright-core";
 import { kiki } from "../../services/kiki/client";
+import { browseFeed } from "./browseFeed";
 
 const UPLOAD_URL = "https://www.tiktok.com/tiktokstudio/upload?from=creator_center";
 const SHOT_DIR = path.resolve(process.cwd(), "data", "screenshots");
@@ -37,6 +38,8 @@ export interface PublishOptions {
   dryRun?: boolean;
   /** Bỏ qua bước gắn sản phẩm (dùng khi test chéo shop, product không thuộc shop đang login). */
   skipProduct?: boolean;
+  /** Tắt warm-up lướt feed trước/sau khi đăng (mặc định BẬT). */
+  noWarmup?: boolean;
   onLog?: (m: string) => void;
 }
 
@@ -48,6 +51,7 @@ export interface PublishResult {
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const rand = (min: number, max: number) => min + Math.random() * (max - min);
 
 /** Captcha ĐANG CHẶN (node visible + đủ to; TikTok preload node ẩn 0x0 → không tính). */
 async function hasCaptcha(page: any): Promise<boolean> {
@@ -200,6 +204,12 @@ export async function publishVideo(opts: PublishOptions): Promise<PublishResult>
 
   try {
     // ── Bước 1: mở upload + set file ──
+    // ── Warm-up TRƯỚC khi đăng: lướt feed như người thật (phiên không chỉ toàn upload) ──
+    if (!opts.noWarmup) {
+      step = "warmup-before";
+      await browseFeed(page, { minVideos: 4, maxVideos: 9, onLog: log });
+    }
+
     log(`📤 [1] Mở TikTok Studio upload…`);
     await page.goto(UPLOAD_URL, { waitUntil: "domcontentloaded", timeout: 60_000 });
     await sleep(3000);
@@ -281,15 +291,41 @@ export async function publishVideo(opts: PublishOptions): Promise<PublishResult>
       await sleep(3000);
 
       step = "select-product";
-      // [8] Radio của dòng CÓ ĐÚNG product id (verify tránh chọn nhầm dòng)
-      const row = page.locator(`tr:has-text("${opts.productId}"), div[class*="row"]:has-text("${opts.productId}")`).first();
-      if (!(await row.count().catch(() => 0))) {
+      // [8] Chọn radio của ĐÚNG dòng product. Bảng TikTok KHÔNG dùng <tr>/div[class=row]
+      // → tìm node chứa product id rồi leo lên ancestor gần nhất có radio (DOM-agnostic).
+      const found = await page.locator(`text=/${opts.productId}/`).first()
+        .waitFor({ state: "visible", timeout: 20_000 }).then(() => true).catch(() => false);
+      if (!found) {
         const f = await shot(page, opts.videoId, "product-not-found");
-        throw new Error(`Không tìm thấy product ${opts.productId} trong shop này (có thể product thuộc shop khác). Screenshot: ${f}`);
+        throw new Error(
+          `Không tìm thấy product ${opts.productId} trong shop này (product thuộc shop khác, ` +
+          `hoặc listing không còn Active). Screenshot: ${f}`
+        );
       }
-      const radio = row.locator('input[type="radio"], [class*="radio"]').first();
-      await radio.click({ timeout: 10_000 });
-      await sleep(800);
+      const picked = await page.evaluate((pid: string) => {
+        const hit = [...document.querySelectorAll("*")].find(
+          (el) => el.children.length === 0 && (el.textContent || "").trim() === pid
+        );
+        if (!hit) return false;
+        // leo lên tìm khối chứa cả product id lẫn radio → chính là dòng của product đó
+        let node: HTMLElement | null = hit as HTMLElement;
+        for (let i = 0; i < 8 && node; i++) {
+          const radio = node.querySelector('input[type="radio"]') as HTMLInputElement | null;
+          if (radio) { radio.click(); return true; }
+          node = node.parentElement;
+        }
+        return false;
+      }, opts.productId);
+      if (!picked) {
+        // fallback: search theo ID chính xác thường chỉ ra 1 dòng → radio duy nhất
+        const radios = page.locator('input[type="radio"]');
+        if ((await radios.count().catch(() => 0)) === 1) await radios.first().click({ timeout: 10_000 });
+        else {
+          const f = await shot(page, opts.videoId, "radio-not-found");
+          throw new Error(`Thấy product ${opts.productId} nhưng không click được radio. Screenshot: ${f}`);
+        }
+      }
+      await sleep(1000);
       await page.locator('button:has-text("Next")').last().click({ timeout: 15_000 });
       log(`   ✓ [8] Chọn sản phẩm + Next`);
       await sleep(3000);
@@ -374,6 +410,13 @@ export async function publishVideo(opts: PublishOptions): Promise<PublishResult>
 
     result.posted = true;
     log(`✅ Đăng thành công video #${opts.videoId}`);
+
+    // ── Warm-up SAU khi đăng: không thoát ngay sau upload (hành vi bot rõ rệt) ──
+    if (!opts.noWarmup) {
+      step = "warmup-after";
+      await sleep(rand(4000, 9000));
+      await browseFeed(page, { minVideos: 3, maxVideos: 7, onLog: log });
+    }
     return result;
   } catch (e: any) {
     const f = await shot(page, opts.videoId, step);

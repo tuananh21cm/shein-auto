@@ -49,6 +49,7 @@ const main = async () => {
     productId: row.product_id,
     dryRun: has("dry-run"),
     skipProduct: has("skip-product"),
+    noWarmup: has("no-warmup"),
     onLog: (m) => console.log(m),
   });
 

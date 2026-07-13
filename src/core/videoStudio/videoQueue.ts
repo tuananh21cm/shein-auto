@@ -7,6 +7,7 @@
  */
 import fs from "fs-extra";
 import path from "path";
+import cron from "node-cron";
 import { VideoDb } from "../../state/videoDb";
 import { resolveAccountForShop } from "../../state/fourSellerAccounts";
 import { fetchImages } from "./fetchImages";
@@ -77,6 +78,9 @@ class VideoQueue {
     this.running = true;
     setImmediate(() => this.loop().finally(() => { this.running = false; }));
   }
+
+  /** Cho cron gọi để nhặt video queued do tiến trình khác tạo. */
+  kickPublic(): void { this.kick(); }
 
   private async loop(): Promise<void> {
     for (;;) {
@@ -186,3 +190,30 @@ async function pickMusic(rng: () => number): Promise<string | null> {
 }
 
 export const videoQueue = new VideoQueue();
+
+/**
+ * Cron 5′: nhặt video còn `queued` trong DB rồi chạy tiếp.
+ * Cần vì video có thể được enqueue từ TIẾN TRÌNH KHÁC (script gen hàng loạt) —
+ * script đó chết giữa chừng thì video sẽ nằm im mãi nếu server không tự quét.
+ * Cũng cứu các video đang `generating` khi server bị kill giữa lúc render.
+ */
+export function scheduleVideoQueueCron(): void {
+  cron.schedule("*/5 * * * *", () => {
+    const db = new VideoDb();
+    try {
+      // generating quá 20 phút = tiến trình render đã chết → trả về queued
+      const stale = db.db.prepare(
+        `SELECT id FROM videos WHERE status='generating' AND updated_at < ?`
+      ).all(Date.now() - 20 * 60_000) as { id: number }[];
+      for (const r of stale) {
+        console.warn(`⚠️ [VideoQueue] #${r.id} kẹt ở generating > 20′ → đưa lại vào queue`);
+        db.setStatus(r.id, { status: "queued", error: null });
+      }
+      const pending = db.list({ status: "queued", limit: 1 }).length;
+      if (pending) videoQueue.kickPublic();
+    } catch (e: any) {
+      console.error(`❌ [VideoQueueCron] ${e?.message ?? e}`);
+    } finally { db.close(); }
+  });
+  console.log("⏰ Cron quét queue video đã đăng ký (mỗi 5′).");
+}

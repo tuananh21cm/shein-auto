@@ -44,12 +44,30 @@ describe("decideShop", () => {
 });
 
 describe("inPostingWindow", () => {
-  it("trong 8h–23h thì OK, ngoài giờ thì không", () => {
-    const at = (h: number) => new Date(2026, 6, 13, h, 0, 0);
-    expect(inPostingWindow(at(7), cfg)).toBe(false);
+  const at = (h: number) => new Date(2026, 6, 13, h, 0, 0);
+
+  it("khung VẮT QUA NỬA ĐÊM (mặc định 20h→9h = giờ vàng Mỹ): đêm OK, ban ngày VN nghỉ", () => {
+    expect(inPostingWindow(at(20), cfg)).toBe(true);  // bắt đầu
+    expect(inPostingWindow(at(23), cfg)).toBe(true);
+    expect(inPostingWindow(at(0), cfg)).toBe(true);   // qua nửa đêm vẫn đăng
+    expect(inPostingWindow(at(3), cfg)).toBe(true);
     expect(inPostingWindow(at(8), cfg)).toBe(true);
-    expect(inPostingWindow(at(22), cfg)).toBe(true);
-    expect(inPostingWindow(at(23), cfg)).toBe(false);
-    expect(inPostingWindow(at(3), cfg)).toBe(false);
+    expect(inPostingWindow(at(9), cfg)).toBe(false);  // hết khung
+    expect(inPostingWindow(at(14), cfg)).toBe(false); // ban ngày VN → nghỉ
+    expect(inPostingWindow(at(19), cfg)).toBe(false);
+  });
+
+  it("khung thường (from < to)", () => {
+    const day = { ...cfg, hourFrom: 8, hourTo: 23 };
+    expect(inPostingWindow(at(7), day)).toBe(false);
+    expect(inPostingWindow(at(8), day)).toBe(true);
+    expect(inPostingWindow(at(22), day)).toBe(true);
+    expect(inPostingWindow(at(23), day)).toBe(false);
+    expect(inPostingWindow(at(3), day)).toBe(false);
+  });
+
+  it("from === to → đăng 24/7", () => {
+    const all = { ...cfg, hourFrom: 0, hourTo: 0 };
+    for (const h of [0, 5, 12, 18, 23]) expect(inPostingWindow(at(h), all)).toBe(true);
   });
 });

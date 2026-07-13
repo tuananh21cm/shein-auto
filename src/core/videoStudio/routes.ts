@@ -13,7 +13,7 @@ import { EditDb } from "../../services/tiktok/editDb";
 import { publishVideo } from "./publishVideo";
 import { buildCaption } from "./buildCaption";
 import {
-  publishStatus, runPublishTick, isAutoPublishOn, setAutoPublish, DEFAULT_SCHEDULER,
+  publishStatus, runPublishTick, isAutoPublishOn, setAutoPublish, loadPublishState,
 } from "./publishScheduler";
 
 /** Đăng 1 video ngay (nút "Đăng ngay" trên UI). Chạy nền, log ra SSE. */
@@ -129,7 +129,8 @@ export function registerVideoRoutes(app: express.Express): void {
   // Trạng thái quota từng shop + cờ auto
   app.get("/admin/api/videos/publish/status", (_req, res) => {
     try {
-      res.json({ auto: isAutoPublishOn(), cfg: DEFAULT_SCHEDULER, shops: publishStatus() });
+      const st = loadPublishState();
+      res.json({ auto: st.auto, cfg: st.cfg, shops: publishStatus(st.cfg) });
     } catch (e: any) { res.status(500).json({ error: e?.message ?? String(e) }); }
   });
 

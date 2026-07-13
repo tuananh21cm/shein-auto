@@ -9,6 +9,8 @@
  * Shop phải có Kiki profile (bảng shop_tiktok_profile — set ở tab TikTok Edit của admin).
  */
 import cron from "node-cron";
+import fs from "fs-extra";
+import path from "path";
 import { VideoDb } from "../../state/videoDb";
 import { EditDb } from "../../services/tiktok/editDb";
 import { publishVideo } from "./publishVideo";
@@ -22,12 +24,16 @@ export interface SchedulerConfig {
   hourTo: number;
 }
 
+/**
+ * Mặc định nhắm GIỜ VÀNG MỸ: 20h–9h giờ VN ≈ 9h–22h US East (shop bán TikTok US).
+ * Khung VẮT QUA NỬA ĐÊM (from > to) — inPostingWindow xử lý được.
+ */
 export const DEFAULT_SCHEDULER: SchedulerConfig = {
   perShopPerDay: 5,
   minGapMin: 120,   // ~2h giữa 2 video cùng shop
   jitterMin: 30,    // ± 30 phút để giờ đăng không đều tăm tắp
-  hourFrom: 8,
-  hourTo: 23,
+  hourFrom: 20,
+  hourTo: 9,
 };
 
 const DAY_MS = 86_400_000;
@@ -74,10 +80,16 @@ export function decideShop(args: {
   return { shop, eligible: true, postedToday, video: nextVideo };
 }
 
-/** Trong khung giờ cho phép đăng? */
+/**
+ * Trong khung giờ cho phép đăng?
+ * Hỗ trợ khung VẮT QUA NỬA ĐÊM (from > to, vd 20h→9h = giờ vàng Mỹ tính theo giờ VN).
+ * from === to → coi như đăng 24/7.
+ */
 export const inPostingWindow = (date: Date, cfg: SchedulerConfig): boolean => {
   const h = date.getHours();
-  return h >= cfg.hourFrom && h < cfg.hourTo;
+  if (cfg.hourFrom === cfg.hourTo) return true;            // 24/7
+  if (cfg.hourFrom < cfg.hourTo) return h >= cfg.hourFrom && h < cfg.hourTo;
+  return h >= cfg.hourFrom || h < cfg.hourTo;              // vắt qua nửa đêm
 };
 
 export interface TickResult {
@@ -171,29 +183,58 @@ export async function runPublishTick(opts: {
 
 /* ── Cron: mỗi 25 phút thức dậy 1 lần, tick sẽ tự lọc quota/giãn cách/khung giờ ── */
 
-let autoEnabled = false;
+/**
+ * Cờ auto + config LƯU RA FILE (không chỉ in-memory) → bật xong là chạy xuyên đêm,
+ * sống sót qua restart server.
+ */
+const STATE_FILE = path.join(process.cwd(), "data", "video-publish.json");
+
+interface PublishState { auto: boolean; cfg: SchedulerConfig }
+
+export function loadPublishState(): PublishState {
+  try {
+    const raw = fs.readJsonSync(STATE_FILE);
+    return { auto: !!raw.auto, cfg: { ...DEFAULT_SCHEDULER, ...(raw.cfg ?? {}) } };
+  } catch {
+    return { auto: false, cfg: { ...DEFAULT_SCHEDULER } };
+  }
+}
+
+export function savePublishState(s: Partial<PublishState>): PublishState {
+  const cur = loadPublishState();
+  const next: PublishState = { auto: s.auto ?? cur.auto, cfg: { ...cur.cfg, ...(s.cfg ?? {}) } };
+  fs.ensureDirSync(path.dirname(STATE_FILE));
+  fs.writeJsonSync(STATE_FILE, next, { spaces: 2 });
+  return next;
+}
+
 let ticking = false;
 
-export const isAutoPublishOn = (): boolean => autoEnabled;
+export const isAutoPublishOn = (): boolean => loadPublishState().auto;
 
 export function setAutoPublish(on: boolean): void {
-  autoEnabled = on;
+  savePublishState({ auto: on });
   console.log(`📅 Auto-publish video: ${on ? "BẬT" : "TẮT"}`);
 }
 
 export function schedulePublishCron(): void {
   cron.schedule("*/25 * * * *", async () => {
-    if (!autoEnabled || ticking) return;
+    const st = loadPublishState();
+    if (!st.auto || ticking) return;
     ticking = true;
     try {
-      await runPublishTick({ onLog: (m) => console.log(m) });
+      await runPublishTick({ cfg: st.cfg, onLog: (m) => console.log(m) });
     } catch (e: any) {
       console.error(`❌ [PublishTick] ${e?.message ?? e}`);
     } finally {
       ticking = false;
     }
   });
-  console.log("⏰ Cron auto-publish video đã đăng ký (mỗi 25′, mặc định TẮT — bật ở /admin/videos).");
+  const st = loadPublishState();
+  console.log(
+    `⏰ Cron auto-publish video đã đăng ký (mỗi 25′) — hiện ${st.auto ? "BẬT" : "TẮT"}, ` +
+    `khung ${st.cfg.hourFrom}h→${st.cfg.hourTo}h, ${st.cfg.perShopPerDay} video/shop/ngày.`
+  );
 }
 
 /** Trạng thái quota hiện tại của từng shop (cho UI). */

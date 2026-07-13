@@ -39,8 +39,15 @@ export function joinCandidatesWithListings(
   return { items, unmatched };
 }
 
+/** Trộn mảng (Fisher–Yates) — shop chưa có thống kê view thì chọn ngẫu nhiên. */
+function shuffle<T>(arr: T[]): T[] {
+  const a = arr.slice();
+  for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
+  return a;
+}
+
 export async function suggestProducts(shop: string, opts: { limit?: number } = {}): Promise<{
-  shop: string; latestDate: string | null; items: SuggestItem[]; unmatched: number;
+  shop: string; latestDate: string | null; items: SuggestItem[]; unmatched: number; mode: "signal" | "no-stats";
 }> {
   const limit = opts.limit ?? 50;
 
@@ -57,7 +64,6 @@ export async function suggestProducts(shop: string, opts: { limit?: number } = {
   const tdb = new TiktokDb();
   let cand;
   try { cand = tdb.getFlashCandidates(shop, { limit }); } finally { tdb.close(); }
-  if (!cand.candidates.length) return { shop, latestDate: cand.latestDate, items: [], unmatched: 0 };
 
   // 3. Index listing active theo productId (paginate hết)
   const index = new Map<string, ListingLite>();
@@ -73,13 +79,31 @@ export async function suggestProducts(shop: string, opts: { limit?: number } = {
     if ((res.records?.length ?? 0) < 100 || index.size >= (res.total ?? 0)) break;
   }
 
-  // 4. Join + cờ hasVideo
-  const { items, unmatched } = joinCandidatesWithListings(cand.candidates, index);
-  if (unmatched) console.warn(`⚠️ [Suggest] ${unmatched} sp có tín hiệu nhưng không còn active trên 4Seller (${shop})`);
   const vdb = new VideoDb();
   try {
+    // 4a. Shop CHƯA có thống kê view (mới thêm, chưa crawl) → vẫn gen được: lấy listing
+    // active NGẪU NHIÊN. Không có số thật nên hook social_proof sẽ dùng phrasing chung
+    // ("orders keep rolling in") thay vì bịa số cụ thể.
+    if (!cand.candidates.length) {
+      const pool = shuffle([...index.entries()]).slice(0, limit);
+      console.warn(`⚠️ [Suggest] ${shop}: chưa có data view → chọn NGẪU NHIÊN ${pool.length} listing active.`);
+      return {
+        shop, latestDate: cand.latestDate, unmatched: 0, mode: "no-stats",
+        items: pool.map(([productId, l]) => ({
+          productId, listingId: l.listingId, title: l.title,
+          thumb: (l.mainImage || "").split("|")[0] ?? "", mainImage: l.mainImage,
+          pv: 0, avgPerDay: 0, orders: 0, daysTracked: 0,
+          reasons: ["chưa có thống kê view"],
+          hasVideo: vdb.hasReadyVideo(productId),
+        })),
+      };
+    }
+
+    // 4b. Có tín hiệu → join bình thường
+    const { items, unmatched } = joinCandidatesWithListings(cand.candidates, index);
+    if (unmatched) console.warn(`⚠️ [Suggest] ${unmatched} sp có tín hiệu nhưng không còn active trên 4Seller (${shop})`);
     return {
-      shop, latestDate: cand.latestDate, unmatched,
+      shop, latestDate: cand.latestDate, unmatched, mode: "signal",
       items: items.map((it) => ({ ...it, hasVideo: vdb.hasReadyVideo(it.productId) })),
     };
   } finally { vdb.close(); }

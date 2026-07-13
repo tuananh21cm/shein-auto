@@ -22,13 +22,15 @@ const main = async () => {
 
   const tdb = new TiktokDb();
   const edb = new EditDb();
-  const tracked = tdb.listTrackedShops();
+  // Nguồn shop = shop CÓ DATA VIEW ∪ shop ĐÃ MAP Kiki profile. Shop mới (chưa crawl view)
+  // vẫn gen được — suggestProducts fallback sang chọn listing active ngẫu nhiên.
+  const pool = [...new Set([...tdb.listTrackedShops(), ...edb.allProfiles().map((p) => p.shop)])];
   tdb.close();
 
   // Lọc theo --shops (khớp chuỗi con, không phân biệt hoa thường)
   const shops = filter.length
-    ? tracked.filter((s) => filter.some((f) => s.toLowerCase().includes(f.toLowerCase())))
-    : tracked;
+    ? pool.filter((s) => filter.some((f) => s.toLowerCase().includes(f.toLowerCase())))
+    : pool;
 
   console.log(`🎬 Gen tối đa ${count} video/shop cho ${shops.length} shop\n`);
   let totalQueued = 0;

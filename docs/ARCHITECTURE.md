@@ -442,3 +442,13 @@ Khi init lần đầu, tự động import từ JSON files cũ (`admin-config.js
 6. **Debug**: headless=false giữ browser mở 30s khi lỗi để inspect manual
 7. **Screenshots**: Chụp screenshot khi fatal error, lưu path trong error log
 8. **Telegram**: Chỉ notify khi fail — không spam khi success
+
+## Video Studio (2026-07)
+
+Module gen video TikTok từ ảnh sản phẩm 4Seller — spec: `docs/superpowers/specs/2026-07-13-video-studio-design.md`.
+
+**Luồng:** `listing_views` (tín hiệu view/sold) → đề xuất SP tiềm năng (`suggestProducts`, tái dùng getFlashCandidates) → kéo ảnh 4Seller (`fetchImages`: getListingDetail + sharp 1080x1920 + remakeImage chống trùng) → Gemini gen script theo 1 trong 6 kịch bản hook A/B (`genVideoScript` + HOOK_STYLES; social_proof bơm số THẬT pv/orders 28d) → Edge TTS free (`services/tts/edgeTts`, word timestamps) → caption `.ass` sync (`buildAss`) → FFmpeg zoompan/xfade render 9:16 (`renderPlan` + `renderVideo`, ~20-30s/video) → quản lý tại `/admin/videos` (đề xuất, preview, download, đánh dấu đã đăng, retry). KHÔNG auto-post.
+
+**Vị trí code:** `src/core/videoStudio/` (queue, render, routes) · `src/services/tts/` · `src/state/videoDb.ts` (SQLite `data/videos.db`, status: queued→generating→ready|error, ready→posted).
+
+**Data:** video ra `data/videos/<shop>/<productId>_<id>.mp4`; ảnh cache `data/videos/assets/<productId>/`; nhạc nền user tự bỏ vào `data/videos/music/*.mp3` (rỗng = chỉ voice). Smoke test: `npx tsx src/scripts/testVideoRender.ts --variant=all`.

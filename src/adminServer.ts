@@ -25,6 +25,7 @@ import { processFile } from "./queue/queueManager";
 import { runPodRouterOnce, ingestPodDesign } from "./queue/podRouter";
 import { resolvePodMaterialDir } from "./core/pod/buildPodListing";
 import { crawlImages } from "./core/imageCrawler/crawlImages";
+import { registerVideoRoutes } from "./core/videoStudio/routes";
 import crypto from "crypto";
 import { eventBus } from "./state/eventBus";
 import { workerConfig, reloadAppConfig } from "./config/appConfig";
@@ -140,6 +141,14 @@ export const startAdminServer = async () => {
     }
     return res.redirect("/admin/login");
   });
+
+  app.get("/admin/videos", (req, res) => {
+    if (req.session && (req.session as any).user) {
+      return res.sendFile(path.join(__dirname, "public", "videos.html"));
+    }
+    return res.redirect("/admin/login");
+  });
+  registerVideoRoutes(app);
 
   // ── Auth ──────────────────────────────────────────────────
   app.post("/admin/api/auth/login", async (req, res) => {
@@ -486,11 +495,14 @@ export const startAdminServer = async () => {
       }
       const timestamp = Date.now();
       const written: { shop: string; file: string }[] = [];
+      const refused: string[] = [];
       console.log(`📥 [INGEST] user=${user.username} shops=${JSON.stringify(shops)} timestamp=${timestamp}`);
       for (const shop of shops) {
-        // Defensive: chặn path traversal (shop chứa / hoặc \ hoặc ..)
+        // Defensive: chặn path traversal (shop chứa / hoặc \ hoặc ..). Tên shop = tên folder →
+        // KHÔNG được có ký tự path. Vd "TN Scan 11 - 21/6 - beckyb.shop_US" có "/" ở "21/6".
         if (/[\/\\]|\.\./.test(shop)) {
           console.warn(`⚠️ [INGEST] Refused shop name with path chars: "${shop}"`);
+          refused.push(shop);
           continue;
         }
         const folderPath = path.join(dirs.baseSheinAutoDir, shop);
@@ -501,9 +513,18 @@ export const startAdminServer = async () => {
         console.log(`📥 [INGEST] Wrote: ${fullPath}`);
         written.push({ shop, file: fileName });
       }
+      // KHÔNG ghi được shop nào (tên shop toàn ký tự path) → BÁO LỖI RÕ thay vì ok im lặng
+      // (trước đây trả ok:true + queued:[] → user tưởng thành công mà data mất trắng).
+      if (written.length === 0) {
+        return res.status(400).json({
+          error: `Không lưu được: tên shop chứa ký tự không hợp lệ (/ \\ ..): ${refused.join(", ")}. ` +
+            `Đổi tên shop bỏ dấu "/" (vd "21/6" → "21-6") rồi cào lại.`,
+          refused,
+        });
+      }
       // Refresh queue snapshot để dashboard cập nhật
       refreshQueueSnapshot().catch(() => {});
-      res.json({ ok: true, queued: written, ts: timestamp });
+      res.json({ ok: true, queued: written, refused, ts: timestamp });
     } catch (err: any) {
       res.status(500).json({ error: err?.message ?? "Lỗi ingest" });
     }
@@ -565,9 +586,11 @@ export const startAdminServer = async () => {
       );
       const now = Date.now();
       const perShop: Record<string, { added: number; skipped: number }> = {};
+      const refused: string[] = [];
       const tx = db.transaction(() => {
         for (const shop of shops) {
-          if (/[\/\\]|\.\./.test(shop)) continue;
+          // Tên shop chứa ký tự path (vd "21/6") → không hợp lệ làm key/folder → bỏ, báo lại.
+          if (/[\/\\]|\.\./.test(shop)) { refused.push(shop); continue; }
           const niche = nicheByShop.get(shop) ?? null;
           let added = 0;
           for (const c of clean) {
@@ -579,12 +602,20 @@ export const startAdminServer = async () => {
         }
       });
       tx();
+      // Mọi shop bị từ chối (tên có ký tự path) → báo lỗi rõ, không im lặng.
+      if (Object.keys(perShop).length === 0 && refused.length > 0) {
+        return res.status(400).json({
+          error: `Không đẩy được: tên shop chứa ký tự không hợp lệ (/ \\ ..): ${refused.join(", ")}. ` +
+            `Đổi tên shop bỏ dấu "/" (vd "21/6" → "21-6") rồi thử lại.`,
+          refused,
+        });
+      }
       const totalAdded = Object.values(perShop).reduce((s, v) => s + v.added, 0);
       console.log(
-        `🔗 [INGEST-LINKS] user=${user.username} shops=${shops.join(",")} received=${links.length} valid=${clean.length} added=${totalAdded}`
+        `🔗 [INGEST-LINKS] user=${user.username} shops=${shops.join(",")} received=${links.length} valid=${clean.length} added=${totalAdded}${refused.length ? ` refused=${refused.join(",")}` : ""}`
       );
       refreshQueueSnapshot().catch(() => {});
-      res.json({ ok: true, received: links.length, valid: clean.length, perShop });
+      res.json({ ok: true, received: links.length, valid: clean.length, perShop, refused });
     } catch (err: any) {
       res.status(500).json({ error: err?.message ?? "Lỗi ingest links" });
     }
@@ -829,6 +860,33 @@ export const startAdminServer = async () => {
     }
   });
 
+  // Chạy AUTO FLASH mọi shop (thủ công từ UI): shop hết flash → tạo flash mới. dryRun=xem trước.
+  let flashUiRunning = false;
+  app.post("/admin/api/flash/run", async (req, res) => {
+    try {
+      const sessionUser = (req.session as any).user as SessionUser;
+      if (sessionUser.role === "viewer") return res.status(403).json({ error: "Viewer không thể chạy flash" });
+      const { dryRun, minGapMinutes } = req.body as { dryRun?: boolean; minGapMinutes?: number };
+      if (flashUiRunning) return res.status(409).json({ error: "Đang chạy flash — chờ xong rồi thử lại." });
+      flashUiRunning = true;
+      try {
+        const { autoFlashAllShops } = await import("./core/flashDeal");
+        // dryRun cho xem TẤT CẢ shop hết flash (bỏ minGap/cooldown để preview đầy đủ)
+        const r = await autoFlashAllShops({
+          dryRun: !!dryRun,
+          minGapMinutes: dryRun ? 0 : minGapMinutes,
+          cooldownMinutes: dryRun ? 0 : undefined,
+          onLog: (m) => console.log("[flash-ui]", m),
+        });
+        res.json({ ok: true, ...r });
+      } finally {
+        flashUiRunning = false;
+      }
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? "Lỗi chạy flash" });
+    }
+  });
+
   // Kéo thêm data SHEIN từ RapidAPI cho 1 shop theo NGÁCH của shop → chấm điểm → đổ sp
   // ĐẠT ngưỡng vào uncrawl queue (loại trừ data đã có). KHÔNG kéo bừa.
   app.post("/admin/api/uncrawled/pull-more", async (req, res) => {
@@ -851,6 +909,32 @@ export const startAdminServer = async () => {
       res.json({ ok: true, ...result });
     } catch (err: any) {
       res.status(500).json({ error: err?.message ?? "Lỗi kéo data" });
+    }
+  });
+
+  // Kéo thêm data bằng CHROME cho 1 shop: Gemini sinh keyword theo ngách → search SHEIN qua
+  // Chrome (có review/rating → chấm điểm mạnh) → đổ sp đạt ngưỡng + giá < maxPriceUsd vào uncrawl,
+  // tới khi shop đủ targetListingsPerShop (config/harvest.json). Tự bật Chrome. Chrome chỉ chạy
+  // 1 phiên/lần → guard chống chạy song song (với cả cron harvester + auto-crawler).
+  let harvestChromeRunning = false;
+  app.post("/admin/api/uncrawled/harvest-chrome", async (req, res) => {
+    try {
+      const sessionUser = (req.session as any).user as SessionUser;
+      if (sessionUser.role === "viewer") return res.status(403).json({ error: "Viewer không thể kéo data" });
+      const { shop } = req.body as { shop?: string };
+      if (!shop || !shop.trim()) return res.status(400).json({ error: "Thiếu shop" });
+      if (harvestChromeRunning) return res.status(409).json({ error: "Đang có phiên kéo Chrome chạy — chờ xong rồi thử lại." });
+      harvestChromeRunning = true;
+      try {
+        const { runHarvestCycle } = await import("./core/linkHarvester");
+        const result = await runHarvestCycle({ onlyShops: [shop.trim()], onLog: (m) => console.log("[harvest-chrome-ui]", m) });
+        if (result.inserted > 0) refreshQueueSnapshot().catch(() => {});
+        res.json({ ok: true, inserted: result.inserted, shops: result.shops, perShop: result.perShop });
+      } finally {
+        harvestChromeRunning = false;
+      }
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? "Lỗi kéo Chrome" });
     }
   });
 
@@ -1676,6 +1760,71 @@ export const startAdminServer = async () => {
       }
     } catch (err: any) {
       res.status(500).json({ error: err?.message ?? "Lỗi load listing views" });
+    }
+  });
+
+  // Listing "lên cực chậm" của 1 shop (ứng viên xóa): view thấp + tăng gần 0 qua ≥minDays ngày + 0 đơn.
+  app.get("/admin/api/tiktok/slow-listings", async (req, res) => {
+    try {
+      const shop = ((req.query.shop as string) || "").trim();
+      if (!shop) return res.status(400).json({ error: "Thiếu shop" });
+      const numOr = (v: any, d: number) => { const n = Number(v); return Number.isFinite(n) && n >= 0 ? n : d; };
+      const opts = {
+        maxPv: numOr(req.query.maxPv, 30),
+        minDays: numOr(req.query.minDays, 7),
+        maxAvgPerDay: numOr(req.query.maxPerDay, 2),
+      };
+      const { TiktokDb } = await import("./services/tiktok/db");
+      const tdb = new TiktokDb();
+      try {
+        res.json(tdb.getSlowGrowthListings(shop, opts));
+      } finally {
+        tdb.close();
+      }
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? "Lỗi load listing lên chậm" });
+    }
+  });
+
+  // Preview sp sẽ đưa vào FLASH của 1 shop (top-view ∪ đang lên ∪ có đơn, né 7d-tăng-ít, cap ~30).
+  app.get("/admin/api/tiktok/flash-candidates", async (req, res) => {
+    try {
+      const shop = ((req.query.shop as string) || "").trim();
+      if (!shop) return res.status(400).json({ error: "Thiếu shop" });
+      const numOr = (v: any, d: number) => { const n = Number(v); return Number.isFinite(n) && n > 0 ? n : d; };
+      const opts = { limit: numOr(req.query.limit, 30), risingPerDay: numOr(req.query.risingPerDay, 15), topViewPv: numOr(req.query.topViewPv, 500) };
+      const { TiktokDb } = await import("./services/tiktok/db");
+      const tdb = new TiktokDb();
+      try {
+        res.json(tdb.getFlashCandidates(shop, opts));
+      } finally {
+        tdb.close();
+      }
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? "Lỗi load flash candidates" });
+    }
+  });
+
+  // Listing "view đang lên" của 1 shop: tăng view nhanh → scale/quảng cáo/bổ hàng.
+  app.get("/admin/api/tiktok/rising-listings", async (req, res) => {
+    try {
+      const shop = ((req.query.shop as string) || "").trim();
+      if (!shop) return res.status(400).json({ error: "Thiếu shop" });
+      const numOr = (v: any, d: number) => { const n = Number(v); return Number.isFinite(n) && n >= 0 ? n : d; };
+      const opts = {
+        minAvgPerDay: numOr(req.query.minPerDay, 15),
+        minDays: numOr(req.query.minDays, 2),
+        lowStockAt: numOr(req.query.lowStockAt, 20),
+      };
+      const { TiktokDb } = await import("./services/tiktok/db");
+      const tdb = new TiktokDb();
+      try {
+        res.json(tdb.getRisingListings(shop, opts));
+      } finally {
+        tdb.close();
+      }
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? "Lỗi load listing đang lên" });
     }
   });
 

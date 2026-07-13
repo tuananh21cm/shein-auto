@@ -294,10 +294,156 @@ export class TiktokDb {
     return { latestDate, prevDate, weekDate, rows };
   }
 
+  /**
+   * Helper CHUNG: mỗi listing ở snapshot mới nhất kèm đà tăng view tính từ ngày ĐẦU track.
+   * avgPerDay = (pv_nay − pv_ngày_đầu)/số_ngày (pv là cửa sổ trượt 28d → đây là đà thật).
+   * Dùng cho cả getSlowGrowthListings (chậm→xóa) và getRisingListings (lên→scale).
+   */
+  private listingGrowthRows(shop: string | null): {
+    latestDate: string | null; historyDays: number;
+    rows: {
+      productId: string; productName: string; pv: number; firstPv: number; growth: number;
+      avgPerDay: number; daysTracked: number; orders: number; stock: number | null; firstDate: string;
+    }[];
+  } {
+    const key = shop ?? "";
+    const dates = (this.db
+      .prepare(`SELECT DISTINCT run_date FROM listing_views WHERE shop=? COLLATE NOCASE ORDER BY run_date DESC`)
+      .all(key) as { run_date: string }[]).map((r) => r.run_date);
+    if (!dates.length) return { latestDate: null, historyDays: 0, rows: [] };
+    const latest = dates[0];
+    const dayMs = 86_400_000;
+    const tLatest = Date.parse(latest + "T00:00:00Z");
+    const latestRows = this.db
+      .prepare(`SELECT product_id, product_name, pv_28d, orders_28d, stock FROM listing_views WHERE shop=? COLLATE NOCASE AND run_date=?`)
+      .all(key, latest) as any[];
+    const firstStmt = this.db.prepare(
+      `SELECT run_date, pv_28d FROM listing_views WHERE shop=? COLLATE NOCASE AND product_id=? ORDER BY run_date LIMIT 1`
+    );
+    const rows = [] as any[];
+    for (const r of latestRows) {
+      const first = firstStmt.get(key, r.product_id) as any;
+      if (!first) continue;
+      const daysTracked = Math.round((tLatest - Date.parse(first.run_date + "T00:00:00Z")) / dayMs);
+      const pv = r.pv_28d ?? 0;
+      const firstPv = first.pv_28d ?? 0;
+      const growth = pv - firstPv;
+      rows.push({
+        productId: r.product_id, productName: r.product_name ?? "", pv, firstPv, growth,
+        avgPerDay: Math.round((daysTracked >= 1 ? growth / daysTracked : growth) * 10) / 10,
+        daysTracked, orders: r.orders_28d ?? 0, stock: r.stock ?? null, firstDate: first.run_date,
+      });
+    }
+    return { latestDate: latest, historyDays: dates.length, rows };
+  }
+
+  /**
+   * Listing "lên CỰC CHẬM" của 1 shop — ứng viên xóa. Tiêu chí (đều chỉnh được):
+   *   - đã THEO DÕI ≥ minDays ngày (tránh giết sp mới list chưa kịp ramp) — QUAN TRỌNG NHẤT.
+   *   - view 28d ≤ maxPv · tốc độ tăng TB ≤ maxAvgPerDay/ngày (đứng im) · orders_28d = 0.
+   * Trả kèm daysTracked + ngày đầu để user tự cân nhắc trước khi xóa (KHÔNG tự xóa).
+   */
+  getSlowGrowthListings(
+    shop: string | null,
+    opts: { maxPv?: number; minDays?: number; maxAvgPerDay?: number } = {}
+  ): {
+    latestDate: string | null; minDays: number; maxPv: number; maxAvgPerDay: number; historyDays: number;
+    candidates: any[];
+  } {
+    const maxPv = opts.maxPv ?? 30;
+    const minDays = opts.minDays ?? 7;
+    const maxAvgPerDay = opts.maxAvgPerDay ?? 2;
+    const g = this.listingGrowthRows(shop);
+    const candidates = g.rows
+      .filter((r) => r.daysTracked >= minDays && r.pv <= maxPv && r.orders === 0 && r.avgPerDay <= maxAvgPerDay)
+      .sort((a, b) => a.pv - b.pv || a.avgPerDay - b.avgPerDay); // "chết" nhất trước
+    return { latestDate: g.latestDate, minDays, maxPv, maxAvgPerDay, historyDays: g.historyDays, candidates };
+  }
+
+  /**
+   * Listing "VIEW ĐANG LÊN" của 1 shop — để scale/quảng cáo/bổ hàng. Tiêu chí (chỉnh được):
+   *   - đã theo dõi ≥ minDays ngày (đà tin cậy, mặc định thấp 2 để bắt sớm).
+   *   - tốc độ tăng view TB ≥ minAvgPerDay/ngày.
+   * Kèm cờ: converting (có đơn → nên scale) / lowStock (tồn ≤ lowStockAt → bổ hàng gấp kẻo mất sale
+   * lúc đang hot). Sắp theo đà tăng mạnh nhất. Kèm summary để thống kê nhanh.
+   */
+  getRisingListings(
+    shop: string | null,
+    opts: { minAvgPerDay?: number; minDays?: number; lowStockAt?: number } = {}
+  ): {
+    latestDate: string | null; minDays: number; minAvgPerDay: number; lowStockAt: number; historyDays: number;
+    summary: { total: number; converting: number; lowStock: number };
+    risers: any[];
+  } {
+    const minAvgPerDay = opts.minAvgPerDay ?? 15;
+    const minDays = opts.minDays ?? 2;
+    const lowStockAt = opts.lowStockAt ?? 20;
+    const g = this.listingGrowthRows(shop);
+    const risers = g.rows
+      .filter((r) => r.daysTracked >= minDays && r.avgPerDay >= minAvgPerDay)
+      .map((r) => ({ ...r, converting: r.orders > 0, lowStock: r.stock != null && r.stock <= lowStockAt }))
+      .sort((a, b) => b.avgPerDay - a.avgPerDay); // lên mạnh nhất trước
+    const summary = {
+      total: risers.length,
+      converting: risers.filter((r) => r.converting).length,
+      lowStock: risers.filter((r) => r.lowStock).length,
+    };
+    return { latestDate: g.latestDate, minDays, minAvgPerDay, lowStockAt, historyDays: g.historyDays, summary, risers };
+  }
+
+  /**
+   * Chọn sản phẩm ĐƯA VÀO FLASH của 1 shop (bước 7 quy trình flash). Tiêu chí (theo yêu cầu):
+   *   - GIỮ sp có ÍT NHẤT 1 tín hiệu: "có đơn" (orders_28d>0) HOẶC "đang lên" (avgPerDay≥risingPerDay)
+   *     HOẶC "nhiều view" (pv_28d≥topViewPv).
+   *   - → tự động NÉ sp "7 ngày tăng view ít" (không tín hiệu nào) — chúng bị loại vì reasons rỗng.
+   * Sắp ưu tiên: có đơn trước → đà tăng mạnh → view cao. Cap `limit` (mặc định 30).
+   * Trả product_id (khớp id trong màn Select Products của flash) + lý do chọn để minh bạch.
+   */
+  getFlashCandidates(
+    shop: string | null,
+    opts: { limit?: number; risingPerDay?: number; topViewPv?: number } = {}
+  ): {
+    latestDate: string | null; historyDays: number; limit: number; total: number;
+    candidates: {
+      productId: string; productName: string; pv: number; avgPerDay: number; daysTracked: number;
+      orders: number; stock: number | null; converting: boolean; reasons: string[];
+    }[];
+  } {
+    const limit = opts.limit ?? 30;
+    const risingPerDay = opts.risingPerDay ?? 15;
+    const topViewPv = opts.topViewPv ?? 500;
+    const g = this.listingGrowthRows(shop);
+    const qualified = g.rows
+      .map((r) => {
+        const reasons: string[] = [];
+        if (r.orders > 0) reasons.push("có đơn");
+        if (r.avgPerDay >= risingPerDay) reasons.push("đang lên");
+        if (r.pv >= topViewPv) reasons.push("nhiều view");
+        return { ...r, converting: r.orders > 0, reasons };
+      })
+      .filter((r) => r.reasons.length > 0) // ≥1 tín hiệu → né sp 7d-tăng-ít (không tín hiệu)
+      // có đơn trước → đà mạnh → view cao
+      .sort((a, b) => (b.converting ? 1 : 0) - (a.converting ? 1 : 0) || b.avgPerDay - a.avgPerDay || b.pv - a.pv);
+    return {
+      latestDate: g.latestDate, historyDays: g.historyDays, limit, total: qualified.length,
+      candidates: qualified.slice(0, limit).map((r) => ({
+        productId: r.productId, productName: r.productName, pv: r.pv, avgPerDay: r.avgPerDay,
+        daysTracked: r.daysTracked, orders: r.orders, stock: r.stock, converting: r.converting, reasons: r.reasons,
+      })),
+    };
+  }
+
   getAlertsByRun(runId: number): AnalysisAlert[] {
     return this.db
       .prepare(`SELECT severity, title, detail, action FROM alerts WHERE run_id = ?`)
       .all(runId) as AnalysisAlert[];
+  }
+
+  /** Danh sách shop có data listing_views (dropdown Video Studio). */
+  listTrackedShops(): string[] {
+    return (this.db
+      .prepare(`SELECT DISTINCT shop FROM listing_views WHERE shop != '' ORDER BY shop`)
+      .all() as { shop: string }[]).map((r) => r.shop);
   }
 
   close(): void {

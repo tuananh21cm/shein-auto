@@ -81,6 +81,40 @@ async function waitCaptcha(page: any, log: (m: string) => void): Promise<void> {
   throw new Error("Captcha không được giải trong thời gian chờ");
 }
 
+/**
+ * Đóng modal HTML "Are you sure you want to exit?" của TikTok (KHÔNG phải native dialog
+ * nên page.on("dialog") không bắt được) — backdrop của nó chặn pointer-events, che nút Post.
+ *
+ * BẤM "Cancel" — TUYỆT ĐỐI KHÔNG bấm "Exit": Exit = rời trang, MẤT TOÀN BỘ bài đang soạn
+ * ("Your progress and changes will not be saved").
+ */
+async function dismissExitModal(page: any, log: (m: string) => void): Promise<void> {
+  const visible = await page.locator('text=/Are you sure you want to exit/i').first()
+    .isVisible({ timeout: 2500 }).catch(() => false);
+  if (!visible) return;
+  await page.locator('button, div[role="button"]').filter({ hasText: /^Cancel$/ }).first()
+    .click({ timeout: 8000 }).catch(() => {});
+  log(`   ✓ Đã đóng modal exit (bấm Cancel — giữ nguyên bài đang soạn)`);
+  await sleep(1500);
+}
+
+/** Chờ mọi backdrop modal tan hết — backdrop chặn pointer-events làm click hụt. */
+async function waitNoBackdrop(page: any, timeoutMs = 30_000): Promise<boolean> {
+  const t0 = Date.now();
+  while (Date.now() - t0 < timeoutMs) {
+    const blocked = await page.evaluate(() =>
+      [...document.querySelectorAll('[class*="TUXModal-backdrop"], [class*="modal-backdrop" i]')]
+        .some((el) => {
+          const r = (el as HTMLElement).getBoundingClientRect();
+          return r.width > 50 && r.height > 50 && getComputedStyle(el as HTMLElement).display !== "none";
+        })
+    ).catch(() => false);
+    if (!blocked) return true;
+    await sleep(1000);
+  }
+  return false;
+}
+
 async function shot(page: any, videoId: number, step: string): Promise<string> {
   await fs.ensureDir(SHOT_DIR);
   const file = path.join(SHOT_DIR, `publish-${videoId}-${step}-${Date.now()}.png`);
@@ -157,6 +191,9 @@ export async function publishVideo(opts: PublishOptions): Promise<PublishResult>
   const browser = await chromium.connectOverCDP(started.websocketDebuggerUrl);
   const ctx = browser.contexts()[0] ?? (await browser.newContext());
   const page = ctx.pages()[0] ?? (await ctx.newPage());
+  // TikTok chặn rời trang bằng dialog "Are you sure you want to exit?" khi còn thay đổi
+  // chưa lưu → dialog này giữ browser không đóng được, profile Kiki kẹt ở trạng thái "bận".
+  page.on("dialog", (d: any) => d.accept().catch(() => {}));
 
   let step = "open";
   const result: PublishResult = { posted: false, dryRun: !!opts.dryRun, productLinked: false, caption: opts.caption };
@@ -166,6 +203,8 @@ export async function publishVideo(opts: PublishOptions): Promise<PublishResult>
     log(`📤 [1] Mở TikTok Studio upload…`);
     await page.goto(UPLOAD_URL, { waitUntil: "domcontentloaded", timeout: 60_000 });
     await sleep(3000);
+    // Kiki khôi phục tab upload dang dở của lần trước → TikTok chặn điều hướng bằng modal exit
+    await dismissExitModal(page, log);
     await waitCaptcha(page, log);
 
     // Profile Kiki có thể CHƯA login tiktok.com (login Seller Center là phiên KHÁC).
@@ -214,9 +253,10 @@ export async function publishVideo(opts: PublishOptions): Promise<PublishResult>
     } else {
       step = "add-link";
       log(`🔗 [5] Add link → chọn sản phẩm ${opts.productId}…`);
-      // Nút "+ Add" nằm dưới label "Add link" (KHÔNG dùng :has-text("Add") chung — trùng nút khác)
-      const addBtn = page.locator('button:has-text("Add"), div[role="button"]:has-text("Add")')
-        .filter({ hasNotText: /Add link/i }).first();
+      // Nút "+ Add" dưới label "Add link". EXACT "^\+?\s*Add$" — has-text("Add") khớp
+      // substring nên dính cả "Add link" / "Add product links".
+      const addBtn = page.locator('button, div[role="button"]')
+        .filter({ hasText: /^\+?\s*Add$/ }).first();
       await addBtn.scrollIntoViewIfNeeded().catch(() => {});
       await addBtn.click({ timeout: 15_000 });
       await sleep(1200);
@@ -256,9 +296,14 @@ export async function publishVideo(opts: PublishOptions): Promise<PublishResult>
 
       step = "confirm-add";
       // [9] Dialog "Product name" → Add
-      await page.locator('button:has-text("Add")').last().click({ timeout: 20_000 });
+      await page.locator('button').filter({ hasText: /^Add$/ }).last().click({ timeout: 20_000 });
       log(`   ✓ [9] Add — chờ gắn link…`);
       await sleep(5000);
+      // Xác nhận sản phẩm ĐÃ gắn thật (tag hiện cạnh nút + Add) — không thì Post ra video
+      // không có giỏ hàng.
+      const linked = await page.locator(`text=/${opts.productId}/`).first().isVisible().catch(() => false)
+        || await page.locator('[class*="product" i], [class*="anchor" i]').first().isVisible().catch(() => false);
+      if (!linked) log(`   ⚠️ Không xác nhận được tag sản phẩm — kiểm tra lại sau khi đăng.`);
       result.productLinked = true;
     }
 
@@ -273,18 +318,60 @@ export async function publishVideo(opts: PublishOptions): Promise<PublishResult>
       return result;
     }
     log(`🚀 [10] Post…`);
-    await page.locator('button:has-text("Post")').first().click({ timeout: 20_000 });
-    // Xác nhận đăng: TikTok chuyển sang trang Posts / hiện toast thành công
-    await page.locator('text=/Your video is being uploaded|Manage your posts|posted|Post scheduled/i')
-      .first().waitFor({ state: "visible", timeout: 90_000 })
-      .catch(async () => {
-        // Không thấy confirm rõ ràng → check URL đổi khỏi trang upload
-        await sleep(8000);
-        if (/\/upload/i.test(page.url())) {
-          const f = await shot(page, opts.videoId, "post-no-confirm");
-          throw new Error(`Bấm Post nhưng không thấy xác nhận đăng. Screenshot: ${f}`);
-        }
-      });
+    // Dọn sạch modal/backdrop còn sót (dialog gắn sản phẩm, modal exit) — backdrop che nút Post.
+    await dismissExitModal(page, log);
+    if (!(await waitNoBackdrop(page))) {
+      const f = await shot(page, opts.videoId, "backdrop-stuck");
+      throw new Error(`Có modal che nút Post không tự đóng sau 30s. Screenshot: ${f}`);
+    }
+    // EXACT match "^Post$" — `has-text("Post")` khớp substring nên dính nút menu "Posts"
+    // ở sidebar (đứng trước trong DOM) → click nhầm = điều hướng đi + hiện modal exit.
+    const postBtn = page.locator('button').filter({ hasText: /^Post$/ }).last();
+    await postBtn.waitFor({ state: "visible", timeout: 20_000 });
+
+    // TikTok chạy "Checks" (music copyright + content check) sau khi gắn sản phẩm và
+    // GIỮ NÚT POST DISABLED trong lúc đó → click ngay là click hụt (đã thấy thật: video
+    // không lên, trang vẫn ở /upload). Chờ nút thực sự bấm được.
+    log(`   ⏳ Chờ nút Post sẵn sàng (TikTok đang chạy checks)…`);
+    const enabled = async (): Promise<boolean> =>
+      postBtn.evaluate((el: HTMLButtonElement) => {
+        const st = getComputedStyle(el);
+        return !el.disabled
+          && el.getAttribute("aria-disabled") !== "true"
+          && !/disabled/i.test(el.className)
+          && st.pointerEvents !== "none";
+      }).catch(() => false);
+
+    const t0 = Date.now();
+    while (Date.now() - t0 < 120_000) {
+      if (await enabled()) break;
+      await sleep(2000);
+    }
+    if (!(await enabled())) {
+      const f = await shot(page, opts.videoId, "post-btn-disabled");
+      throw new Error(`Nút Post vẫn disabled sau 120s (checks chưa xong?). Screenshot: ${f}`);
+    }
+
+    // Click + verify THẬT: trang phải rời khỏi /upload. Thử tối đa 2 lần.
+    let left = false;
+    for (let attempt = 1; attempt <= 2 && !left; attempt++) {
+      await postBtn.scrollIntoViewIfNeeded().catch(() => {});
+      await postBtn.click({ timeout: 20_000 });
+      log(`   ✓ Đã bấm Post (lần ${attempt}) — chờ xác nhận…`);
+      const tc = Date.now();
+      while (Date.now() - tc < 60_000) {
+        await sleep(2000);
+        if (!/\/upload/i.test(page.url())) { left = true; break; }
+        const ok = await page.locator('text=/Your video is being uploaded|Manage your posts|Post scheduled/i')
+          .first().isVisible().catch(() => false);
+        if (ok) { left = true; break; }
+      }
+    }
+    if (!left) {
+      const f = await shot(page, opts.videoId, "post-no-confirm");
+      throw new Error(`Bấm Post nhưng video không lên (trang vẫn ở /upload). Screenshot: ${f}`);
+    }
+
     result.posted = true;
     log(`✅ Đăng thành công video #${opts.videoId}`);
     return result;

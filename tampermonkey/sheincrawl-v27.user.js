@@ -1,5 +1,5 @@
 // ==UserScript==
-// @name         SHEIN Scraper v27 - Direct API + SSE + Background
+// @name         SHEIN Scraper v28 - Direct API + SSE + Background
 // @namespace    http://tampermonkey.net/
 // @version      28.1.0
 // @description  Cào SHEIN → POST thẳng lên shein-auto worker. Sync profile từ server. Realtime SSE. Detect out-of-stock per (color × size). Background tab vẫn cào nhờ silent audio.

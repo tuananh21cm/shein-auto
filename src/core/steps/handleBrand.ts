@@ -6,7 +6,12 @@ export const handleBrand = async (page: any, brandName: string): Promise<void> =
   );
   await brandTrigger.click();
 
-  const popper = page.locator(".el-select__popper.create_select_box");
+  // Element Plus GIỮ LẠI popper cũ trong DOM (aria-hidden="true", data-popper-escaped)
+  // bên cạnh popper đang mở (aria-hidden="false") → selector khớp 2 element →
+  // strict mode violation. Chỉ lấy popper ĐANG MỞ.
+  const popper = page
+    .locator('.el-select__popper.create_select_box:not([aria-hidden="true"])')
+    .first();
   await popper.waitFor({ state: "visible", timeout: 5000 });
 
   if (!brandName || brandName.trim() === "") {

@@ -1,0 +1,10 @@
+{
+  "auto": true,
+  "cfg": {
+    "perShopPerDay": 5,
+    "minGapMin": 120,
+    "jitterMin": 30,
+    "hourFrom": 20,
+    "hourTo": 9
+  }
+}

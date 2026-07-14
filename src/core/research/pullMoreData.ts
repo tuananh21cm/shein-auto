@@ -15,7 +15,7 @@ import { getDb } from "../../state/db";
 import { searchProducts, recommendedProducts } from "../../services/shein/client";
 import { scoreWin, type WinScored } from "../winScore";
 import { rollupNiche } from "./nicheScore";
-import { isKidsProduct } from "./fashionFilter";
+import { isKidsProduct, isPackProduct } from "./fashionFilter";
 import { matchNicheDemand } from "./demandFit";
 import { scoreOpportunity } from "./opportunityScore";
 import { researchConfig } from "../../config/appConfig";
@@ -30,6 +30,8 @@ export interface PullMoreOpts {
   resetCursor?: boolean;     // true = kéo lại từ trang 1 (bỏ con trỏ)
   useRecommended?: boolean;  // true (default) = thêm nguồn recommendedProducts từ winner của shop
   dryRun?: boolean;          // chấm + báo cáo nhưng KHÔNG insert
+  maxPriceUsd?: number;      // chỉ nạp sp giá bán < ngưỡng (USD). Bỏ trống = không lọc giá.
+  maxInsert?: number;        // trần số sp insert lần này (để không vượt mục tiêu/shop). Bỏ trống = không trần.
   onLog?: (m: string) => void;
 }
 
@@ -78,6 +80,12 @@ export async function pullMoreForShop(opts: PullMoreOpts): Promise<PullMoreResul
   const perPage = Math.min(Math.max(opts.perPage ?? cfg.perNichePerPage ?? 40, 10), 60);
   const minOpp = opts.minOpportunity ?? cfg.candidate?.minOpportunity ?? 55;
   const useRecommended = opts.useRecommended !== false;
+  const maxPrice = typeof opts.maxPriceUsd === "number" && opts.maxPriceUsd > 0 ? opts.maxPriceUsd : Infinity;
+  // Giá không rõ (null) mà đang giới hạn giá → LOẠI (không đảm bảo < ngưỡng).
+  const priceOk = (p: number | null | undefined): boolean =>
+    maxPrice === Infinity ? true : typeof p === "number" && p < maxPrice;
+  // Trần insert lần này (mục tiêu/shop). Giảm dần khi insert; hết trần → dừng nạp.
+  let insertBudget = typeof opts.maxInsert === "number" ? Math.max(0, opts.maxInsert) : Infinity;
 
   // 1. Ngách của shop
   let nicheKeys: string[];
@@ -120,6 +128,7 @@ export async function pullMoreForShop(opts: PullMoreOpts): Promise<PullMoreResul
   let totalInserted = 0;
 
   for (const nicheKey of nicheKeys) {
+    if (insertBudget <= 0) break; // đã đủ mục tiêu shop → dừng các ngách còn lại
     const ncfg = cfg.niches?.find((n) => n.key === nicheKey);
     const query = ncfg?.query || nicheKey.replace(/-/g, " ");
     const group = ncfg?.group || "";
@@ -183,6 +192,7 @@ export async function pullMoreForShop(opts: PullMoreOpts): Promise<PullMoreResul
       if (existingForShop.has(gid) || excluded.has(gid)) return false;
       if ((shopCountByGid.get(gid) || 0) >= capN) return false;
       if (isKidsProduct((p as any).name, (p as any).catName)) return false; // loại hàng trẻ em
+      if (isPackProduct((p as any).name)) return false; // loại hàng pack (2-3pcs…)
       return true;
     });
 
@@ -196,13 +206,14 @@ export async function pullMoreForShop(opts: PullMoreOpts): Promise<PullMoreResul
         const opp = scoreOpportunity({ win: w, nicheHeat: rollup.heatScore, demandFit: dm.demandFit });
         return { w, opportunityScore: opp.opportunityScore };
       })
-      .filter((x) => x.opportunityScore >= minOpp)
+      .filter((x) => x.opportunityScore >= minOpp && priceOk(x.w.price)) // qua ngưỡng điểm + giá < maxPrice
       .sort((a, b) => b.opportunityScore - a.opportunityScore);
 
-    // 3d. Insert (trừ dry-run)
+    // 3d. Insert (trừ dry-run) — tôn trọng trần insertBudget (mục tiêu/shop)
     let inserted = 0;
     const now = Date.now();
     for (const { w, opportunityScore } of scored) {
+      if (insertBudget <= 0) break;
       const gid = String(w.goodsId);
       if (!opts.dryRun) {
         const info = ins.run(
@@ -213,7 +224,7 @@ export async function pullMoreForShop(opts: PullMoreOpts): Promise<PullMoreResul
           w.image ?? "",
           now
         );
-        if (info.changes > 0) { inserted++; shopCountByGid.set(gid, (shopCountByGid.get(gid) || 0) + 1); }
+        if (info.changes > 0) { inserted++; insertBudget--; shopCountByGid.set(gid, (shopCountByGid.get(gid) || 0) + 1); }
       }
       existingForShop.add(gid); // tránh insert lại cho SHOP NÀY trong cùng phiên (ngách khác)
       if (samples.length < 8) {

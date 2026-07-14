@@ -126,7 +126,11 @@ export async function crawlStore(page: Page, opts: CrawlStoreOptions = {}): Prom
       for (const arr of arrays) {
         for (const raw of arr) {
           const p = normItem(raw, host);
-          if (p && !map.has(p.goodsId)) map.set(p.goodsId, p);
+          if (!p) continue;
+          const cur = map.get(p.goodsId);
+          // JSON (giàu data: giá/review/rating) LUÔN thắng placeholder DOM (price=null).
+          // Không đè 1 JSON tốt bằng JSON khác (giữ bản đầu) — chỉ nâng cấp placeholder null.
+          if (!cur || (cur.price == null && p.price != null)) map.set(p.goodsId, p);
         }
       }
     } catch {
@@ -136,6 +140,10 @@ export async function crawlStore(page: Page, opts: CrawlStoreOptions = {}): Prom
   page.on("response", onResponse);
 
   try {
+    // Listener gắn ở trên, NHƯNG caller đã goto trang trước đó → JSON sản phẩm trang đầu bắn
+    // TRƯỚC khi listener bật (mất giá/review). Keyword ít kết quả không scroll ra JSON mới →
+    // rơi hết về DOM fallback (price=null). Reload 1 lần để JSON trang đầu bắn LẠI với listener đang bật.
+    await page.reload({ waitUntil: "domcontentloaded", timeout: 60_000 }).catch(() => {});
     await ensureNoCaptcha(page, opts.captcha);
     await page.waitForTimeout(2000);
 

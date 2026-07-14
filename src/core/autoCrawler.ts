@@ -12,7 +12,7 @@ import { getDb } from "../state/db";
 import { getShopOwner, getUserDirsByName } from "../state/userDirs";
 import { crawlConfig } from "../config/appConfig";
 import { ensureChromeDebug } from "./chromeDebug";
-import { isKidsProduct } from "./research/fashionFilter";
+import { isKidsProduct, isPackProduct } from "./research/fashionFilter";
 
 /** Số sp uncrawl còn tồn (allocated/recrawl, có url). */
 function countUncrawl(): number {
@@ -121,6 +121,14 @@ export async function runCrawlCycle(opts: CrawlCycleOptions): Promise<CrawlCycle
         insExcluded.run(goodsId, `kids: ${String(data.category || "").slice(0, 80)}`, Date.now());
         gaveup++;
         log(`🧒 ${goodsId} HÀNG KIDS (${String(data.category || "").slice(0, 45)}) → loại, không list`);
+        return;
+      }
+      // PACK GATE: hàng bán theo pack (2-3pcs…) khó bán → LOẠI vĩnh viễn (tên detail chuẩn hơn tên harvest).
+      if (isPackProduct(data.product_name)) {
+        markKids.run(goodsId); // dùng chung: set status='excluded' mọi shop
+        insExcluded.run(goodsId, `pack: ${String(data.product_name || "").slice(0, 80)}`, Date.now());
+        gaveup++;
+        log(`📦 ${goodsId} HÀNG PACK (${String(data.product_name || "").slice(0, 45)}) → loại, không list`);
         return;
       }
       // size_chart là thuộc tính SP (không theo shop) → kiểm 1 lần, thiếu thì requeue mọi shop.

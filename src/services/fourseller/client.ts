@@ -359,6 +359,65 @@ export const syncTiktokPromotions = (principal: string, shopId: string | number 
 export const getPromotionSyncSchedule = (principal: string) =>
   fourSellerGet<boolean>(principal, "/api/promotion/tiktok/activity/get-sync-schedule");
 
+/* ── Flash Deal: list sp đủ điều kiện + create/publish (capture 2026-07-09, xem docs/4seller-flash-api.md) ── */
+
+export interface FlashEligibleSku {
+  listingId: number; variationId: number; productId: string; msku: string;
+  productVariationId: string; variations: string; currency: string; stock: number;
+  originalPrice: number; activityPriceAmount: string | null; discount: string | null;
+  quantityLimit: number | null; quantityPerUser: number | null;
+  activityPriceAmountPercentage?: string; hasAdd?: number; image?: string; [k: string]: any;
+}
+export interface FlashEligibleProduct {
+  listingId: number; productId: string; productName: string; hasVariation: number;
+  originalPrice: string; currency: string; stock: number; image?: string;
+  skus: FlashEligibleSku[]; [k: string]: any;
+}
+
+/** Sp đủ điều kiện đưa vào Flash Deal (chỉ sp CHƯA nằm flash khác trong khoảng [startTime,endTime]). */
+export const flashEligibleProducts = (
+  principal: string,
+  opts: { shopId: number; startTime: number; endTime: number; pageCurrent?: number; pageSize?: number }
+) =>
+  fourSellerPost<{ records: FlashEligibleProduct[]; total: number; idList?: any[] }>(
+    principal,
+    "/api/listing/tiktok/page-search",
+    {
+      pageCurrent: opts.pageCurrent ?? 1, pageSize: opts.pageSize ?? 100,
+      searchValue: [], searchType: "all", status: "active",
+      shopId: opts.shopId, activityStartTime: opts.startTime, activityEndTime: opts.endTime,
+      hasActivity: false, activityType: "FLASHSALE",
+    }
+  );
+
+/** Tạo/publish Flash Deal (variation-level). Trả về code/msg của 4Seller. */
+export const createFlashDeal = (principal: string, payload: any) =>
+  fourSellerPost<any>(principal, "/api/promotion/tiktok/activity/add-or-update", payload);
+
+/** Lưu/publish activity (create hoặc UPDATE nếu payload có `id`) — dùng cho cả Flash & Discount. */
+export const saveActivity = (principal: string, payload: any) =>
+  fourSellerPost<any>(principal, "/api/promotion/tiktok/activity/add-or-update", payload);
+
+/** Chi tiết 1 activity (Product Discount / Flash) — kèm meta + products[] hiện có. Dùng để EDIT. */
+export const getActivityInfo = (principal: string, id: number | string) =>
+  fourSellerGet<any>(principal, `/api/promotion/tiktok/activity/v2/get-activity-info?id=${encodeURIComponent(String(id))}`);
+
+/** Sp đủ điều kiện THÊM vào Product Discount (đã ẩn sp overlapping discount). */
+export const discountEligibleProducts = (
+  principal: string,
+  opts: { shopId: number; startTime: number; endTime: number; pageCurrent?: number; pageSize?: number }
+) =>
+  fourSellerPost<{ records: FlashEligibleProduct[]; total: number }>(
+    principal,
+    "/api/listing/tiktok/page-search",
+    {
+      pageCurrent: opts.pageCurrent ?? 1, pageSize: opts.pageSize ?? 100,
+      searchValue: [], searchType: "all", status: "active",
+      shopId: opts.shopId, activityStartTime: opts.startTime, activityEndTime: opts.endTime,
+      hasActivity: true, activityType: "",
+    }
+  );
+
 export const getListingPage = (
   username: string,
   opts: {

@@ -1,39 +1,27 @@
 import { describe, it, expect } from "vitest";
-import { isKidsProduct } from "./fashionFilter";
+import { isPackProduct } from "./fashionFilter";
 
-describe("isKidsProduct", () => {
-  it("bắt hàng trẻ em theo tên", () => {
-    expect(isKidsProduct("Girls Summer Floral Dress")).toBe(true);
-    expect(isKidsProduct("Toddler Boys Graphic Tee")).toBe(true);
-    expect(isKidsProduct("Kids Athletic Socks 3 Pack")).toBe(true);
-    expect(isKidsProduct("Baby Romper 0-6 Months")).toBe(true);
-    expect(isKidsProduct("Youth Hoodie")).toBe(true);
+describe("isPackProduct — loại hàng pack (2+ món giống nhau)", () => {
+  it("BẮT pack: 2-9pcs, /Set, /Pack, N-Pack", () => {
+    for (const n of [
+      "SHEIN EZwear 3pcs/Set Casual Adjustable Strap Fitted Tank Top",
+      "SHEIN EZwear 3pcs Women Casual Solid Color Camisoles",
+      "SHEIN BASICS 3pcs/Pack Casual Solid Color Knit Fitted Cropped Tank",
+      "SHEIN EZwear 4pcs Women's Tight Fitted Cropped Casual Tank Tops",
+      "2 Pack Panties Cotton", "3-Pack Socks", "5pcs Hair Ties", "Pack of 3 Bras", "Set of 4 Cami",
+    ]) expect(isPackProduct(n)).toBe(true);
   });
-  it("bắt theo category name", () => {
-    expect(isKidsProduct("Cotton Tee", "Girls Clothing")).toBe(true);
-    expect(isKidsProduct("Solid Leggings", "Kids")).toBe(true);
+
+  it("GIỮ: 1 món, và 'X Piece Set' (set phối đồ, không phải pack)", () => {
+    for (const n of [
+      "INAWLY 1pc Women Lace Trim Camisole Top",
+      "2 Piece Bikini Set Halter", "3 Piece Lingerie Set Floral", "Two Piece Set Crop Top",
+      "SHEIN BAE Solid Crop Cami Top", "Cami Tank Top Women", "Bodycon Mini Dress",
+    ]) expect(isPackProduct(n)).toBe(false);
   });
-  it("GIỮ hàng người lớn (whitelist)", () => {
-    expect(isKidsProduct("Y2K Baby Tee Crop Top Women")).toBe(false);
-    expect(isKidsProduct("Contrast Lace Babydoll Lingerie")).toBe(false);
-    expect(isKidsProduct("Women's Seamless Boy Shorts Panties")).toBe(false);
-    expect(isKidsProduct("Boyfriend Fit Denim Jeans")).toBe(false);
-  });
-  it("kids MẠNH ưu tiên hơn baby-tee (bug đã fix)", () => {
-    expect(isKidsProduct("Toddler White T-Shirt Funny Cute Casual Kids Graphic Soft Baby Tee")).toBe(true);
-    expect(isKidsProduct("Disney Printed T-Shirt For Toddlers Girly Style")).toBe(true);
-    expect(isKidsProduct("SHEIN Tween Girls 3-Piece Bikini Set")).toBe(true);
-    expect(isKidsProduct("Cotton Tee", "Home / Kids / Girls Clothing")).toBe(true);
-  });
-  it("KHÔNG bắt nhầm 'baby' người lớn (baby tee/blue/pink)", () => {
-    expect(isKidsProduct("Womens Y2k Graphic Baby Tees Slim Fit Round Neck")).toBe(false);
-    expect(isKidsProduct("Women's Crop Baby Tee Streetwear")).toBe(false);
-    expect(isKidsProduct("Baby Blue Ruched Bodycon Dress")).toBe(false);
-    expect(isKidsProduct("Baby Pink Lace Bralette")).toBe(false);
-  });
-  it("GIỮ thời trang nữ thường", () => {
-    expect(isKidsProduct("Floral Lace Wireless Bralette Set")).toBe(false);
-    expect(isKidsProduct("High Waist Shapewear Bodysuit")).toBe(false);
-    expect(isKidsProduct("Ruched Crop Top Streetwear")).toBe(false);
+
+  it("rỗng/null → false", () => {
+    expect(isPackProduct("")).toBe(false);
+    expect(isPackProduct(null)).toBe(false);
   });
 });

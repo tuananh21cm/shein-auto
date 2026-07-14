@@ -161,7 +161,12 @@ export interface CrawlFile {
 
 export interface HarvestFile {
   enabled: boolean;
-  threshold: number;
+  /** Mục tiêu số listing/shop — harvest tới khi shop đạt đủ thì DỪNG (đếm allocated+recrawl+crawled+listed). */
+  targetListingsPerShop: number;
+  /** Chỉ nạp sp có giá bán (USD) < ngưỡng này. Bỏ trống = không giới hạn giá. */
+  maxPriceUsd?: number;
+  /** (legacy) ngưỡng uncrawl cũ — không còn dùng làm trigger, giữ để tương thích. */
+  threshold?: number;
   useChrome: boolean;
   keywordsPerNiche: number;
   resultsPerKeyword: number;
@@ -237,6 +242,22 @@ export const crawlConfig = (): CrawlFile =>
 let _harvest: HarvestFile | null = null;
 export const harvestConfig = (): HarvestFile =>
   (_harvest ??= readJson<HarvestFile>("harvest.json"));
+
+/** Auto Flash Deal (config/flash.json). */
+export interface FlashFile {
+  enabled: boolean;
+  intervalMinutes: number;    // chu kỳ quét (mặc định 15)
+  minGapMinutes: number;      // hết flash ≥ N phút mới tạo mới (20–30)
+  cooldownMinutes: number;    // chống tạo lại 1 shop trong N phút (backstop)
+  discountPct: number;        // % off (24)
+  limit: number;              // số sp khi có tín hiệu (30)
+  durationDays: number;       // độ dài flash (3)
+  randomMin: number;          // shop chưa có thống kê → random min (20)
+  randomMax: number;          // random max (25)
+}
+let _flash: FlashFile | null = null;
+export const flashConfig = (): FlashFile =>
+  (_flash ??= readJson<FlashFile>("flash.json"));
 
 let _categoryCrawl: CategoryCrawlFile | null = null;
 export const categoryCrawlConfig = (): CategoryCrawlFile =>

@@ -102,9 +102,9 @@ export function scheduleDripPublisher(): void {
       });
       console.log(`[drip] cycle xong: publish ${r.published}, còn ~${r.remaining} draft`);
       if (r.published === 0 && r.remaining === 0) {
-        console.log("[drip] ✅ Hết draft mọi shop — dừng drip.");
-        running = false;
-        return;
+        // Hết draft mọi shop → KHÔNG dừng vĩnh viễn (crawl/list vẫn đổ draft mới về).
+        // Re-poll ở interval bình thường để tự nhặt draft mới khi có.
+        console.log("[drip] 💤 Hết draft mọi shop — idle, sẽ poll lại cycle kế.");
       }
     } catch (e: any) {
       console.error("[drip] ✗ Lỗi cycle:", e?.message ?? e);

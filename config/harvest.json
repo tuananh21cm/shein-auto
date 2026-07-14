@@ -1,7 +1,8 @@
 {
-  "_comment": "Auto link-harvester: shop có uncrawl < threshold → tự kéo thêm link SHEIN theo ngách (Gemini sinh keyword + Chrome search + RapidAPI). Tự bật Chrome. Chạy nền mỗi intervalMinutes.",
-  "enabled": false,
-  "threshold": 20,
+  "_comment": "Auto link-harvester: harvest thêm link SHEIN theo ngách (Gemini keyword + Chrome search + RapidAPI) tới khi shop đủ targetListingsPerShop thì DỪNG. Chỉ chạy shop ĐÃ gắn ngách (shop_niche, không paused); shop chưa gắn ngách bỏ qua. Chỉ nạp sp giá < maxPriceUsd. Tự bật Chrome, chạy nền mỗi intervalMinutes.",
+  "enabled": true,
+  "targetListingsPerShop": 100,
+  "maxPriceUsd": 18,
   "useChrome": true,
   "keywordsPerNiche": 8,
   "resultsPerKeyword": 60,

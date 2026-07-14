@@ -20,6 +20,9 @@ import type {
 const HOST_DATA = "shein-data-api.p.rapidapi.com";
 const HOST_ONLINE = "shein-online-data.p.rapidapi.com";
 
+/** shein-online-data /api/search từ chối limit > 20 (HTTP 400). Clamp để fallback không vỡ. */
+const ONLINE_SEARCH_MAX_LIMIT = 20;
+
 /** Throttle tối thiểu giữa 2 request CÙNG host (ms). shein-online-data limit/giây. */
 const MIN_INTERVAL: Record<string, number> = {
   [HOST_ONLINE]: 1500,
@@ -180,17 +183,18 @@ async function searchProductsOnline(
   opts: { page?: number; perPage?: number; country?: string } = {}
 ): Promise<SheinSearchResult> {
   const page = opts.page ?? 1;
-  const perPage = opts.perPage ?? 40;
+  // Endpoint trả 400 nếu limit > 20 → clamp. hasNext tính theo limit THỰC (không phải perPage yêu cầu).
+  const limit = Math.min(opts.perPage ?? 40, ONLINE_SEARCH_MAX_LIMIT);
   const country = (opts.country ?? "US").toUpperCase();
   const d = await apiGet(
     HOST_ONLINE,
-    `/api/search?country=${country}&keywords=${encodeURIComponent(query)}&currency=USD&page=${page}&limit=${perPage}&lang=en`
+    `/api/search?country=${country}&keywords=${encodeURIComponent(query)}&currency=USD&page=${page}&limit=${limit}&lang=en`
   );
   const info = d?.info?.info ?? d?.info ?? d;
   const items: any[] = info?.products ?? [];
   const products = items.map(normOnlineItem);
   const total = Number(info?.total_count ?? products.length) || products.length;
-  return { products, total, page, hasNext: products.length >= perPage };
+  return { products, total, page, hasNext: products.length >= limit };
 }
 
 /**
@@ -204,15 +208,20 @@ export async function searchProducts(
   const page = opts.page ?? 1;
   const perPage = opts.perPage ?? 40;
   const country = (opts.country ?? "us").toLowerCase();
+  // PRIMARY = shein-online-data (đang sống). shein-data-api /search/v2 đang treo (nghi provider
+  // đổi/gỡ endpoint) → hạ xuống fallback: chỉ chạm khi online lỗi, và tự dùng lại NGAY khi
+  // data-api hồi phục (nguồn này có review/rating → winScore mạnh hơn).
   try {
-    // Primary: timeout ngắn + 1 attempt để fallback nhanh khi provider down
+    const fb = await searchProductsOnline(query, opts);
+    if (fb.products.length === 0) throw new Error("online-data trả rỗng");
+    return { ...fb, source: "shein-online-data" };
+  } catch {
     const d = await apiGet(
       HOST_DATA,
       `/search/v2?query=${encodeURIComponent(query)}&page=${page}&perPage=${perPage}&countryCode=${country}`,
-      { maxAttempts: 1, timeout: 9000 }
+      { maxAttempts: 1, timeout: 4000 }
     );
     const products = extractDataApiProducts(d).map(normDataApiItem);
-    if (products.length === 0) throw new Error("data-api trả rỗng");
     return {
       products,
       total: Number(d?.pagination?.totalAvailable ?? products.length) || products.length,
@@ -220,9 +229,6 @@ export async function searchProducts(
       hasNext: Boolean(d?.pagination?.hasNext),
       source: "shein-data-api",
     };
-  } catch {
-    const fb = await searchProductsOnline(query, opts);
-    return { ...fb, source: "shein-online-data" };
   }
 }
 

@@ -20,3 +20,14 @@ export function isKidsProduct(name?: string | null, catName?: string | null): bo
   const t = `${name || ""} ${catName || ""}`.toLowerCase();
   return HARD_KIDS.test(t) || GIRLBOY.test(t);
 }
+
+// Hàng bán theo PACK/nhiều-món-giống-nhau (2pcs, 3pcs/Set, 4pcs, 2-Pack…) — khó bán, LOẠI.
+// Chỉ bắt số ≥2: "1pc" (1 món) GIỮ. KHÔNG bắt "2 Piece Set"/"3 Piece" (set phối đồ như bikini
+// top+bottom — chữ "piece" đầy đủ, khác "pcs"/"pack").
+const PACK_RE =
+  /\b([2-9]|\d{2,})\s*pcs?\b|\b([2-9]|\d{2,})\s*-?\s*pack\b|\bpcs\s*\/\s*(set|pack)\b|\bpack\s+of\s+[2-9]|\bset\s+of\s+[2-9]/i;
+
+/** true nếu là hàng PACK (2+ món giống nhau) → LOẠI khỏi harvest/allocate/queue. */
+export function isPackProduct(name?: string | null): boolean {
+  return PACK_RE.test(String(name || ""));
+}

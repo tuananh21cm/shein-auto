@@ -1,0 +1,12 @@
+{
+  "_comment": "Auto Flash Deal: mỗi intervalMinutes quét shop nào hết flash (flashExpired). Flash cuối kết thúc ≥ minGapMinutes phút (hoặc chưa từng có flash) → tạo flash mới -discountPct%, variation-level. Shop CÓ thống kê view → chọn sp tín hiệu (top-view/đang-lên/có-đơn) cap limit; shop CHƯA có → random randomMin–randomMax sp. cooldownMinutes chống tạo trùng khi scan còn stale.",
+  "enabled": false,
+  "intervalMinutes": 15,
+  "minGapMinutes": 20,
+  "cooldownMinutes": 90,
+  "discountPct": 24,
+  "limit": 30,
+  "durationDays": 3,
+  "randomMin": 20,
+  "randomMax": 25
+}

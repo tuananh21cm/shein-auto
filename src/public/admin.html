@@ -520,6 +520,7 @@
                 <label style="font-size:0.8rem; color:var(--text-mute); display:flex; align-items:center; gap:4px;" title="Kéo lại từ trang 1 (bỏ con trỏ ngách)"><input id="pullReset" type="checkbox" style="accent-color:var(--accent);"> reset trang</label>
                 <button class="btn btn-ghost" id="pullDryBtn" onclick="pullMore(true)">👁 Thử (dry-run)</button>
                 <button class="btn" id="pullBtn" onclick="pullMore(false)" style="background:var(--accent);color:#fff;border:none;">✨ Kéo về uncrawl</button>
+                <button class="btn" id="pullChromeBtn" onclick="pullMoreChrome()" style="background:#16a34a;color:#fff;border:none;" title="Chrome search SHEIN theo ngách (có review/rating → chấm điểm mạnh), kéo tới khi shop đủ 100 listing, giá < $18.">🌐 Kéo Chrome → uncrawl</button>
               </div>
             </div>
             <div id="pullResult" style="margin-top:10px; font-size:0.82rem;"></div>
@@ -1113,9 +1114,12 @@
           <div class="subtitle">Product Discount + Flash Deal mọi shop (4Seller Marketing). Mỗi lần cào tự bấm "Sync promotion" trước để lấy data mới từ TikTok.</div>
         </div>
         <div style="display:flex; gap:8px;">
+          <button class="btn" id="flashDryBtn" onclick="runFlashAuto(true)" title="Xem trước shop nào sẽ tạo flash + chọn sp gì (KHÔNG tạo thật)">👁 Flash: xem trước</button>
+          <button class="btn" id="flashGoBtn" onclick="runFlashAuto(false)" style="background:#f59e0b;color:#fff;border:none;" title="Tạo flash THẬT cho mọi shop đang hết flash">⚡ Chạy Flash auto</button>
           <button class="btn btn-primary" id="promoScanBtn" onclick="scanPromotions()">🔄 Sync + Cào mới</button>
         </div>
       </div>
+      <div id="flashResult" style="margin-bottom:12px;"></div>
       <div id="promoSummary" style="margin-bottom: 12px;"></div>
       <div class="card"><div id="promoTableWrap"><div class="empty">Chưa có data — bấm "Sync + Cào mới"</div></div></div>
     </section>
@@ -1407,6 +1411,35 @@ async function pullMore(dryRun) {
     const passed = (d.niches || []).reduce((a, n) => a + n.passed, 0);
     toast(dryRun ? `Dry-run: ${passed} sp đạt điểm (chưa nạp)` : `Đã nạp ${d.totalInserted} sp vào uncrawl`);
     if (!dryRun && d.totalInserted > 0) loadUncrawled();
+  } catch (e) {
+    resEl.innerHTML = `<span style="color:var(--danger)">❌ ${escapeHtml(e.message)}</span>`;
+    toast(e.message, "error");
+  } finally {
+    btn.disabled = false; btn.textContent = old;
+  }
+}
+
+// Kéo thêm data bằng CHROME theo ngách shop (có review/rating → điểm mạnh) → uncrawl, tới đủ 100.
+async function pullMoreChrome() {
+  const shop = state.listings.selectedShop;
+  if (!shop) { toast("Chưa chọn shop", "error"); return; }
+  if (!confirm(`Kéo Chrome cho "${shop}"? Chrome sẽ mở SHEIN search theo ngách, kéo tới khi shop đủ 100 listing (giá < $18). Mất ~2-3 phút, cửa sổ này chờ tới khi xong.`)) return;
+  const btn = $("#pullChromeBtn"); const resEl = $("#pullResult");
+  btn.disabled = true; const old = btn.textContent; btn.textContent = "⏳ Đang kéo Chrome…";
+  resEl.innerHTML = '<span style="color:var(--text-mute)">🌐 Chrome đang search SHEIN theo ngách + chấm điểm… (~2-3 phút, đừng đóng tab)</span>';
+  try {
+    const r = await apiFetch("/admin/api/uncrawled/harvest-chrome", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ shop }),
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || "Lỗi kéo Chrome");
+    const n = (d.perShop && d.perShop[shop] != null) ? d.perShop[shop] : (d.inserted || 0);
+    resEl.innerHTML = n > 0
+      ? `<span style="color:var(--success)">✅ Kéo Chrome xong: nạp <b>${n}</b> sp vào uncrawl.</span>`
+      : `<span style="color:var(--text-mute)">Chrome chạy xong nhưng nạp 0 — có thể shop đã đủ 100 listing, hoặc sp mới trùng/không đạt điểm/giá ≥ $18.</span>`;
+    toast(n > 0 ? `Đã nạp ${n} sp vào uncrawl (Chrome)` : "Chrome xong: nạp 0 sp");
+    if (n > 0) loadUncrawled();
   } catch (e) {
     resEl.innerHTML = `<span style="color:var(--danger)">❌ ${escapeHtml(e.message)}</span>`;
     toast(e.message, "error");
@@ -2072,10 +2105,12 @@ function renderAnalysisPanel() {
   const sh = (state.listings.shops || []).find((s) => s.folder === shop);
   const h = sh && sh.health;
   const runBtn = `<button class="btn btn-ghost" onclick="runShopAnalysis(this)">↻ Phân tích lại (chạy nền)</button>`;
-  const lvBox = `<div id="listingViewsBox" class="card" style="margin-top:12px;"><div class="empty">⏳ Đang tải view per-listing…</div></div>`;
+  const lvBox = `<div id="listingViewsBox" class="card" style="margin-top:12px;"><div class="empty">⏳ Đang tải view per-listing…</div></div>${risingBoxHtml()}${slowBoxHtml()}`;
   if (!h || !h.overall) {
     el.innerHTML = `<div class="card"><div class="empty">Chưa có phân tích cho shop này.${(sh && sh.kikiProfile) ? "" : " Gán Kiki-TikTok profile ở thanh trên rồi chạy."}</div><div style="margin-top:12px">${(sh && sh.kikiProfile) ? runBtn : ""}</div></div>${lvBox}`;
     loadListingViews(shop);
+    loadRisingListings(shop);
+    loadSlowListings(shop);
     return;
   }
   const hm = HEALTH_MAP[h.overall] || { c: "warning", t: h.overall };
@@ -2104,6 +2139,149 @@ function renderAnalysisPanel() {
       ${h.reportPath ? `<div style="margin-top:12px;font-size:0.74rem;color:var(--text-mute)">📄 ${escapeHtml(h.reportPath)}</div>` : ""}
     </div>${lvBox}`;
   loadListingViews(shop);
+  loadRisingListings(shop);
+  loadSlowListings(shop);
+}
+
+/* ── Listing "VIEW ĐANG LÊN" — tăng view nhanh → scale/ads/bổ hàng ── */
+function risingBoxHtml() {
+  return `<div id="risingListingsBox" class="card" style="margin-top:12px; border:1px solid var(--green, #2ecc71);">
+    <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px;">
+      <div>
+        <h4 style="margin:0 0 2px; font-size:0.92rem;">📈 View đang lên (nên scale)</h4>
+        <div style="color:var(--text-mute); font-size:0.76rem;">Listing tăng view nhanh → đẩy quảng cáo/promo, harvest sp tương tự, bổ hàng nếu tồn thấp.</div>
+      </div>
+      <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap; font-size:0.78rem; color:var(--text-mute);">
+        <label title="tăng trung bình tối thiểu mỗi ngày">+/ngày ≥ <input id="riseMinPerDay" type="number" value="15" min="0" style="width:60px;padding:6px;border-radius:8px;border:1px solid var(--border);background:var(--bg-elev);color:var(--text);"></label>
+        <label title="đã theo dõi tối thiểu bao nhiêu ngày">≥ <input id="riseMinDays" type="number" value="2" min="1" style="width:44px;padding:6px;border-radius:8px;border:1px solid var(--border);background:var(--bg-elev);color:var(--text);"> ngày</label>
+        <button class="btn btn-ghost" onclick="loadRisingListings(state.listings.selectedShop)" style="padding:6px 12px;">Lọc</button>
+      </div>
+    </div>
+    <div id="risingListingsResult" style="margin-top:10px;"><div class="empty">⏳ Đang tải…</div></div>
+  </div>`;
+}
+
+async function loadRisingListings(shop) {
+  const box = document.getElementById("risingListingsResult");
+  if (!box || !shop) return;
+  const minPerDay = Math.max(0, parseInt(($("#riseMinPerDay") || {}).value) || 15);
+  const minDays = Math.max(1, parseInt(($("#riseMinDays") || {}).value) || 2);
+  box.innerHTML = '<div class="empty">⏳ Đang tải…</div>';
+  try {
+    const r = await apiFetch(`/admin/api/tiktok/rising-listings?shop=${encodeURIComponent(shop)}&minPerDay=${minPerDay}&minDays=${minDays}`);
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || "Lỗi");
+    if (document.getElementById("risingListingsResult") !== box) return;
+    box.innerHTML = renderRisingListings(d);
+  } catch (e) {
+    box.innerHTML = `<div class="empty">Không tải được: ${escapeHtml(e.message)}</div>`;
+  }
+}
+
+function renderRisingListings(d) {
+  if (d.historyDays < d.minDays) {
+    return `<div class="empty">Mới có <b>${d.historyDays}</b> ngày lịch sử, cần ≥ <b>${d.minDays}</b> ngày. Cứ để cron chạy thêm.</div>`;
+  }
+  if (!d.risers.length) {
+    return `<div class="empty">Chưa có listing nào tăng ≥ ${d.minAvgPerDay} view/ngày (theo dõi ≥${d.minDays} ngày). Giảm ngưỡng "+/ngày" để nới.</div>`;
+  }
+  const s = d.summary;
+  const rows = d.risers.map((c, i) => `
+    <tr>
+      <td style="color:var(--text-mute)">${i + 1}</td>
+      <td><span class="truncate" title="${escapeHtml(c.productName)}">${escapeHtml(c.productName)}</span>
+        ${c.converting ? '<span style="color:var(--green,#2ecc71);font-size:0.72rem;"> 💰bán được</span>' : ''}
+        ${c.lowStock ? '<span style="color:var(--danger,#e74c3c);font-size:0.72rem;"> ⚠️tồn thấp</span>' : ''}</td>
+      <td class="mono">${c.pv}</td>
+      <td class="mono" style="color:var(--green,#2ecc71)">+${c.growth} (+${c.avgPerDay}/ngày)</td>
+      <td class="mono">${c.orders}</td>
+      <td class="mono">${c.daysTracked}d</td>
+      <td class="mono">${c.stock != null ? c.stock : "—"}</td>
+    </tr>`).join("");
+  return `
+    <div style="display:flex; align-items:baseline; justify-content:space-between; flex-wrap:wrap; gap:8px;">
+      <span style="font-size:0.82rem;"><b style="color:var(--green,#2ecc71)">${s.total}</b> listing đang lên · 💰 <b>${s.converting}</b> đã bán được (scale ngay) · ⚠️ <b>${s.lowStock}</b> tồn thấp (bổ hàng)</span>
+      <span style="font-size:0.74rem; color:var(--text-mute)">ngưỡng: +≥${d.minAvgPerDay}/ngày · theo dõi ≥${d.minDays} ngày</span>
+    </div>
+    <div style="overflow-x:auto; margin-top:8px;">
+      <table>
+        <thead><tr><th>#</th><th>Sản phẩm</th><th>Views nay</th><th>Đà tăng</th><th>Đơn 28d</th><th>Theo dõi</th><th>Tồn</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+    <div style="margin-top:8px; font-size:0.72rem; color:var(--text-mute)">
+      ⓘ 💰bán được = đang lên VÀ có đơn → scale mạnh (ads/promo + harvest sp tương tự). ⚠️tồn thấp = đang hot mà sắp hết hàng → bổ gấp kẻo mất sale.
+    </div>`;
+}
+
+/* ── Listing "lên cực chậm" (ứng viên xóa) — view thấp + tăng gần 0 qua ≥N ngày + 0 đơn ── */
+function slowBoxHtml() {
+  return `<div id="slowListingsBox" class="card" style="margin-top:12px; border:1px solid var(--danger, #e74c3c);">
+    <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px;">
+      <div>
+        <h4 style="margin:0 0 2px; font-size:0.92rem;">🐌 Listing lên cực chậm (ứng viên xóa)</h4>
+        <div style="color:var(--text-mute); font-size:0.76rem;">View thấp + tăng gần 0/ngày qua ≥N ngày + 0 đơn. Đã lọc bỏ sp mới list (chưa đủ ngày theo dõi).</div>
+      </div>
+      <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap; font-size:0.78rem; color:var(--text-mute);">
+        <label title="view 28d tối đa">view ≤ <input id="slowMaxPv" type="number" value="30" min="0" style="width:60px;padding:6px;border-radius:8px;border:1px solid var(--border);background:var(--bg-elev);color:var(--text);"></label>
+        <label title="tăng trung bình tối đa mỗi ngày">+/ngày ≤ <input id="slowMaxPerDay" type="number" value="2" min="0" style="width:52px;padding:6px;border-radius:8px;border:1px solid var(--border);background:var(--bg-elev);color:var(--text);"></label>
+        <label title="đã theo dõi tối thiểu bao nhiêu ngày (tránh giết sp mới)">≥ <input id="slowMinDays" type="number" value="7" min="1" style="width:48px;padding:6px;border-radius:8px;border:1px solid var(--border);background:var(--bg-elev);color:var(--text);"> ngày</label>
+        <button class="btn btn-ghost" onclick="loadSlowListings(state.listings.selectedShop)" style="padding:6px 12px;">Lọc</button>
+      </div>
+    </div>
+    <div id="slowListingsResult" style="margin-top:10px;"><div class="empty">⏳ Đang tải…</div></div>
+  </div>`;
+}
+
+async function loadSlowListings(shop) {
+  const box = document.getElementById("slowListingsResult");
+  if (!box || !shop) return;
+  const maxPv = Math.max(0, parseInt(($("#slowMaxPv") || {}).value) || 30);
+  const maxPerDay = Math.max(0, parseInt(($("#slowMaxPerDay") || {}).value) || 2);
+  const minDays = Math.max(1, parseInt(($("#slowMinDays") || {}).value) || 7);
+  box.innerHTML = '<div class="empty">⏳ Đang tải…</div>';
+  try {
+    const r = await apiFetch(`/admin/api/tiktok/slow-listings?shop=${encodeURIComponent(shop)}&maxPv=${maxPv}&maxPerDay=${maxPerDay}&minDays=${minDays}`);
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || "Lỗi");
+    if (document.getElementById("slowListingsResult") !== box) return; // user đã chuyển shop
+    box.innerHTML = renderSlowListings(d);
+  } catch (e) {
+    box.innerHTML = `<div class="empty">Không tải được: ${escapeHtml(e.message)}</div>`;
+  }
+}
+
+function renderSlowListings(d) {
+  if (d.historyDays < d.minDays) {
+    return `<div class="empty">Mới có <b>${d.historyDays}</b> ngày lịch sử, cần ≥ <b>${d.minDays}</b> ngày mới đủ tin cậy để kết luận "lên chậm". Cứ để cron chạy thêm, hoặc giảm số ngày ở ô bên trên (rủi ro giết nhầm sp mới list).</div>`;
+  }
+  if (!d.candidates.length) {
+    return `<div class="empty">✅ Không có listing nào "lên cực chậm" theo ngưỡng (view ≤ ${d.maxPv}, +≤${d.maxAvgPerDay}/ngày, ≥${d.minDays} ngày, 0 đơn).</div>`;
+  }
+  const rows = d.candidates.map((c, i) => `
+    <tr>
+      <td style="color:var(--text-mute)">${i + 1}</td>
+      <td><span class="truncate" title="${escapeHtml(c.productName)}">${escapeHtml(c.productName)}</span></td>
+      <td class="mono">${c.pv}</td>
+      <td class="mono">${c.firstPv} → ${c.pv} (${c.growth >= 0 ? "+" : ""}${c.growth})</td>
+      <td class="mono">+${c.avgPerDay}/ngày</td>
+      <td class="mono">${c.daysTracked}d</td>
+      <td class="mono">${c.stock != null ? c.stock : "—"}</td>
+    </tr>`).join("");
+  return `
+    <div style="display:flex; align-items:baseline; justify-content:space-between; flex-wrap:wrap; gap:8px;">
+      <span style="font-size:0.82rem;"><b style="color:var(--danger)">${d.candidates.length}</b> listing lên cực chậm — cân nhắc xóa trên TikTok Shop</span>
+      <span style="font-size:0.74rem; color:var(--text-mute)">ngưỡng: view ≤ ${d.maxPv} · +≤${d.maxAvgPerDay}/ngày · theo dõi ≥${d.minDays} ngày · 0 đơn</span>
+    </div>
+    <div style="overflow-x:auto; margin-top:8px;">
+      <table>
+        <thead><tr><th>#</th><th>Sản phẩm</th><th>Views nay</th><th title="pv ngày đầu → nay">Diễn biến</th><th>Tốc độ</th><th title="số ngày đã theo dõi">Theo dõi</th><th>Tồn</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+    <div style="margin-top:8px; font-size:0.72rem; color:var(--text-mute)">
+      ⓘ Đây là ứng viên để bạn XEM XÉT — tool không tự xóa. Xóa trên TikTok Shop Seller Center. "Tốc độ" = (view nay − view ngày đầu)/số ngày; ≈ 0 tức 28 ngày qua gần như không thêm ai xem.
+    </div>`;
 }
 
 /* ── View per-listing: hôm nay vs hôm qua + tăng trưởng ~7 ngày (listing_views) ── */
@@ -5179,6 +5357,53 @@ async function scanPromotions() {
   } finally {
     btn.disabled = false; btn.textContent = "🔄 Sync + Cào mới";
   }
+}
+
+// Chạy auto flash (dryRun=xem trước / false=tạo thật) cho mọi shop hết flash.
+async function runFlashAuto(dryRun) {
+  if (!dryRun && !confirm("Tạo flash THẬT (-24%, 3 ngày) cho MỌI shop đang hết flash?\nShop có thống kê → sp tín hiệu; shop chưa có → random 20-25 sp.\nMất 1-3 phút (sync 4Seller).")) return;
+  const dryBtn = $("#flashDryBtn"), goBtn = $("#flashGoBtn");
+  dryBtn.disabled = true; goBtn.disabled = true;
+  const active = dryRun ? dryBtn : goBtn; const old = active.textContent; active.textContent = "⏳ Đang chạy…";
+  $("#flashResult").innerHTML = `<div class="card"><div class="empty">⏳ ${dryRun ? "Xem trước" : "Đang tạo flash"} — sync 4Seller + quét shop hết flash… (1-3 phút)</div></div>`;
+  try {
+    const res = await fetch("/admin/api/flash/run", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ dryRun }) });
+    const d = await res.json();
+    if (!res.ok) throw new Error(d.error || "Lỗi");
+    $("#flashResult").innerHTML = renderFlashResult(d, dryRun);
+    toast(dryRun ? `Xem trước: ${d.eligible} shop sẽ tạo flash` : `✓ Đã tạo ${d.created} flash / ${d.eligible} shop`);
+    if (!dryRun) setTimeout(scanPromotions, 1500); // refresh bảng promotion sau khi tạo
+  } catch (err) {
+    $("#flashResult").innerHTML = `<div class="card"><div class="empty" style="color:var(--danger)">Lỗi: ${escapeHtml(err.message)}</div></div>`;
+    toast(err.message, "error");
+  } finally {
+    dryBtn.disabled = false; goBtn.disabled = false; active.textContent = old;
+  }
+}
+
+function renderFlashResult(d, dryRun) {
+  const rows = (d.results || []).map((x) => {
+    const modeTxt = x.mode === "signal" ? '<span style="color:var(--success)">tín hiệu</span>'
+      : x.mode && x.mode.startsWith("random") ? '<span style="color:#f59e0b">random</span>' : "—";
+    const st = x.ok ? "✅" : (x.error ? "❌" : "⚪");
+    return `<tr>
+      <td>${st}</td>
+      <td>${escapeHtml(String(x.shop).replace(/_US$/, ""))}</td>
+      <td>${modeTxt}</td>
+      <td class="mono">${x.picked != null ? x.picked + " sp" : "—"}</td>
+      <td style="color:var(--text-mute); font-size:0.8rem;">${x.error ? escapeHtml(x.error) : ""}</td>
+    </tr>`;
+  }).join("");
+  return `<div class="card">
+    <div style="display:flex; align-items:baseline; justify-content:space-between; flex-wrap:wrap; gap:8px;">
+      <h3 style="margin:0;">⚡ Flash auto ${dryRun ? "(xem trước — CHƯA tạo)" : "(đã tạo thật)"}</h3>
+      <span style="font-size:0.82rem; color:var(--text-mute)">quét ${d.scanned} shop · ${d.expired} hết flash · ${dryRun ? d.eligible + " sẽ tạo" : "<b style='color:var(--success)'>" + d.created + " đã tạo</b>/" + d.eligible}</span>
+    </div>
+    <div style="overflow-x:auto; margin-top:8px;">
+      <table><thead><tr><th></th><th>Shop</th><th>Nguồn sp</th><th>Số sp</th><th>Ghi chú</th></tr></thead><tbody>${rows || '<tr><td colspan="5" class="empty">Không có shop nào hết flash.</td></tr>'}</tbody></table>
+    </div>
+    <div style="margin-top:8px; font-size:0.74rem; color:var(--text-mute)">ⓘ ${dryRun ? "Đây là xem trước — bấm ⚡ Chạy Flash auto để tạo thật." : "Flash -24%, chạy 3 ngày, variation-level. Cron tự chạy mỗi 15 phút cho shop hết flash."}</div>
+  </div>`;
 }
 
 function renderPromotions(r) {

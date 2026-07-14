@@ -14,6 +14,17 @@ export interface ScrapeOptions {
   maxColors?: number;
   /** Delay (ms) giữa mỗi lần click variant — click chậm như người để GIẢM kích captcha. Mặc định 1800. */
   variantDelayMs?: number;
+  /**
+   * V2 (ID-first): KHÔNG click swatch — chỉ đọc MÀU ĐANG HIỂN THỊ của trang.
+   * Dùng khi orchestrator đã goto thẳng URL của từng màu (`-p-<colorGoodsId>.html`) →
+   * mỗi màu là fresh load nên DOM luôn đúng → hết bug "variant kẹt" (URL nhảy, ảnh không nhảy).
+   */
+  noClick?: boolean;
+  /**
+   * V2: BỎ QUA size_chart / measure_guide / fit_reviews (product-level, giống nhau mọi màu).
+   * Chỉ lấy ở màu ĐẦU → màu 2..N nhanh hơn ~10s (khỏi mở drawer + poll).
+   */
+  skipSizeChart?: boolean;
 }
 
 export interface ScrapeResult {
@@ -243,7 +254,8 @@ async function inPageScrape(opts: ScrapeOptions): Promise<ScrapeResult> {
   const sigOf = (arr: string[]): string => arr.slice(0, 3).join("|");
   const limit = opts.maxColors && opts.maxColors > 0 ? Math.min(opts.maxColors, swatches.length) : swatches.length;
 
-  if (swatches.length > 0) {
+  // V2 noClick: bỏ hẳn vòng click swatch → rơi xuống nhánh "đọc màu hiện tại" bên dưới.
+  if (swatches.length > 0 && !opts.noClick) {
     for (let i = 0; i < limit; i++) {
       // PACING: click chậm như người (delay + jitter ngẫu nhiên) → giảm kích captcha. KHÔNG chờ giải captcha.
       await wait(variantDelay + Math.floor(Math.random() * 1400));
@@ -333,13 +345,18 @@ async function inPageScrape(opts: ScrapeOptions): Promise<ScrapeResult> {
       data.available_matrix[finalColorName] = availSizes;
     }
   } else {
+    // Đọc MÀU ĐANG HIỂN THỊ (dùng cho noClick/V2, và cho sp 1 màu không có swatch).
+    // Tên màu: ưu tiên label màu đang chọn (đúng màu của trang), fallback attribute Color.
+    const labelColor = (document.querySelector(SELECTORS.colorNameLabel) as HTMLElement)?.innerText.trim() || "";
     const colorKey = Object.keys(attributes).find((k) => ["Color", "Farbe", "Couleur"].includes(k));
-    const fallbackColor = (colorKey && attributes[colorKey]) || "Default";
+    const fallbackColor = labelColor || (colorKey && attributes[colorKey]) || "Default";
     const { available: availSizes } = getAvailableSizesForCurrentColor();
     availSizes.forEach((s) => allSizesSet.add(s));
+    if (availSizes.length === 0) oosColors.push(fallbackColor);
     data.listing_variations.colors.push(fallbackColor);
     data.variant_ids.push({ [fallbackColor]: getProductIdFromUrl() ?? "Unknown" });
-    data.variant_images.push({ [fallbackColor]: [...productImages] });
+    // Cap 9 ảnh (giới hạn 4Seller/TikTok) — giống nhánh click.
+    data.variant_images.push({ [fallbackColor]: [...productImages].slice(0, 9) });
     data.variant_price.push({
       [fallbackColor]: (document.querySelector(SELECTORS.price) as HTMLElement)?.innerText.trim() ?? "0",
     });
@@ -358,7 +375,9 @@ async function inPageScrape(opts: ScrapeOptions): Promise<ScrapeResult> {
     // STRICT COUNT: `limit` = số swatch cần xử lý (= swatches.length sau Show-More, hoặc maxColors nếu
     // chủ động giới hạn). processed = số màu cào được + số màu OOS. Nếu processed < limit nghĩa là loop
     // bị bỏ swatch giữa chừng (captcha/timing) → orchestrator coi là CRAWL FAIL.
-    expectedColors: limit,
+    // noClick (V2): mỗi lần gọi CHỈ đọc 1 màu (orchestrator goto từng màu) → expected = 1,
+    // KHÔNG phải số swatch trên trang (nếu không assertColorCount sẽ báo fail oan).
+    expectedColors: opts.noClick ? 1 : limit,
     processedColors: data.listing_variations.colors.length + oosColors.length,
   };
 
@@ -376,7 +395,9 @@ async function inPageScrape(opts: ScrapeOptions): Promise<ScrapeResult> {
     }) ||
     document.querySelector('[class*="size-guide"]') ||
     document.querySelector('[class*="size-chart"]');
-  if (sizeBtn) {
+  // skipSizeChart (V2): size_chart/measure/fit là PRODUCT-LEVEL (giống nhau mọi màu) → chỉ mở
+  // drawer ở màu ĐẦU. Bỏ qua ở màu 2..N tiết kiệm ~10s/màu (drawer poll tới 8s).
+  if (sizeBtn && !opts.skipSizeChart) {
     await forceClick(sizeBtn);
     // Drawer Size Guide load ASYNC → POLL chờ NỘI DUNG (bảng / measure-guide / unit-toggle), tối đa ~8s.
     //   KHÔNG click lại để "thử mở": click lần 2 TOGGLE ĐÓNG drawer → đọc rỗng. Nếu sau 8s vẫn trống

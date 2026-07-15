@@ -64,9 +64,12 @@ const main = async () => {
   }
   edb.close();
 
-  console.log(`\n🏁 Tổng ${totalQueued} video vào queue. Queue chạy nền (~90s/video → ~${Math.round(totalQueued * 1.5)} phút).`);
-  console.log(`   Theo dõi: npx tsx src/scripts/videoQueueStatus.ts`);
-  // KHÔNG exit — để queue chạy tiếp trong process này.
+  console.log(`\n🏁 Tổng ${totalQueued} video vào queue (status='queued').`);
+  console.log(`   SERVER (cron 5′) sẽ render tuần tự — KHÔNG render trong script này để tránh`);
+  console.log(`   2 tiến trình tranh CPU (ffmpeg chậm 10×). Theo dõi: npx tsx src/scripts/videoQueueStatus.ts`);
+  // Thoát NGAY sau khi enqueue — video nằm 'queued' trong DB, server tự nhặt.
+  // (enqueue có kick() render nền nhưng ta cắt để nhường CPU cho server.)
+  process.exit(0);
 };
 
 main().catch((e) => { console.error("❌", e?.message ?? e); process.exit(1); });

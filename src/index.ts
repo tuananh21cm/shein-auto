@@ -18,6 +18,7 @@ import { schedulePromotionCron } from "./core/promotionScan";
 import { scheduleFlashAuto } from "./core/flashDeal";
 import { schedulePublishCron } from "./core/videoStudio/publishScheduler";
 import { scheduleVideoQueueCron } from "./core/videoStudio/videoQueue";
+import { scheduleDailyReport } from "./core/dailyReport";
 
 // Pipe console.* lên eventBus để SSE stream xuống UI. Phải gọi sớm.
 installConsoleTap();
@@ -52,6 +53,7 @@ const bootstrap = async () => {
   scheduleFlashAuto();
   schedulePublishCron();
   scheduleVideoQueueCron();
+  scheduleDailyReport();
   console.log("⏰ Đã đăng ký cron (instance này giữ port → chạy cron).");
 };
 bootstrap().catch((err: any) => {

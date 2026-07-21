@@ -221,7 +221,7 @@ export const uploadVariantImages = async (
       //   màu CHÍNH XÁC (bỏ dấu "*" required), và bỏ qua box đã dùng.
       const boxes = page.locator([".variant_imgs li", ".variant_multiple_imgs .flex.column"].join(", "));
       const total = await boxes.count();
-      const want = searchColor.toLowerCase();
+      const want = searchColor.replace(/\s+/g, " ").toLowerCase();
       const labelsSeen: string[] = [];
       let targetBox: any = null;
       let targetIdx = -1;
@@ -230,7 +230,7 @@ export const uploadVariantImages = async (
         const b = boxes.nth(bi);
         let label = (await b.locator(".line_ellipsis").first().innerText().catch(() => "")).trim();
         if (!label) label = ((await b.innerText().catch(() => "")) || "").trim().split("\n")[0];
-        label = label.replace(/\s*\*\s*$/, "").trim(); // bỏ dấu "*" (required)
+        label = label.replace(/\s*\*\s*$/, "").replace(/\s+/g, " ").trim(); // bỏ dấu "*" (required) + gộp khoảng trắng
         labelsSeen.push(label);
         if (label.toLowerCase() === want) {
           targetBox = b;

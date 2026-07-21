@@ -250,8 +250,15 @@ async function inPageScrape(opts: ScrapeOptions): Promise<ScrapeResult> {
   const colorCounter: Record<string, number> = {};
   const oosColors: string[] = [];
   const stuckColors: string[] = []; // màu mà click ĐỔI URL nhưng ảnh KHÔNG đổi (lỗi SPA)
-  let prevImgSig = ""; // chữ ký ảnh của màu TRƯỚC (để so sánh phát hiện "kẹt")
   const sigOf = (arr: string[]): string => arr.slice(0, 3).join("|");
+  const readVariantImages = (): string[] =>
+    Array.from(
+      new Set(
+        Array.from(document.querySelectorAll(SELECTORS.allProductImages)).map((img) =>
+          getOriginalImageUrl((img as HTMLImageElement).src || img.getAttribute("data-src") || (img as any).dataset?.src)
+        )
+      )
+    ).filter(Boolean) as string[];
   const limit = opts.maxColors && opts.maxColors > 0 ? Math.min(opts.maxColors, swatches.length) : swatches.length;
 
   // V2 noClick: bỏ hẳn vòng click swatch → rơi xuống nhánh "đọc màu hiện tại" bên dưới.
@@ -263,6 +270,8 @@ async function inPageScrape(opts: ScrapeOptions): Promise<ScrapeResult> {
       const sw = (document.querySelectorAll(SELECTORS.colorSwatches)[i] as any) || swatches[i];
       if (!sw) continue;
       const prevName = (document.querySelector(SELECTORS.colorNameLabel) as HTMLElement)?.innerText.trim() ?? "";
+      // Baseline ảnh TRƯỚC khi click — để biết gallery đã swap xong chưa (check được cả màu i=0).
+      const preClickSig = sigOf(readVariantImages());
       await forceClick(sw);
       let rawColorName = await waitForChange(SELECTORS.colorNameLabel, prevName, 2500);
       // Name chưa đổi (render chậm / captcha che) → thử click lại 1 lần, KHÔNG chờ giải captcha.
@@ -270,6 +279,7 @@ async function inPageScrape(opts: ScrapeOptions): Promise<ScrapeResult> {
         await forceClick((document.querySelectorAll(SELECTORS.colorSwatches)[i] as any) || sw);
         rawColorName = await waitForChange(SELECTORS.colorNameLabel, prevName, 2000);
       }
+      const nameChanged = !!rawColorName;
       if (!rawColorName) {
         rawColorName =
           (sw.querySelector("img") as HTMLImageElement)?.getAttribute("alt")?.trim() || "Color" + (i + 1);
@@ -297,45 +307,43 @@ async function inPageScrape(opts: ScrapeOptions): Promise<ScrapeResult> {
         const n = parseFloat(priceText.replace(/[^0-9.]/g, ""));
         if (!isNaN(n)) priceText = (n / 4).toFixed(2);
       }
-      // Đổi màu: NAME đã đổi nhưng ẢNH gallery có thể load chậm/lazy → poll tới khi
-      // có ảnh, tránh push MẢNG RỖNG (variant không có ảnh trên 4Seller như màu "Pink").
-      const readVariantImages = (): string[] =>
-        Array.from(
-          new Set(
-            Array.from(document.querySelectorAll(SELECTORS.allProductImages)).map((img) =>
-              getOriginalImageUrl((img as HTMLImageElement).src || img.getAttribute("data-src") || (img as any).dataset?.src)
-            )
-          )
-        ).filter(Boolean) as string[];
+      // 🐞 FIX GỐC: SHEIN đổi TÊN màu trước, ảnh gallery swap SAU. Chỉ chờ "có ảnh" là
+      //    đọc trúng ảnh màu TRƯỚC (stale). POLL tới khi chữ ký ảnh KHÁC baseline trước
+      //    lúc click (check được cả màu i=0), tối đa ~5.4s. Chỉ áp khi biết chắc màu đã
+      //    switch (tên đổi, hoặc i>0 vì đã click sang swatch khác) — swatch đang được
+      //    chọn sẵn thì gallery không đổi là đúng, khỏi chờ oan.
+      const mustSwap = nameChanged || i > 0;
       await wait(300); // cho gallery bắt đầu swap
       let variantImages = readVariantImages();
-      // 🐞 FIX GỐC: gallery swap CHẬM. Code cũ chỉ chờ "có ảnh" → đọc trúng ảnh màu TRƯỚC (stale) → bug
-      //    "đổi URL nhưng ảnh không đổi". Với màu thứ 2+, POLL tới khi chữ ký ảnh KHÁC màu trước (đã swap),
-      //    tối đa ~5.4s. (Màu đầu: chỉ cần chờ có ảnh.)
       for (let attempt = 0; attempt < 12; attempt++) {
         const empty = variantImages.length === 0;
-        const stale = i > 0 && !!prevImgSig && variantImages.length > 0 && sigOf(variantImages) === prevImgSig;
+        const stale = mustSwap && !!preClickSig && variantImages.length > 0 && sigOf(variantImages) === preClickSig;
         if (!empty && !stale) break;
         await wait(450);
         variantImages = readVariantImages();
       }
+      // Gallery vừa swap — đợi 1 nhịp cho các ảnh còn lại đổi nốt rồi đọc lại (tránh bộ ảnh lai nửa cũ nửa mới).
+      if (mustSwap && variantImages.length) {
+        await wait(400);
+        const settled = readVariantImages();
+        if (settled.length) variantImages = settled;
+      }
 
-      // Vẫn KẸT (ảnh y hệt màu trước sau khi đã chờ) → ép click lại tối đa 3 lần.
-      if (i > 0 && variantImages.length && sigOf(variantImages) === prevImgSig) {
+      // Vẫn KẸT (ảnh y hệt lúc trước click sau khi đã chờ) → ép click lại tối đa 3 lần.
+      if (mustSwap && variantImages.length && sigOf(variantImages) === preClickSig) {
         let recovered = false;
         for (let rc = 0; rc < 3 && !recovered; rc++) {
           const swR = (document.querySelectorAll(SELECTORS.colorSwatches)[i] as any) || sw;
           await forceClick(swR);
           await wait(900);
           const vi = readVariantImages();
-          if (vi.length && sigOf(vi) !== prevImgSig) {
+          if (vi.length && sigOf(vi) !== preClickSig) {
             variantImages = vi;
             recovered = true;
           }
         }
         if (!recovered) stuckColors.push(finalColorName); // vẫn kẹt → orchestrator restart session cào lại
       }
-      if (variantImages.length) prevImgSig = sigOf(variantImages);
 
       data.listing_variations.colors.push(finalColorName);
       data.variant_ids.push({ [finalColorName]: currentId });

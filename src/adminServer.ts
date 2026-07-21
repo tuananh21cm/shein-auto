@@ -2372,6 +2372,53 @@ export const startAdminServer = async () => {
     }
   });
 
+  // ── Trend keyword (chèn vào title lúc list — config/trend.json) ──────
+  const TREND_FILE = path.resolve(process.cwd(), "config", "trend.json");
+
+  app.get("/admin/api/trend", async (req, res) => {
+    try {
+      const sessionUser = (req.session as any).user as SessionUser;
+      if (sessionUser.role !== "admin") return res.status(403).json({ error: "Chỉ admin" });
+      const cfg = JSON.parse(await fs.readFile(TREND_FILE, "utf-8"));
+      res.json({
+        enabled: !!cfg.enabled,
+        keyword: String(cfg.keyword ?? ""),
+        position: cfg.position === "suffix" ? "suffix" : "prefix",
+        shops: Array.isArray(cfg.shops) ? cfg.shops : [],
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? "Lỗi đọc trend" });
+    }
+  });
+
+  app.post("/admin/api/trend", async (req, res) => {
+    try {
+      const sessionUser = (req.session as any).user as SessionUser;
+      if (sessionUser.role !== "admin") return res.status(403).json({ error: "Chỉ admin" });
+
+      const body = req.body as { enabled?: boolean; keyword?: string; position?: string; shops?: string[] };
+      const keyword = String(body.keyword ?? "").trim();
+      const shops = (Array.isArray(body.shops) ? body.shops : []).map((s) => String(s).trim()).filter(Boolean);
+      if (body.enabled && !keyword) {
+        return res.status(400).json({ error: "Keyword không được rỗng khi bật trend" });
+      }
+
+      const existing = JSON.parse(await fs.readFile(TREND_FILE, "utf-8"));
+      const merged = {
+        ...existing,
+        enabled: !!body.enabled,
+        keyword,
+        position: body.position === "suffix" ? "suffix" : "prefix",
+        shops,
+      };
+      await fs.writeFile(TREND_FILE, JSON.stringify(merged, null, 2), "utf-8");
+      reloadAppConfig();
+      res.json({ ok: true, ...merged });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? "Lỗi lưu trend" });
+    }
+  });
+
   // (Đã bỏ global brand mapping — brand giờ chỉ theo từng user/shop ở mục Users.)
 
   // ── 4Seller stats — đọc trực tiếp từ 4Seller API ──────

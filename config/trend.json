@@ -1,0 +1,9 @@
+{
+  "_comment": "Trend keyword chèn vào title lúc list lên 4Seller (vd 'Back to School'). shops = danh sách shop/profile áp dụng (match chuẩn hoá: bỏ space + gạch, lowercase — giống brand). position: 'prefix' (đầu title) | 'suffix' (cuối title). enabled=false hoặc shops rỗng → không chèn gì.",
+  "enabled": true,
+  "keyword": "Back to School",
+  "position": "suffix",
+  "shops": [
+    "TA Scan 171-RUTMAN_US"
+  ]
+}

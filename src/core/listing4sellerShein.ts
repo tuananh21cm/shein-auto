@@ -11,6 +11,7 @@ import { uploadToImgbb, verifyImageUrl } from "../utils/uploadToImgbb";
 import { uploadToImgbbCached } from "../utils/imgbbCache";
 import { config } from "../config";
 import { cleanTitle, toTitleCase } from "../utils/cleanTitle";
+import { applyTrendKeyword } from "../utils/trendTitle";
 import { workerConfig } from "../config/appConfig";
 import { resolveBrandForUser } from "../state/userDirs";
 
@@ -180,7 +181,11 @@ export const listing4sellerShein = async (
     console.log({ targetProfile, brand });
     // POD: KHÔNG prepend brand/shop name vào title (giữ nguyên title AI). Thường: ghép brand đầu title.
     // Title Case: viết hoa ký tự đầu mỗi từ trước khi list lên 4Seller.
-    const finalTitle = toTitleCase(data._pod ? String(aiTitle).trim() : cleanTitle(aiTitle, brand));
+    // Trend keyword (config/trend.json): shop nằm trong danh sách → chèn keyword mùa vụ vào title.
+    const finalTitle = applyTrendKeyword(
+      toTitleCase(data._pod ? String(aiTitle).trim() : cleanTitle(aiTitle, brand)),
+      targetProfile
+    );
     // Fail-fast: Gemini lỗi trả title rỗng + shop không có brand → điền title rỗng
     // → chết mãi tận lúc publish với "Can not be empty" mù mờ. Throw sớm cho rõ.
     if (!finalTitle) {

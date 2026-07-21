@@ -239,6 +239,17 @@ let _crawl: CrawlFile | null = null;
 export const crawlConfig = (): CrawlFile =>
   (_crawl ??= readJson<CrawlFile>("crawl.json"));
 
+/** Trend keyword chèn vào title lúc list (config/trend.json). */
+export interface TrendFile {
+  enabled: boolean;
+  keyword: string;
+  position: "prefix" | "suffix";
+  shops: string[];   // tên shop/profile áp dụng (match chuẩn hoá bỏ space/gạch)
+}
+let _trend: TrendFile | null = null;
+export const trendConfig = (): TrendFile =>
+  (_trend ??= readJson<TrendFile>("trend.json"));
+
 let _harvest: HarvestFile | null = null;
 export const harvestConfig = (): HarvestFile =>
   (_harvest ??= readJson<HarvestFile>("harvest.json"));
@@ -286,4 +297,5 @@ export const reloadAppConfig = (): void => {
   _pod = null;
   _crawl = null;
   _categoryCrawl = null;
+  _trend = null;
 };

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SHEIN Scraper v27 - Direct API + SSE + Background
 // @namespace    http://tampermonkey.net/
-// @version      27.1.0
+// @version      27.2.0
 // @description  Cào SHEIN → POST thẳng lên shein-auto worker. Sync profile từ server. Realtime SSE. Detect out-of-stock per (color × size). Background tab vẫn cào nhờ silent audio.
 // @author       shein-auto
 // @match        *://*.shein.com/*
@@ -118,6 +118,39 @@
             await wait(150);
         }
         return null;
+    }
+
+    /** Bộ ảnh gallery hiện tại (dedup, URL gốc không thumbnail). */
+    const getGalleryImages = () => Array.from(new Set(
+        Array.from(document.querySelectorAll(SELECTORS.allProductImages))
+            .map((img) => getOriginalImageUrl(img.src || img.getAttribute('data-src') || img.dataset.src)),
+    )).filter(Boolean);
+
+    const gallerySignature = (imgs) => imgs.slice().sort().join('|');
+
+    /**
+     * Đợi gallery đổi ảnh sau khi click swatch màu. SHEIN cập nhật tên màu TRƯỚC,
+     * ảnh gallery swap SAU — nếu chỉ đợi tên màu rồi chụp gallery ngay thì màu mới
+     * dính nguyên bộ ảnh của màu trước (gốc lỗi ảnh variant lệch tên trên 4Seller).
+     * 2 pha: (1) đợi signature khác bộ ảnh CHỤP TRƯỚC LÚC CLICK (baseline, không phải
+     * ảnh màu trước đã lưu — nên màu đầu tiên i=0 cũng được check), (2) đợi gallery
+     * ổn định (không đổi thêm ~450ms) để không chụp lúc đang swap dở.
+     * Timeout → trả bộ hiện tại (caller tự đánh dấu stuck).
+     */
+    async function waitForGalleryChange(prevSignature, timeoutMs = 5000) {
+        const start = Date.now();
+        while (Date.now() - start < timeoutMs) {
+            if (gallerySignature(getGalleryImages()) !== prevSignature) break;
+            await wait(150);
+        }
+        let lastSig = gallerySignature(getGalleryImages());
+        let lastChange = Date.now();
+        while (Date.now() - lastChange < 450 && Date.now() - start < timeoutMs + 2000) {
+            await wait(150);
+            const sig = gallerySignature(getGalleryImages());
+            if (sig !== lastSig) { lastSig = sig; lastChange = Date.now(); }
+        }
+        return getGalleryImages();
     }
 
     /* ============= CAPTCHA (đợi giải thủ công) ============= */
@@ -332,10 +365,7 @@
             });
 
             // 3. ẢNH SẢN PHẨM CHUNG
-            const productImages = Array.from(new Set(
-                Array.from(document.querySelectorAll(SELECTORS.allProductImages))
-                    .map((img) => getOriginalImageUrl(img.src || img.getAttribute('data-src') || img.dataset.src)),
-            )).filter(Boolean).slice(0, 8);
+            const productImages = getGalleryImages().slice(0, 8);
 
             // 4. SIZE union — KHÔNG seed bằng size đọc TRƯỚC khi click màu: SHEIN lúc đó
             //    trả dạng CHỮ ("S"), sau khi click màu mới ra dạng SỐ ("4 (S)") → gộp cả 2
@@ -377,8 +407,6 @@
             const colorCounter = {};
             const oosColors = [];
             const stuckColors = []; // click đổi màu nhưng ẢNH không đổi (lỗi SPA)
-            let prevImgSig = '';
-            const sigOf = (arr) => (arr || []).slice(0, 3).join('|');
 
             if (swatches.length > 0) {
                 for (let i = 0; i < swatches.length; i++) {
@@ -387,10 +415,13 @@
                     // Re-query swatch theo index (DOM có thể đổi sau show-more/captcha → NodeList cũ stale).
                     const sw = document.querySelectorAll(SELECTORS.colorSwatches)[i] || swatches[i];
                     const prevName = document.querySelector(SELECTORS.colorNameLabel)?.innerText.trim() ?? '';
+                    // Baseline gallery TRƯỚC khi click — dùng để biết gallery đã swap xong chưa.
+                    const prevGallerySig = gallerySignature(getGalleryImages());
                     await forceClick(sw);
 
                     // Đợi tên màu đổi (smart wait, max 2.5s)
                     let rawColorName = await waitForChange(SELECTORS.colorNameLabel, prevName, 2500);
+                    const nameChanged = rawColorName !== null;
                     if (!rawColorName) {
                         rawColorName = sw.querySelector('img')?.getAttribute('alt')?.trim() || 'Color' + (i + 1);
                     }
@@ -421,29 +452,24 @@
                         if (!isNaN(n)) priceText = (n / 4).toFixed(2);
                     }
 
-                    // Ảnh variant — đổi màu NAME đã đổi nhưng ẢNH gallery có thể load
-                    // chậm/lazy → poll tới khi có ảnh, tránh push MẢNG RỖNG (màu không
-                    // có ảnh trên 4Seller như màu "Pink").
-                    const readVariantImages = () => Array.from(new Set(
-                        Array.from(document.querySelectorAll(SELECTORS.allProductImages))
-                            .map((img) => getOriginalImageUrl(img.src || img.getAttribute('data-src') || img.dataset.src)),
-                    )).filter(Boolean);
-                    await wait(300); // cho gallery bắt đầu swap
-                    let variantImages = readVariantImages();
+                    // Ảnh variant — PHẢI đợi gallery swap XONG so với baseline trước click,
+                    // không chụp ngay khi tên màu vừa đổi (SHEIN đổi tên trước, ảnh sau —
+                    // gốc lỗi ảnh variant dính bộ ảnh màu trước trên 4Seller).
+                    // Tên đổi = chắc chắn màu đã switch → đợi đủ 5s; tên không đổi
+                    // (swatch đang được chọn sẵn, thường màu đầu) → gallery có thể
+                    // không đổi, chỉ đợi ngắn 1.5s.
+                    let variantImages = await waitForGalleryChange(prevGallerySig, nameChanged ? 5000 : 1500);
+                    // Gallery rỗng (lazy-load chậm) → poll thêm, tránh push MẢNG RỖNG.
                     for (let attempt = 0; attempt < 6 && variantImages.length === 0; attempt++) {
                         await wait(400);
-                        variantImages = readVariantImages();
+                        variantImages = getGalleryImages();
                     }
-                    // STUCK: ảnh KHÔNG đổi so với màu trước (SHEIN SPA chỉ đổi URL, gallery chưa swap)
-                    // → poll thêm; vẫn y hệt thì đánh dấu stuck (data màu này có thể sai ảnh).
-                    if (i > 0 && prevImgSig && sigOf(variantImages) === prevImgSig) {
-                        for (let a = 0; a < 6 && sigOf(variantImages) === prevImgSig; a++) {
-                            await wait(500);
-                            variantImages = readVariantImages();
-                        }
-                        if (sigOf(variantImages) === prevImgSig) stuckColors.push(finalColorName);
+                    // STUCK: tên màu đã đổi mà gallery vẫn y hệt lúc trước click sau khi đã
+                    // đợi hết timeout → ảnh màu này gần như chắc chắn sai.
+                    if (nameChanged && gallerySignature(variantImages) === prevGallerySig) {
+                        stuckColors.push(finalColorName);
+                        console.warn(`[SHEIN-SCRAPER] ⚠️ Gallery không đổi cho màu "${finalColorName}" — ảnh có thể dính màu trước.`);
                     }
-                    prevImgSig = sigOf(variantImages);
 
                     data.listing_variations.colors.push(finalColorName);
                     data.variant_ids.push({ [finalColorName]: currentId });

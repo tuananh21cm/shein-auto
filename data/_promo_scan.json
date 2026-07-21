@@ -1,45 +1,9 @@
 {
- "scannedAt": 1784163600465,
+ "scannedAt": 1784638800544,
  "synced": true,
  "accounts": 1,
- "totalActivities": 196,
+ "totalActivities": 244,
  "rows": [
-  {
-   "shop": "TA Scan 602_US",
-   "shopId": 227732,
-   "account": "Tài khoản 1",
-   "activeListings": 11,
-   "discountOngoing": 0,
-   "discountProductsCovered": 0,
-   "uncoveredProducts": 11,
-   "nextDiscountEnd": null,
-   "flashOngoing": 0,
-   "flashUpcoming": 0,
-   "lastFlashEnd": null,
-   "flashExpired": true,
-   "alerts": [
-    "Flash HẾT HẠN — không còn flash đang/sắp chạy",
-    "Chưa có Product Discount đang chạy"
-   ]
-  },
-  {
-   "shop": "TA Scan 607_US",
-   "shopId": 227730,
-   "account": "Tài khoản 1",
-   "activeListings": 8,
-   "discountOngoing": 0,
-   "discountProductsCovered": 0,
-   "uncoveredProducts": 8,
-   "nextDiscountEnd": null,
-   "flashOngoing": 0,
-   "flashUpcoming": 0,
-   "lastFlashEnd": null,
-   "flashExpired": true,
-   "alerts": [
-    "Flash HẾT HẠN — không còn flash đang/sắp chạy",
-    "Chưa có Product Discount đang chạy"
-   ]
-  },
   {
    "shop": "TN Scan44-Bawse Accessories & Design_US",
    "shopId": 221956,
@@ -59,38 +23,74 @@
    ]
   },
   {
-   "shop": "TA Scan 210-KellieJo.bluetapelife_US",
-   "shopId": 220144,
+   "shop": "TA Scan 241-SHIFT STITCH_US",
+   "shopId": 220903,
    "account": "Tài khoản 1",
-   "activeListings": 100,
-   "discountOngoing": 3,
-   "discountProductsCovered": 100,
-   "uncoveredProducts": 0,
-   "nextDiscountEnd": 1789629660000,
+   "activeListings": 86,
+   "discountOngoing": 1,
+   "discountProductsCovered": 17,
+   "uncoveredProducts": 69,
+   "nextDiscountEnd": 1789868700000,
    "flashOngoing": 0,
    "flashUpcoming": 0,
-   "lastFlashEnd": 1784010360000,
+   "lastFlashEnd": 1784660880000,
+   "flashExpired": true,
+   "alerts": [
+    "Flash HẾT HẠN — không còn flash đang/sắp chạy",
+    "69 sp CHƯA chạy discount (active 86, covered 17)"
+   ]
+  },
+  {
+   "shop": "TN Scan 1 5- 2106 - Simply Me, Kish_US",
+   "shopId": 224839,
+   "account": "Tài khoản 1",
+   "activeListings": 0,
+   "discountOngoing": 1,
+   "discountProductsCovered": 53,
+   "uncoveredProducts": 0,
+   "nextDiscountEnd": 1791803580000,
+   "flashOngoing": 0,
+   "flashUpcoming": 0,
+   "lastFlashEnd": 1784210700000,
    "flashExpired": true,
    "alerts": [
     "Flash HẾT HẠN — không còn flash đang/sắp chạy"
    ]
   },
   {
-   "shop": "TN Scan 10 - 2106 - TaiAri Boutique_US",
-   "shopId": 224841,
+   "shop": "TN Scan 11 - 2106 - beckyb.shop_US",
+   "shopId": 224844,
    "account": "Tài khoản 1",
-   "activeListings": 74,
-   "discountOngoing": 1,
-   "discountProductsCovered": 53,
-   "uncoveredProducts": 21,
-   "nextDiscountEnd": 1791803880000,
+   "activeListings": 66,
+   "discountOngoing": 2,
+   "discountProductsCovered": 60,
+   "uncoveredProducts": 6,
+   "nextDiscountEnd": 1791343260000,
    "flashOngoing": 1,
    "flashUpcoming": 0,
-   "lastFlashEnd": 1784211060000,
+   "lastFlashEnd": 1784661900000,
    "flashExpired": false,
    "alerts": [
     "Flash cuối sắp hết (<24h) — chưa có flash kế tiếp",
-    "21 sp CHƯA chạy discount (active 74, covered 53)"
+    "6 sp CHƯA chạy discount (active 66, covered 60)"
+   ]
+  },
+  {
+   "shop": "TN Scan 10 - 2106 - TaiAri Boutique_US",
+   "shopId": 224841,
+   "account": "Tài khoản 1",
+   "activeListings": 101,
+   "discountOngoing": 1,
+   "discountProductsCovered": 86,
+   "uncoveredProducts": 15,
+   "nextDiscountEnd": 1791803880000,
+   "flashOngoing": 1,
+   "flashUpcoming": 0,
+   "lastFlashEnd": 1784661960000,
+   "flashExpired": false,
+   "alerts": [
+    "Flash cuối sắp hết (<24h) — chưa có flash kế tiếp",
+    "15 sp CHƯA chạy discount (active 101, covered 86)"
    ]
   },
   {
@@ -104,29 +104,11 @@
    "nextDiscountEnd": 1790844240000,
    "flashOngoing": 1,
    "flashUpcoming": 0,
-   "lastFlashEnd": 1784209680000,
+   "lastFlashEnd": 1784661480000,
    "flashExpired": false,
    "alerts": [
     "Flash cuối sắp hết (<24h) — chưa có flash kế tiếp",
     "2 sp CHƯA chạy discount (active 96, covered 94)"
-   ]
-  },
-  {
-   "shop": "TA Scan 340-Calmwell_US",
-   "shopId": 223400,
-   "account": "Tài khoản 1",
-   "activeListings": 154,
-   "discountOngoing": 1,
-   "discountProductsCovered": 134,
-   "uncoveredProducts": 20,
-   "nextDiscountEnd": 1790581080000,
-   "flashOngoing": 1,
-   "flashUpcoming": 0,
-   "lastFlashEnd": 1784210160000,
-   "flashExpired": false,
-   "alerts": [
-    "Flash cuối sắp hết (<24h) — chưa có flash kế tiếp",
-    "20 sp CHƯA chạy discount (active 154, covered 134)"
    ]
   },
   {
@@ -140,7 +122,7 @@
    "nextDiscountEnd": 1790844360000,
    "flashOngoing": 1,
    "flashUpcoming": 0,
-   "lastFlashEnd": 1784209800000,
+   "lastFlashEnd": 1784662680000,
    "flashExpired": false,
    "alerts": [
     "Flash cuối sắp hết (<24h) — chưa có flash kế tiếp",
@@ -158,7 +140,7 @@
    "nextDiscountEnd": 1790844900000,
    "flashOngoing": 1,
    "flashUpcoming": 0,
-   "lastFlashEnd": 1784210340000,
+   "lastFlashEnd": 1784657460000,
    "flashExpired": false,
    "alerts": [
     "Flash cuối sắp hết (<24h) — chưa có flash kế tiếp",
@@ -176,7 +158,7 @@
    "nextDiscountEnd": 1790654880000,
    "flashOngoing": 1,
    "flashUpcoming": 0,
-   "lastFlashEnd": 1784200380000,
+   "lastFlashEnd": 1784662500000,
    "flashExpired": false,
    "alerts": [
     "Flash cuối sắp hết (<24h) — chưa có flash kế tiếp",
@@ -194,65 +176,11 @@
    "nextDiscountEnd": 1790305380000,
    "flashOngoing": 1,
    "flashUpcoming": 0,
-   "lastFlashEnd": 1784195700000,
+   "lastFlashEnd": 1784662140000,
    "flashExpired": false,
    "alerts": [
     "Flash cuối sắp hết (<24h) — chưa có flash kế tiếp",
     "3 sp CHƯA chạy discount (active 99, covered 96)"
-   ]
-  },
-  {
-   "shop": "TA Scan 300-Artis Designs_US",
-   "shopId": 220908,
-   "account": "Tài khoản 1",
-   "activeListings": 98,
-   "discountOngoing": 2,
-   "discountProductsCovered": 86,
-   "uncoveredProducts": 12,
-   "nextDiscountEnd": 1789963320000,
-   "flashOngoing": 1,
-   "flashUpcoming": 0,
-   "lastFlashEnd": 1784197440000,
-   "flashExpired": false,
-   "alerts": [
-    "Flash cuối sắp hết (<24h) — chưa có flash kế tiếp",
-    "12 sp CHƯA chạy discount (active 98, covered 86)"
-   ]
-  },
-  {
-   "shop": "TA Scan 251-Troubled Water_US",
-   "shopId": 220901,
-   "account": "Tài khoản 1",
-   "activeListings": 98,
-   "discountOngoing": 1,
-   "discountProductsCovered": 97,
-   "uncoveredProducts": 1,
-   "nextDiscountEnd": 1790042340000,
-   "flashOngoing": 1,
-   "flashUpcoming": 0,
-   "lastFlashEnd": 1784197560000,
-   "flashExpired": false,
-   "alerts": [
-    "Flash cuối sắp hết (<24h) — chưa có flash kế tiếp",
-    "1 sp CHƯA chạy discount (active 98, covered 97)"
-   ]
-  },
-  {
-   "shop": "TA Scan 205-Urban Noble_US",
-   "shopId": 220143,
-   "account": "Tài khoản 1",
-   "activeListings": 100,
-   "discountOngoing": 1,
-   "discountProductsCovered": 98,
-   "uncoveredProducts": 2,
-   "nextDiscountEnd": 1790226540000,
-   "flashOngoing": 1,
-   "flashUpcoming": 0,
-   "lastFlashEnd": 1784205480000,
-   "flashExpired": false,
-   "alerts": [
-    "Flash cuối sắp hết (<24h) — chưa có flash kế tiếp",
-    "2 sp CHƯA chạy discount (active 100, covered 98)"
    ]
   },
   {
@@ -266,7 +194,7 @@
    "nextDiscountEnd": 1790041980000,
    "flashOngoing": 1,
    "flashUpcoming": 0,
-   "lastFlashEnd": 1784197620000,
+   "lastFlashEnd": 1784659380000,
    "flashExpired": false,
    "alerts": [
     "Flash cuối sắp hết (<24h) — chưa có flash kế tiếp",
@@ -274,55 +202,54 @@
    ]
   },
   {
-   "shop": "TA Scan32-Priority Shop X_US",
-   "shopId": 218143,
+   "shop": "TA Scan 602_US",
+   "shopId": 227732,
    "account": "Tài khoản 1",
-   "activeListings": 98,
-   "discountOngoing": 2,
-   "discountProductsCovered": 96,
-   "uncoveredProducts": 2,
-   "nextDiscountEnd": 1790046600000,
-   "flashOngoing": 1,
-   "flashUpcoming": 0,
-   "lastFlashEnd": 1784199180000,
-   "flashExpired": false,
-   "alerts": [
-    "Flash cuối sắp hết (<24h) — chưa có flash kế tiếp",
-    "2 sp CHƯA chạy discount (active 98, covered 96)"
-   ]
-  },
-  {
-   "shop": "TN Scan 11 - 2106 - beckyb.shop_US",
-   "shopId": 224844,
-   "account": "Tài khoản 1",
-   "activeListings": 58,
-   "discountOngoing": 2,
-   "discountProductsCovered": 35,
-   "uncoveredProducts": 23,
-   "nextDiscountEnd": 1791343260000,
-   "flashOngoing": 1,
-   "flashUpcoming": 0,
-   "lastFlashEnd": 1784311560000,
-   "flashExpired": false,
-   "alerts": [
-    "23 sp CHƯA chạy discount (active 58, covered 35)"
-   ]
-  },
-  {
-   "shop": "TN Scan 1 5- 2106 - Simply Me, Kish_US",
-   "shopId": 224839,
-   "account": "Tài khoản 1",
-   "activeListings": 0,
+   "activeListings": 29,
    "discountOngoing": 1,
-   "discountProductsCovered": 53,
+   "discountProductsCovered": 29,
    "uncoveredProducts": 0,
-   "nextDiscountEnd": 1791803580000,
+   "nextDiscountEnd": 1792268460000,
    "flashOngoing": 1,
    "flashUpcoming": 0,
-   "lastFlashEnd": 1784210700000,
+   "lastFlashEnd": 1784675580000,
    "flashExpired": false,
    "alerts": [
     "Flash cuối sắp hết (<24h) — chưa có flash kế tiếp"
+   ]
+  },
+  {
+   "shop": "TA Scan 607_US",
+   "shopId": 227730,
+   "account": "Tài khoản 1",
+   "activeListings": 34,
+   "discountOngoing": 1,
+   "discountProductsCovered": 34,
+   "uncoveredProducts": 0,
+   "nextDiscountEnd": 1792268460000,
+   "flashOngoing": 1,
+   "flashUpcoming": 0,
+   "lastFlashEnd": 1784675580000,
+   "flashExpired": false,
+   "alerts": [
+    "Flash cuối sắp hết (<24h) — chưa có flash kế tiếp"
+   ]
+  },
+  {
+   "shop": "TA Scan 340-Calmwell_US",
+   "shopId": 223400,
+   "account": "Tài khoản 1",
+   "activeListings": 335,
+   "discountOngoing": 2,
+   "discountProductsCovered": 201,
+   "uncoveredProducts": 134,
+   "nextDiscountEnd": 1790581080000,
+   "flashOngoing": 4,
+   "flashUpcoming": 0,
+   "lastFlashEnd": 1784784120000,
+   "flashExpired": false,
+   "alerts": [
+    "134 sp CHƯA chạy discount (active 335, covered 201)"
    ]
   },
   {
@@ -336,7 +263,7 @@
    "nextDiscountEnd": 1790571660000,
    "flashOngoing": 1,
    "flashUpcoming": 0,
-   "lastFlashEnd": 1784195700000,
+   "lastFlashEnd": 1784662080000,
    "flashExpired": false,
    "alerts": [
     "Flash cuối sắp hết (<24h) — chưa có flash kế tiếp"
@@ -346,14 +273,14 @@
    "shop": "TA Scan 323-Shauna Shop Z_US",
    "shopId": 222118,
    "account": "Tài khoản 1",
-   "activeListings": 23,
+   "activeListings": 58,
    "discountOngoing": 1,
-   "discountProductsCovered": 23,
+   "discountProductsCovered": 58,
    "uncoveredProducts": 0,
    "nextDiscountEnd": 1790846460000,
    "flashOngoing": 1,
    "flashUpcoming": 0,
-   "lastFlashEnd": 1784198220000,
+   "lastFlashEnd": 1784662380000,
    "flashExpired": false,
    "alerts": [
     "Flash cuối sắp hết (<24h) — chưa có flash kế tiếp"
@@ -370,24 +297,75 @@
    "nextDiscountEnd": 1790225400000,
    "flashOngoing": 1,
    "flashUpcoming": 0,
-   "lastFlashEnd": 1784197980000,
+   "lastFlashEnd": 1784661240000,
    "flashExpired": false,
    "alerts": [
     "Flash cuối sắp hết (<24h) — chưa có flash kế tiếp"
    ]
   },
   {
-   "shop": "TA Scan 241-SHIFT STITCH_US",
-   "shopId": 220903,
+   "shop": "TA Scan 300-Artis Designs_US",
+   "shopId": 220908,
    "account": "Tài khoản 1",
-   "activeListings": 87,
+   "activeListings": 98,
    "discountOngoing": 2,
-   "discountProductsCovered": 89,
+   "discountProductsCovered": 98,
    "uncoveredProducts": 0,
-   "nextDiscountEnd": 1789868700000,
+   "nextDiscountEnd": 1789963320000,
    "flashOngoing": 1,
    "flashUpcoming": 0,
-   "lastFlashEnd": 1784211240000,
+   "lastFlashEnd": 1784660820000,
+   "flashExpired": false,
+   "alerts": [
+    "Flash cuối sắp hết (<24h) — chưa có flash kế tiếp"
+   ]
+  },
+  {
+   "shop": "TA Scan 251-Troubled Water_US",
+   "shopId": 220901,
+   "account": "Tài khoản 1",
+   "activeListings": 86,
+   "discountOngoing": 1,
+   "discountProductsCovered": 98,
+   "uncoveredProducts": 0,
+   "nextDiscountEnd": 1790042340000,
+   "flashOngoing": 1,
+   "flashUpcoming": 0,
+   "lastFlashEnd": 1784721300000,
+   "flashExpired": false,
+   "alerts": [
+    "Flash cuối sắp hết (<24h) — chưa có flash kế tiếp"
+   ]
+  },
+  {
+   "shop": "TA Scan 210-KellieJo.bluetapelife_US",
+   "shopId": 220144,
+   "account": "Tài khoản 1",
+   "activeListings": 100,
+   "discountOngoing": 3,
+   "discountProductsCovered": 100,
+   "uncoveredProducts": 0,
+   "nextDiscountEnd": 1789629660000,
+   "flashOngoing": 1,
+   "flashUpcoming": 0,
+   "lastFlashEnd": 1784719680000,
+   "flashExpired": false,
+   "alerts": [
+    "Flash cuối sắp hết (<24h) — chưa có flash kế tiếp"
+   ]
+  },
+  {
+   "shop": "TA Scan 205-Urban Noble_US",
+   "shopId": 220143,
+   "account": "Tài khoản 1",
+   "activeListings": 97,
+   "discountOngoing": 1,
+   "discountProductsCovered": 98,
+   "uncoveredProducts": 0,
+   "nextDiscountEnd": 1790226540000,
+   "flashOngoing": 1,
+   "flashUpcoming": 0,
+   "lastFlashEnd": 1784658240000,
    "flashExpired": false,
    "alerts": [
     "Flash cuối sắp hết (<24h) — chưa có flash kế tiếp"
@@ -397,48 +375,65 @@
    "shop": "TA Scan 171-RUTMAN_US",
    "shopId": 218751,
    "account": "Tài khoản 1",
-   "activeListings": 100,
+   "activeListings": 93,
    "discountOngoing": 2,
    "discountProductsCovered": 97,
-   "uncoveredProducts": 3,
+   "uncoveredProducts": 0,
    "nextDiscountEnd": 1789806240000,
    "flashOngoing": 1,
    "flashUpcoming": 0,
-   "lastFlashEnd": 1784268120000,
+   "lastFlashEnd": 1784659260000,
    "flashExpired": false,
    "alerts": [
-    "3 sp CHƯA chạy discount (active 100, covered 97)"
+    "Flash cuối sắp hết (<24h) — chưa có flash kế tiếp"
    ]
   },
   {
    "shop": "TA Scan 152-Fashion Lace_US",
    "shopId": 218148,
    "account": "Tài khoản 1",
-   "activeListings": 123,
+   "activeListings": 113,
    "discountOngoing": 2,
-   "discountProductsCovered": 74,
-   "uncoveredProducts": 49,
+   "discountProductsCovered": 145,
+   "uncoveredProducts": 0,
    "nextDiscountEnd": 1790311500000,
    "flashOngoing": 1,
    "flashUpcoming": 0,
-   "lastFlashEnd": 1784313600000,
+   "lastFlashEnd": 1784660100000,
    "flashExpired": false,
    "alerts": [
-    "49 sp CHƯA chạy discount (active 123, covered 74)"
+    "Flash cuối sắp hết (<24h) — chưa có flash kế tiếp"
    ]
   },
   {
    "shop": "TA Scan150-MaeBLa_US",
    "shopId": 218147,
    "account": "Tài khoản 1",
-   "activeListings": 99,
+   "activeListings": 91,
    "discountOngoing": 1,
    "discountProductsCovered": 113,
    "uncoveredProducts": 0,
    "nextDiscountEnd": 1790310600000,
    "flashOngoing": 1,
    "flashUpcoming": 0,
-   "lastFlashEnd": 1784200620000,
+   "lastFlashEnd": 1784660340000,
+   "flashExpired": false,
+   "alerts": [
+    "Flash cuối sắp hết (<24h) — chưa có flash kế tiếp"
+   ]
+  },
+  {
+   "shop": "TA Scan32-Priority Shop X_US",
+   "shopId": 218143,
+   "account": "Tài khoản 1",
+   "activeListings": 95,
+   "discountOngoing": 2,
+   "discountProductsCovered": 130,
+   "uncoveredProducts": 0,
+   "nextDiscountEnd": 1790046600000,
+   "flashOngoing": 1,
+   "flashUpcoming": 0,
+   "lastFlashEnd": 1784659920000,
    "flashExpired": false,
    "alerts": [
     "Flash cuối sắp hết (<24h) — chưa có flash kế tiếp"

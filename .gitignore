@@ -6,6 +6,7 @@ dist/
 src/cookies/listing4sellerCookie.json
 
 # Runtime data
+data/videos/
 data/*.db
 data/*.db-journal
 data/*.db-wal

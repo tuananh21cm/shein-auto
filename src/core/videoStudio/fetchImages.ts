@@ -23,9 +23,15 @@ export function extractImageUrls(detail: any, mainImage?: string): string[] {
     const u = typeof v === "string" ? v : v?.url ?? v?.imgUrl ?? v?.image ?? "";
     if (u && typeof u === "string") urls.push(u.trim());
   };
-  const imgs = detail?.images;
-  if (Array.isArray(imgs)) imgs.forEach(push);
-  else if (typeof imgs === "string" && imgs) imgs.split("|").forEach(push);
+  const pushField = (v: any) => {
+    if (Array.isArray(v)) v.forEach(push);
+    else if (typeof v === "string" && v) v.split("|").forEach(push);
+  };
+  // Detail 4Seller có 2 shape: cũ trả `images`, listing đã publish trả `mainImage`
+  // (chuỗi URL nối '|') + `allImageList`. Đọc lần lượt tới khi có ảnh.
+  pushField(detail?.images);
+  if (!urls.length) pushField(detail?.allImageList);
+  if (!urls.length) pushField(detail?.mainImage);
   if (!urls.length && mainImage) mainImage.split("|").forEach(push);
   return [...new Set(urls.filter(Boolean))];
 }

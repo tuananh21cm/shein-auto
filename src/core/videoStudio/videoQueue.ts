@@ -201,6 +201,13 @@ export const videoQueue = new VideoQueue();
  * Cũng cứu các video đang `generating` khi server bị kill giữa lúc render.
  */
 export function scheduleVideoQueueCron(): void {
+  // Máy không phụ trách video (vd máy cũ sau khi chuyển video studio sang máy mới)
+  // → set .env DISABLE_VIDEO_STUDIO_CRON=1. Dùng .env vì file này KHÔNG vào git
+  // (config/*.json đi chung repo 2 máy — tắt bằng config sẽ lây sang máy kia khi pull).
+  if (process.env.DISABLE_VIDEO_STUDIO_CRON === "1") {
+    console.log("⏰ Cron quét queue video: TẮT (.env → DISABLE_VIDEO_STUDIO_CRON=1)");
+    return;
+  }
   cron.schedule("*/5 * * * *", () => {
     const db = new VideoDb();
     try {

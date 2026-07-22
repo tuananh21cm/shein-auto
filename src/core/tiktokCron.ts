@@ -209,6 +209,12 @@ export async function runTiktokJob(opts: RunTiktokOptions = {}): Promise<void> {
 
 /** Đăng ký cron theo tiktok.json. Gọi lúc bootstrap. */
 export function scheduleTiktokCron(): void {
+  // Máy không có Kiki (đã chuyển sang máy khác) → tắt bằng .env, không đụng tiktok.json
+  // (file đó vào git, sửa sẽ lây sang máy kia khi pull).
+  if (process.env.DISABLE_TIKTOK_CRON === "1") {
+    console.log("⏰ TikTok cron: TẮT (.env → DISABLE_TIKTOK_CRON=1)");
+    return;
+  }
   const c = tiktokConfig();
   if (!c.enabled) {
     console.log("⏰ TikTok cron: TẮT (tiktok.json → enabled=false)");

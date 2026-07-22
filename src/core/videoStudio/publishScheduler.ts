@@ -218,6 +218,11 @@ export function setAutoPublish(on: boolean): void {
 }
 
 export function schedulePublishCron(): void {
+  // Cùng cờ với video queue cron — máy không phụ trách video studio thì tắt cả hai.
+  if (process.env.DISABLE_VIDEO_STUDIO_CRON === "1") {
+    console.log("⏰ Cron auto-publish video: TẮT (.env → DISABLE_VIDEO_STUDIO_CRON=1)");
+    return;
+  }
   cron.schedule("*/25 * * * *", async () => {
     const st = loadPublishState();
     if (!st.auto || ticking) return;

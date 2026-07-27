@@ -127,7 +127,7 @@ export const listing4sellerShein = async (
     await fillVariations(page, data.listing_variations);
     await assertNoErrors(page, "fillVariations");
 
-    await fillTableData(page, data.variant_price, data.attributes.SKU, 5, data.variant_ids, opts?.pricing);
+    await fillTableData(page, data.variant_price, data.attributes.SKU, 20, data.variant_ids, opts?.pricing);
     await assertNoErrors(page, "fillTableData");
 
     // Nếu tampermonkey gửi kèm available_matrix (mỗi màu có set size khác nhau),

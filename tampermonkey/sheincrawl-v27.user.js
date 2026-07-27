@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         SHEIN Scraper v28 - Direct API + SSE + Background
+// @name         SHEIN Scraper v29 - Direct API + SSE + Background
 // @namespace    http://tampermonkey.net/
-// @version      28.1.0
+// @version      29.0.0
 // @description  Cào SHEIN → POST thẳng lên shein-auto worker. Sync profile từ server. Realtime SSE. Detect out-of-stock per (color × size). Background tab vẫn cào nhờ silent audio.
 // @author       shein-auto
 // @match        *://*.shein.com/*
@@ -23,16 +23,27 @@
 
     /* ====================== CONFIG ====================== */
     const SERVER = GM_getValue('serverUrl', 'http://localhost:3000');
-    let API_TOKEN = GM_getValue('apiToken', '');
-    let SHOPS = [];   // sync từ server
-    // Shop selection persistence (per browser) — mặc định rỗng, user tự pick
-    let SELECTED_SHOPS = new Set(
-        (() => {
-            try { return JSON.parse(GM_getValue('selectedShops', '[]')); }
-            catch { return []; }
-        })()
+
+    // ĐA-ACCOUNT: mỗi user 1 token, dùng SONG SONG. [{ name, token }]
+    let ACCOUNTS = (() => {
+        try {
+            const a = JSON.parse(GM_getValue('accounts', '[]'));
+            if (Array.isArray(a) && a.length) return a.filter((x) => x && x.token);
+        } catch { /* ignore */ }
+        // Migration từ apiToken cũ
+        const legacy = GM_getValue('apiToken', '');
+        return legacy ? [{ name: 'Default', token: legacy }] : [];
+    })();
+    const saveAccounts = () => GM_setValue('accounts', JSON.stringify(ACCOUNTS));
+
+    // Runtime: shops theo từng account — [{ name, token, shops:[], error? }]
+    let ACCOUNT_SHOPS = [];
+
+    // Selection: Set các key "accIdx::shop" (phân biệt shop trùng tên giữa user)
+    let SELECTED = new Set(
+        (() => { try { return JSON.parse(GM_getValue('selectedKeys', '[]')); } catch { return []; } })()
     );
-    const saveSelectedShops = () => GM_setValue('selectedShops', JSON.stringify([...SELECTED_SHOPS]));
+    const saveSelected = () => GM_setValue('selectedKeys', JSON.stringify([...SELECTED]));
 
     const SELECTORS = {
         colorSwatches: '.main-sales-attr__color-container .radio-container, .radio-container[role="radio"], [class*="color-radio"]',
@@ -119,6 +130,37 @@
         return null;
     }
 
+    /** Bộ ảnh gallery hiện tại (dedup, URL gốc không thumbnail). */
+    const getGalleryImages = () => Array.from(new Set(
+        Array.from(document.querySelectorAll(SELECTORS.allProductImages))
+            .map((img) => getOriginalImageUrl(img.src || img.getAttribute('data-src') || img.dataset.src)),
+    )).filter(Boolean);
+
+    const gallerySignature = (imgs) => imgs.slice().sort().join('|');
+
+    /**
+     * Đợi gallery đổi ảnh sau khi click swatch màu. SHEIN cập nhật tên màu TRƯỚC,
+     * ảnh gallery swap SAU — nếu chỉ đợi tên màu rồi chụp gallery ngay thì màu mới
+     * dính nguyên bộ ảnh của màu trước (gốc lỗi ảnh variant lệch tên trên 4Seller).
+     * 2 pha: (1) đợi signature khác bộ ảnh trước lúc click, (2) đợi gallery ổn định
+     * (không đổi thêm ~450ms) để không chụp lúc đang swap dở. Timeout → trả bộ hiện tại.
+     */
+    async function waitForGalleryChange(prevSignature, timeoutMs = 5000) {
+        const start = Date.now();
+        while (Date.now() - start < timeoutMs) {
+            if (gallerySignature(getGalleryImages()) !== prevSignature) break;
+            await wait(150);
+        }
+        let lastSig = gallerySignature(getGalleryImages());
+        let lastChange = Date.now();
+        while (Date.now() - lastChange < 450 && Date.now() - start < timeoutMs + 2000) {
+            await wait(150);
+            const sig = gallerySignature(getGalleryImages());
+            if (sig !== lastSig) { lastSig = sig; lastChange = Date.now(); }
+        }
+        return getGalleryImages();
+    }
+
     /* ============= Background tab keep-alive ============= */
     // Chrome throttle setTimeout/setInterval xuống 1Hz khi tab background.
     // Trick: phát silent audio loop → tab được coi là "playing media" → không throttle.
@@ -144,14 +186,14 @@
      * Cross-origin request từ shein.com → localhost.
      * Dùng GM_xmlhttpRequest để bypass CORS (tampermonkey có quyền @connect localhost).
      */
-    function gmRequest({ url, method = 'GET', body = null, headers = {} }) {
+    function gmRequest({ url, method = 'GET', body = null, headers = {}, token = '' }) {
         return new Promise((resolve, reject) => {
             GM_xmlhttpRequest({
                 url,
                 method,
                 headers: {
                     'Content-Type': 'application/json',
-                    Authorization: 'Bearer ' + API_TOKEN,
+                    Authorization: 'Bearer ' + (token || ''),
                     ...headers,
                 },
                 data: body ? JSON.stringify(body) : null,
@@ -168,25 +210,41 @@
         });
     }
 
-    /* ============= API client ============= */
-    async function apiSyncProfiles() {
-        const data = await gmRequest({ url: `${SERVER}/admin/api/ingest/profiles` });
-        SHOPS = data.profiles || [];
-        return data;
+    /* ============= API client (per-token) ============= */
+    async function apiSyncProfiles(token) {
+        const data = await gmRequest({ url: `${SERVER}/admin/api/ingest/profiles`, token });
+        return data.profiles || [];
     }
-    async function apiCheck(productId, shops) {
+    async function apiCheck(productId, shops, token) {
         return gmRequest({
             url: `${SERVER}/admin/api/ingest/check`,
             method: 'POST',
             body: { productId, shops },
+            token,
         });
     }
-    async function apiIngest(data, shops) {
+    async function apiIngest(data, shops, token) {
         return gmRequest({
             url: `${SERVER}/admin/api/ingest`,
             method: 'POST',
             body: { data, shops },
+            token,
         });
+    }
+
+    /** Nạp shops cho MỌI account song song → ACCOUNT_SHOPS. Trả về {users, shops, errors}. */
+    async function syncAllAccounts() {
+        ACCOUNT_SHOPS = await Promise.all(ACCOUNTS.map(async (acc) => {
+            try {
+                const shops = await apiSyncProfiles(acc.token);
+                return { name: acc.name, token: acc.token, shops };
+            } catch (e) {
+                return { name: acc.name, token: acc.token, shops: [], error: e.message };
+            }
+        }));
+        const shopCount = ACCOUNT_SHOPS.reduce((n, a) => n + a.shops.length, 0);
+        const errCount = ACCOUNT_SHOPS.filter((a) => a.error).length;
+        return { users: ACCOUNT_SHOPS.length, shops: shopCount, errors: errCount };
     }
 
     /* ============= SSE: nghe job từ worker ============= */
@@ -196,13 +254,19 @@
         // Đơn giản hóa: dùng polling nhẹ 10s cho status workers (đỡ phức tạp hơn streaming)
         const POLL_INTERVAL = 10000;
         const poll = async () => {
-            if (!API_TOKEN) return;
+            if (ACCOUNTS.length === 0) return;
             try {
-                // Reuse profiles endpoint là rẻ — chỉ check session còn alive
-                // (Sẽ thay bằng /status endpoint riêng nếu cần stats chi tiết)
-                await apiSyncProfiles();
-                document.getElementById('tm-sse-dot').style.background = '#10b981';
-                document.getElementById('tm-sse-status').innerText = `🟢 Connected (${SHOPS.length} shops)`;
+                const { users, shops, errors } = await syncAllAccounts();
+                renderShops();
+                const dot = document.getElementById('tm-sse-dot');
+                const st = document.getElementById('tm-sse-status');
+                if (errors > 0) {
+                    dot.style.background = '#ef4444';
+                    st.innerText = `🔴 ${errors}/${users} user lỗi token · ${shops} shops`;
+                } else {
+                    dot.style.background = '#10b981';
+                    st.innerText = `🟢 ${users} user · ${shops} shops`;
+                }
             } catch (e) {
                 document.getElementById('tm-sse-dot').style.background = '#ef4444';
                 document.getElementById('tm-sse-status').innerText = `🔴 ${e.message}`;
@@ -244,9 +308,22 @@
         const overlay = document.getElementById('tm-overlay');
         const overlayMsg = document.getElementById('tm-status-main');
 
-        if (!API_TOKEN) { alert('Chưa có API token! Click ⚙ để thiết lập.'); return; }
-        const selectedShops = Array.from(document.querySelectorAll('.tm-acc-checkbox:checked')).map((cb) => cb.value);
-        if (selectedShops.length === 0) { alert('Chọn ít nhất 1 shop!'); return; }
+        if (ACCOUNTS.length === 0) { alert('Chưa có account nào! Click ⚙ để thêm token.'); return; }
+        // Gom các shop đã tick thành NHÓM theo account (key = "accIdx::shop")
+        const checkedKeys = Array.from(document.querySelectorAll('.tm-acc-checkbox:checked')).map((cb) => cb.value);
+        if (checkedKeys.length === 0) { alert('Chọn ít nhất 1 shop!'); return; }
+        const groups = new Map(); // accIdx → { name, token, shops:[] }
+        for (const key of checkedKeys) {
+            const sep = key.indexOf('::');
+            const accIdx = Number(key.slice(0, sep));
+            const shop = key.slice(sep + 2);
+            const acc = ACCOUNT_SHOPS[accIdx];
+            if (!acc || !acc.token) continue;
+            if (!groups.has(accIdx)) groups.set(accIdx, { name: acc.name, token: acc.token, shops: [] });
+            groups.get(accIdx).shops.push(shop);
+        }
+        if (groups.size === 0) { alert('Không có shop hợp lệ để cào.'); return; }
+
         const isDivide4 = document.getElementById('tm-divide-4').checked;
         const isSingleColor = document.getElementById('tm-single-color')?.checked;
 
@@ -255,36 +332,44 @@
         overlayMsg.innerText = 'CHECK DUPLICATE...';
 
         try {
-            // 1. CHECK DEDUP TRƯỚC KHI CÀO
+            // 1. CHECK DEDUP theo TỪNG account (token riêng)
             if (productId) {
                 try {
-                    const check = await apiCheck(productId, selectedShops);
-                    if (check.existsIn?.length > 0) {
-                        const dup = check.existsIn;
-                        const remaining = selectedShops.filter((s) => !dup.includes(s));
-                        if (remaining.length === 0) {
-                            if (!confirm(`Sản phẩm này đã có trong TẤT CẢ shops đã chọn (${dup.join(', ')}). Vẫn cào tiếp?`)) {
-                                overlay.style.display = 'none';
-                                return;
+                    const dupByAcc = await Promise.all([...groups.entries()].map(async ([idx, g]) => {
+                        try {
+                            const check = await apiCheck(productId, g.shops, g.token);
+                            return { idx, dup: check.existsIn || [] };
+                        } catch (e) {
+                            console.warn(`[SHEIN-SCRAPER] check "${g.name}" lỗi (skip):`, e.message);
+                            return { idx, dup: [] };
+                        }
+                    }));
+                    const dupLines = [];
+                    let dupTotal = 0, remainTotal = 0;
+                    const remainByIdx = new Map();
+                    for (const [idx, g] of groups) {
+                        const dup = (dupByAcc.find((d) => d.idx === idx) || {}).dup || [];
+                        const remaining = g.shops.filter((s) => !dup.includes(s));
+                        remainByIdx.set(idx, remaining);
+                        if (dup.length) { dupLines.push(`${g.name}: ${dup.join(', ')}`); dupTotal += dup.length; }
+                        remainTotal += remaining.length;
+                    }
+                    if (dupTotal > 0) {
+                        const proceedAll = remainTotal === 0;
+                        const msg = proceedAll
+                            ? `Sản phẩm đã có trong TẤT CẢ shop đã chọn:\n${dupLines.join('\n')}\n\nVẫn cào (đăng trùng)?`
+                            : `⚠️ Đã có sản phẩm ở:\n${dupLines.join('\n')}\n\nSẽ chỉ cào ${remainTotal} shop còn lại. Tiếp tục?`;
+                        if (!confirm(msg)) { overlay.style.display = 'none'; return; }
+                        if (!proceedAll) {
+                            for (const [idx, g] of [...groups]) {
+                                const remaining = remainByIdx.get(idx);
+                                if (remaining.length === 0) groups.delete(idx);
+                                else g.shops = remaining;
                             }
-                        } else {
-                            if (!confirm(`⚠️ ${dup.length} shop đã có sản phẩm này:\n${dup.join(', ')}\n\nSẽ chỉ cào cho ${remaining.length} shop còn lại:\n${remaining.join(', ')}\n\nTiếp tục?`)) {
-                                overlay.style.display = 'none';
-                                return;
-                            }
-                            // Filter checkboxes + sync persistent state
-                            document.querySelectorAll('.tm-acc-checkbox').forEach((cb) => {
-                                if (dup.includes(cb.value)) {
-                                    cb.checked = false;
-                                    SELECTED_SHOPS.delete(cb.value);
-                                }
-                            });
-                            saveSelectedShops();
-                            selectedShops.splice(0, selectedShops.length, ...remaining);
                         }
                     }
                 } catch (e) {
-                    console.warn('[SHEIN-SCRAPER] check failed (skip):', e.message);
+                    console.warn('[SHEIN-SCRAPER] dedup lỗi (skip):', e.message);
                 }
             }
 
@@ -299,10 +384,7 @@
             });
 
             // 3. ẢNH SẢN PHẨM CHUNG
-            const productImages = Array.from(new Set(
-                Array.from(document.querySelectorAll(SELECTORS.allProductImages))
-                    .map((img) => getOriginalImageUrl(img.src || img.getAttribute('data-src') || img.dataset.src)),
-            )).filter(Boolean).slice(0, 8);
+            const productImages = getGalleryImages().slice(0, 8);
 
             // 4. SIZE union — normalize "2 (XS)" → "XS"
             const initialSizes = Array.from(document.querySelectorAll(SELECTORS.sizeButtons))
@@ -337,10 +419,12 @@
             if (swatches.length > 0 && !isSingleColor) {
                 for (let i = 0; i < swatches.length; i++) {
                     const prevName = document.querySelector(SELECTORS.colorNameLabel)?.innerText.trim() ?? '';
+                    const prevGallerySig = gallerySignature(getGalleryImages());
                     await forceClick(swatches[i]);
 
                     // Đợi tên màu đổi (smart wait, max 2.5s)
                     let rawColorName = await waitForChange(SELECTORS.colorNameLabel, prevName, 2500);
+                    const nameChanged = rawColorName !== null;
                     if (!rawColorName) {
                         rawColorName = swatches[i].querySelector('img')?.getAttribute('alt')?.trim() || 'Color' + (i + 1);
                     }
@@ -370,11 +454,14 @@
                         if (!isNaN(n)) priceText = (n / 4).toFixed(2);
                     }
 
-                    // Ảnh variant
-                    const variantImages = Array.from(new Set(
-                        Array.from(document.querySelectorAll(SELECTORS.allProductImages))
-                            .map((img) => getOriginalImageUrl(img.src || img.getAttribute('data-src') || img.dataset.src)),
-                    )).filter(Boolean);
+                    // Ảnh variant — PHẢI đợi gallery swap xong, không chụp ngay sau khi
+                    // tên màu đổi. Tên đổi = chắc chắn màu đã switch → đợi đủ 5s;
+                    // tên không đổi (swatch đang được chọn sẵn, thường là màu đầu) →
+                    // gallery có thể không đổi, chỉ đợi ngắn 1.5s cho chắc.
+                    const variantImages = await waitForGalleryChange(prevGallerySig, nameChanged ? 5000 : 1500);
+                    if (nameChanged && gallerySignature(variantImages) === prevGallerySig) {
+                        console.warn(`[SHEIN-SCRAPER] ⚠️ Gallery không đổi sau 5s cho màu "${finalColorName}" — ảnh có thể dính màu trước.`);
+                    }
 
                     data.listing_variations.colors.push(finalColorName);
                     data.variant_ids.push({ [finalColorName]: currentId });
@@ -407,10 +494,7 @@
                     if (!isNaN(n)) priceText = (n / 4).toFixed(2);
                 }
 
-                const variantImages = Array.from(new Set(
-                    Array.from(document.querySelectorAll(SELECTORS.allProductImages))
-                        .map((img) => getOriginalImageUrl(img.src || img.getAttribute('data-src') || img.dataset.src)),
-                )).filter(Boolean);
+                const variantImages = getGalleryImages();
 
                 data.listing_variations.colors.push(rawColorName);
                 data.variant_ids.push({ [rawColorName]: getProductIdFromUrl() ?? 'Unknown' });
@@ -454,12 +538,25 @@
                 if (closeBtn) await forceClick(closeBtn);
             }
 
-            // 7. POST API
-            overlayMsg.innerText = `ĐANG GỬI VỀ SERVER (${selectedShops.length} shop)...`;
-            const result = await apiIngest(data, selectedShops);
-            status.innerText = `✓ Queued ${result.queued?.length} shop · ID ${productId}`;
-            overlayMsg.innerText = 'XONG!';
-            setTimeout(() => { overlay.style.display = 'none'; }, 1500);
+            // 7. POST API — mỗi account gửi bằng ĐÚNG token của user đó (song song)
+            const totalShops = [...groups.values()].reduce((n, g) => n + g.shops.length, 0);
+            overlayMsg.innerText = `ĐANG GỬI VỀ SERVER (${groups.size} user · ${totalShops} shop)...`;
+            const results = await Promise.all([...groups.values()].map(async (g) => {
+                try {
+                    const r = await apiIngest(data, g.shops, g.token);
+                    return { name: g.name, queued: (r.queued || []).length, ok: true };
+                } catch (e) {
+                    console.error(`[SHEIN-SCRAPER] ingest "${g.name}" lỗi:`, e.message);
+                    return { name: g.name, queued: 0, ok: false, error: e.message };
+                }
+            }));
+            const okCount = results.filter((r) => r.ok).reduce((n, r) => n + r.queued, 0);
+            const failed = results.filter((r) => !r.ok);
+            status.innerText = failed.length
+                ? `✓ ${okCount} shop · ✗ ${failed.map((f) => f.name).join(',')} · ID ${productId}`
+                : `✓ Queued ${okCount} shop (${groups.size} user) · ID ${productId}`;
+            overlayMsg.innerText = failed.length ? `⚠️ Lỗi: ${failed.map((f) => f.name).join(', ')}` : 'XONG!';
+            setTimeout(() => { overlay.style.display = 'none'; }, failed.length ? 3000 : 1500);
         } catch (e) {
             console.error('[SHEIN-SCRAPER]', e);
             overlayMsg.innerText = '❌ LỖI: ' + e.message;
@@ -512,21 +609,56 @@
                 <h3 style="margin:0 0 8px;color:#ae122a;">SHEIN Scraper Settings</h3>
                 <label>Server URL</label>
                 <input id="tm-server-url" value="${SERVER}" placeholder="http://localhost:3000" />
-                <label>API Token <span style="color:#999;">(lấy từ Admin UI → Users)</span></label>
-                <input id="tm-api-token" value="${API_TOKEN}" placeholder="tm_..." />
+                <label>Accounts <span style="color:#999;">(mỗi user 1 token — dùng SONG SONG)</span></label>
+                <div id="tm-acc-list" style="max-height:150px;overflow:auto;margin-bottom:6px;"></div>
+                <div style="display:flex;gap:6px;">
+                    <input id="tm-acc-name" placeholder="Tên (vd dbscan)" style="flex:1;" />
+                    <input id="tm-acc-token" placeholder="tm_token..." style="flex:2;" />
+                    <button id="tm-acc-add" style="flex:0 0 auto;background:#ae122a;color:#fff;padding:8px 12px;border:none;border-radius:6px;cursor:pointer;font-weight:bold;">Thêm</button>
+                </div>
                 <div class="row">
-                    <button id="tm-modal-cancel" style="background:#eee;color:#333;">Cancel</button>
-                    <button id="tm-modal-save" style="background:#ae122a;color:#fff;">Lưu</button>
+                    <button id="tm-modal-cancel" style="background:#eee;color:#333;">Đóng</button>
+                    <button id="tm-modal-save" style="background:#ae122a;color:#fff;">Lưu & tải lại</button>
                 </div>
             </div>
         `;
         document.body.appendChild(modal);
 
+        // ===== Account manager (thêm/xoá token) =====
+        const esc = (s) => String(s).replace(/[<>&"]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' }[c]));
+        const maskToken = (t) => (t.length > 12 ? t.slice(0, 6) + '…' + t.slice(-4) : t);
+        const renderAccList = () => {
+            const box = document.getElementById('tm-acc-list');
+            if (!ACCOUNTS.length) { box.innerHTML = '<div style="color:#999;font-size:11px;padding:6px;">Chưa có account. Thêm bên dưới.</div>'; return; }
+            box.innerHTML = ACCOUNTS.map((a, i) => `
+                <div style="display:flex;align-items:center;gap:6px;padding:4px 2px;border-bottom:1px solid #f0f0f0;font-size:12px;">
+                    <b style="flex:0 0 auto;">👤 ${esc(a.name)}</b>
+                    <span style="flex:1;color:#999;font-family:monospace;">${esc(maskToken(a.token))}</span>
+                    <button data-i="${i}" class="tm-acc-del" style="flex:0 0 auto;background:#fee;color:#c0392b;border:1px solid #e0b4b4;border-radius:5px;padding:3px 8px;cursor:pointer;">Xoá</button>
+                </div>`).join('');
+            box.querySelectorAll('.tm-acc-del').forEach((btn) => {
+                btn.onclick = () => { ACCOUNTS.splice(Number(btn.dataset.i), 1); saveAccounts(); renderAccList(); reloadShops(); };
+            });
+        };
+        const reloadShops = () => { syncAllAccounts().then(renderShops).catch(() => {}); };
+        renderAccList();
+        document.getElementById('tm-acc-add').onclick = () => {
+            const name = document.getElementById('tm-acc-name').value.trim();
+            const token = document.getElementById('tm-acc-token').value.trim();
+            if (!name || !token) { alert('Nhập cả Tên và Token'); return; }
+            ACCOUNTS.push({ name, token });
+            saveAccounts();
+            document.getElementById('tm-acc-name').value = '';
+            document.getElementById('tm-acc-token').value = '';
+            renderAccList();
+            reloadShops();
+        };
+
         const panel = document.createElement('div');
         panel.id = 'tm-panel';
         panel.innerHTML = `
             <div class="head">
-                <span>SHEIN SCRAPER v28</span>
+                <span>SHEIN SCRAPER v29</span>
                 <span class="head-btns">
                     <span class="settings" title="Settings">⚙</span>
                     <span class="minimize" title="Ẩn panel">–</span>
@@ -567,55 +699,78 @@
         document.getElementById('tm-modal-cancel').onclick = () => { modal.style.display = 'none'; };
         document.getElementById('tm-modal-save').onclick = () => {
             const newServer = document.getElementById('tm-server-url').value.trim().replace(/\/$/, '');
-            const newToken = document.getElementById('tm-api-token').value.trim();
             GM_setValue('serverUrl', newServer);
-            GM_setValue('apiToken', newToken);
-            API_TOKEN = newToken;
             modal.style.display = 'none';
             location.reload();
         };
 
-        // Initial: sync shops + start polling
+        // Initial: sync shops mọi account + start polling
         renderShops();
-        if (API_TOKEN) {
+        if (ACCOUNTS.length) {
             keepAliveStart();
-            apiSyncProfiles().then(renderShops).catch(() => {});
+            reloadShops();
             connectSSE();
         } else {
-            document.getElementById('tm-sse-status').innerText = '⚙ Mở settings để paste API token';
+            document.getElementById('tm-sse-status').innerText = '⚙ Mở settings để thêm token';
         }
     }
 
+    /* renderShops — nhóm shop theo TỪNG account (đa-user song song) */
     function renderShops() {
         const wrap = document.getElementById('tm-shops');
         if (!wrap) return;
         const market = detectMarket();
-        if (SHOPS.length === 0) {
-            wrap.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:#999;font-size:11px;padding:8px;">No shops (set token + restart)</div>';
+        const esc = (s) => String(s).replace(/[<>&"]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' }[c]));
+
+        const hasAny = ACCOUNT_SHOPS.some((a) => a.shops.length || a.error);
+        if (!hasAny) {
+            wrap.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:#999;font-size:11px;padding:8px;">Chưa có shop — thêm token trong ⚙</div>';
             return;
         }
 
-        // Cleanup SELECTED_SHOPS — bỏ shop không còn tồn tại trên server
-        for (const s of [...SELECTED_SHOPS]) if (!SHOPS.includes(s)) SELECTED_SHOPS.delete(s);
+        // Cleanup SELECTED: bỏ key mà account/shop không còn
+        const valid = new Set();
+        ACCOUNT_SHOPS.forEach((a, idx) => a.shops.forEach((s) => valid.add(`${idx}::${s}`)));
+        for (const k of [...SELECTED]) if (!valid.has(k)) SELECTED.delete(k);
 
-        wrap.innerHTML = SHOPS.map((s) => {
-            const matchesMarket = s.includes(`_${market}`) || (market === 'US' && !s.includes('_'));
-            const checked = SELECTED_SHOPS.has(s);
-            // Mặc định rỗng — không auto-check theo market. User tự pick. Lưu localStorage.
-            return `<label class="tm-acc-item" style="${matchesMarket ? '' : 'opacity:0.55;'}" title="${matchesMarket ? '' : 'Khác market hiện tại (vẫn chọn được)'}">
-                <input type="checkbox" class="tm-acc-checkbox" value="${s}" ${checked ? 'checked' : ''}>
-                ${s}
-            </label>`;
+        wrap.innerHTML = ACCOUNT_SHOPS.map((acc, idx) => {
+            const header = `<div style="grid-column:1/-1;display:flex;align-items:center;gap:6px;margin-top:6px;padding-top:5px;border-top:1px solid #eee;font-weight:bold;color:#ae122a;font-size:11px;">
+                <input type="checkbox" class="tm-acc-all" data-acc="${idx}"> 👤 ${esc(acc.name)} ${acc.error ? '<span style="color:#ef4444;">(lỗi token)</span>' : `(${acc.shops.length})`}
+            </div>`;
+            const shops = acc.shops.map((s) => {
+                const key = `${idx}::${s}`;
+                const matchesMarket = s.includes(`_${market}`) || (market === 'US' && !s.includes('_'));
+                const checked = SELECTED.has(key);
+                return `<label class="tm-acc-item" style="${matchesMarket ? '' : 'opacity:0.55;'}" title="${matchesMarket ? '' : 'Khác market hiện tại'}">
+                    <input type="checkbox" class="tm-acc-checkbox" data-acc="${idx}" value="${esc(key)}" ${checked ? 'checked' : ''}> ${esc(s)}
+                </label>`;
+            }).join('');
+            return header + shops;
         }).join('');
 
-        // Bind: lưu selection mỗi khi tick/untick
+        const syncAccAll = () => {
+            wrap.querySelectorAll('.tm-acc-all').forEach((all) => {
+                const boxes = [...wrap.querySelectorAll(`.tm-acc-checkbox[data-acc="${all.dataset.acc}"]`)];
+                all.checked = boxes.length > 0 && boxes.every((b) => b.checked);
+            });
+        };
         wrap.querySelectorAll('.tm-acc-checkbox').forEach((cb) => {
             cb.onchange = () => {
-                if (cb.checked) SELECTED_SHOPS.add(cb.value);
-                else SELECTED_SHOPS.delete(cb.value);
-                saveSelectedShops();
+                if (cb.checked) SELECTED.add(cb.value); else SELECTED.delete(cb.value);
+                saveSelected();
+                syncAccAll();
             };
         });
+        wrap.querySelectorAll('.tm-acc-all').forEach((all) => {
+            all.onchange = () => {
+                wrap.querySelectorAll(`.tm-acc-checkbox[data-acc="${all.dataset.acc}"]`).forEach((cb) => {
+                    cb.checked = all.checked;
+                    if (all.checked) SELECTED.add(cb.value); else SELECTED.delete(cb.value);
+                });
+                saveSelected();
+            };
+        });
+        syncAccAll();
     }
 
     GM_registerMenuCommand('⚙ SHEIN Scraper Settings', () => {

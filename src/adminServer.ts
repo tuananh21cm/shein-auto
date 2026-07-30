@@ -692,6 +692,49 @@ export const startAdminServer = async () => {
     }
   });
 
+  // Retry nhiều listing Fail cùng lúc — mỗi file được đưa về folder shop
+  // (→ pending) để cron pick lên. Bỏ qua file không phải fail / không có quyền.
+  app.post("/admin/api/listings/retry-batch", async (req, res) => {
+    try {
+      const sessionUser = (req.session as any).user as SessionUser;
+      if (sessionUser.role === "viewer") return res.status(403).json({ error: "Viewer không thể retry" });
+
+      const { ids } = req.body as { ids?: string[] };
+      if (!Array.isArray(ids) || ids.length === 0) {
+        return res.status(400).json({ error: "Chọn ít nhất 1 listing" });
+      }
+
+      const moved: { id: string; folder: string }[] = [];
+      const skipped: { id: string; reason: string }[] = [];
+
+      for (const id of ids) {
+        const resolved = await resolveListingPath(id);
+        if (!resolved) { skipped.push({ id, reason: "id không hợp lệ" }); continue; }
+        if (resolved.status !== "fail") {
+          skipped.push({ id, reason: `không phải fail (${resolved.status})` });
+          continue;
+        }
+        if (sessionUser.role !== "admin" && !resolved.owner.split(",").includes(sessionUser.username)) {
+          skipped.push({ id, reason: "không có quyền" });
+          continue;
+        }
+        if (!(await fs.pathExists(resolved.full))) {
+          skipped.push({ id, reason: "file không còn ở Fail" });
+          continue;
+        }
+        const target = path.join(resolved.baseDir, resolved.folder, resolved.file);
+        await fs.move(resolved.full, target, { overwrite: true });
+        const errLog = `${resolved.full}.error.log`;
+        if (await fs.pathExists(errLog)) await fs.remove(errLog).catch(() => {});
+        moved.push({ id, folder: resolved.folder });
+      }
+
+      res.json({ ok: true, moved, skipped });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? "Lỗi retry-batch" });
+    }
+  });
+
   // Run nhiều listing pending cùng lúc, mỗi file chạy trên shop hiện tại
   // (không broadcast). Spawn parallel — lock per (baseDir, folder) đảm bảo
   // không 2 file cùng shop chạy đồng thời.

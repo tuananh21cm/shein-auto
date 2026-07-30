@@ -930,13 +930,12 @@ function renderListings() {
     return `${pr.currency}${pr.min.toFixed(2)} – ${pr.currency}${pr.max.toFixed(2)}`;
   };
 
-  const pendingCount = items.filter((i) => i.status === "pending").length;
-  const selectedCount = state.listings.selected?.size ?? 0;
-  const toolbar = pendingCount > 0 && canEdit ? `
+  const selectableCount = items.filter((i) => i.status === "pending" || i.status === "fail").length;
+  const toolbar = selectableCount > 0 && canEdit ? `
     <div style="display:flex; align-items:center; gap:10px; margin-bottom: 12px; padding: 10px 14px; background: var(--bg-elev); border-radius: 8px; font-size: 0.85rem;">
-      <button class="btn btn-ghost" onclick="selectAllPending()" style="padding: 5px 12px;">☑ Chọn tất cả pending (${pendingCount})</button>
+      <button class="btn btn-ghost" onclick="selectAllVisible()" style="padding: 5px 12px;">☑ Chọn tất cả (${selectableCount})</button>
       <button class="btn btn-ghost" onclick="clearListingSelect()" style="padding: 5px 12px;">Bỏ chọn</button>
-      <span style="color: var(--text-mute);">Tick vào checkbox góc trái card để chọn từng cái</span>
+      <span style="color: var(--text-mute);">Tick checkbox góc trái card để chọn từng cái · pending → Run · fail → Retry</span>
     </div>` : '';
 
   $("#listingsGrid").innerHTML =
@@ -948,7 +947,7 @@ function renderListings() {
         const isSelected = state.listings.selected?.has(it.id);
         return `
         <div class="listing-card${isSelected ? ' selected' : ''}">
-          ${it.status === "pending" && canEdit
+          ${(it.status === "pending" || it.status === "fail") && canEdit
             ? `<input type="checkbox" class="select-cb listing-select-cb" data-id="${escapeHtml(it.id)}" ${isSelected ? 'checked' : ''} onclick="toggleListingSelect('${idEnc}', this.checked); event.stopPropagation();" />`
             : ''}
           <div class="img-wrap">
@@ -1052,10 +1051,13 @@ function toggleListingSelect(idEnc, checked) {
   });
 }
 
-function selectAllPending() {
+function selectAllVisible() {
   if (!state.listings.selected) state.listings.selected = new Set();
-  for (const it of (state.listings.items || [])) {
-    if (it.status === "pending") state.listings.selected.add(it.id);
+  const search = ($("#listSearch").value || "").toLowerCase().trim();
+  let items = state.listings.items || [];
+  if (search) items = items.filter((it) => (it.title || "").toLowerCase().includes(search));
+  for (const it of items) {
+    if (it.status === "pending" || it.status === "fail") state.listings.selected.add(it.id);
   }
   renderListings();
   renderBulkBar();
@@ -1077,9 +1079,19 @@ function renderBulkBar() {
     bar.className = 'bulk-bar';
     document.body.appendChild(bar);
   }
+  // Phân loại selection: pending → Run, fail → Retry (bỏ qua id không còn trong view)
+  const byId = new Map((state.listings.items || []).map((it) => [it.id, it]));
+  let pend = 0, fail = 0;
+  for (const id of (state.listings.selected || [])) {
+    const it = byId.get(id);
+    if (!it) continue;
+    if (it.status === "pending") pend++;
+    else if (it.status === "fail") fail++;
+  }
   bar.innerHTML = `
     <span class="count">✓ ${n} đã chọn</span>
-    <button class="btn btn-primary" onclick="runBatch()">▶ Run ${n} listing</button>
+    ${pend > 0 ? `<button class="btn btn-primary" onclick="runBatch()">▶ Run ${pend} pending</button>` : ''}
+    ${fail > 0 ? `<button class="btn btn-primary" onclick="retryBatch()">↻ Retry ${fail} fail</button>` : ''}
     <button class="btn btn-ghost" onclick="clearListingSelect()">Bỏ chọn</button>
   `;
 }
@@ -1098,6 +1110,29 @@ async function runBatch() {
     if (!res.ok) throw new Error(data.error);
     const skipMsg = data.skipped?.length ? ` (bỏ qua ${data.skipped.length})` : '';
     toast(`▶ Spawn ${data.spawned.length} worker${skipMsg}`);
+    state.listings.selected = new Set();
+    renderBulkBar();
+    setTimeout(loadShopsOrListings, 1500);
+  } catch (err) {
+    toast(err.message, "error");
+  }
+}
+
+async function retryBatch() {
+  const byId = new Map((state.listings.items || []).map((it) => [it.id, it]));
+  const ids = Array.from(state.listings.selected || []).filter((id) => byId.get(id)?.status === "fail");
+  if (ids.length === 0) return;
+  if (!confirm(`Retry ${ids.length} listing fail? File sẽ được đưa về folder shop để worker chạy lại.`)) return;
+  try {
+    const res = await fetch("/admin/api/listings/retry-batch", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+    const skipMsg = data.skipped?.length ? ` (bỏ qua ${data.skipped.length})` : '';
+    toast(`↻ Đã đưa ${data.moved.length} file về pending${skipMsg} — chờ cron chạy lại`);
     state.listings.selected = new Set();
     renderBulkBar();
     setTimeout(loadShopsOrListings, 1500);

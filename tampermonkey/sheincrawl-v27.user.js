@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SHEIN Scraper v29 - Direct API + SSE + Background
 // @namespace    http://tampermonkey.net/
-// @version      29.0.0
+// @version      29.1.1
 // @description  Cào SHEIN → POST thẳng lên shein-auto worker. Sync profile từ server. Realtime SSE. Detect out-of-stock per (color × size). Background tab vẫn cào nhờ silent audio.
 // @author       shein-auto
 // @match        *://*.shein.com/*
@@ -44,6 +44,12 @@
         (() => { try { return JSON.parse(GM_getValue('selectedKeys', '[]')); } catch { return []; } })()
     );
     const saveSelected = () => GM_setValue('selectedKeys', JSON.stringify([...SELECTED]));
+
+    // Accordion: Set tên account đang MỞ (rỗng = gập hết — mặc định). Nhớ qua các lần.
+    let EXPANDED = new Set(
+        (() => { try { return JSON.parse(GM_getValue('expandedAccts', '[]')); } catch { return []; } })()
+    );
+    const saveExpanded = () => GM_setValue('expandedAccts', JSON.stringify([...EXPANDED]));
 
     const SELECTORS = {
         colorSwatches: '.main-sales-attr__color-container .radio-container, .radio-container[role="radio"], [class*="color-radio"]',
@@ -578,9 +584,14 @@
         #tm-fab:hover{background:#000;}
         .tm-btn-pro{background:#ae122a;color:#fff;border:none;padding:10px;cursor:pointer;font-weight:bold;width:100%;border-radius:6px;margin-top:8px;transition:0.2s;}
         .tm-btn-pro:hover{background:#000;}
-        .tm-grid{display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-top:8px;max-height:160px;overflow-y:auto;padding-right:4px;}
+        .tm-grid{margin-top:8px;max-height:70vh;overflow-y:auto;padding-right:4px;}
         .tm-acc-item{font-size:11px;display:flex;align-items:center;gap:5px;cursor:pointer;padding:3px;border-radius:4px;}
         .tm-acc-item:hover{background:#fff5f5;}
+        .tm-acc-group-head{position:sticky;top:0;background:#fff;z-index:2;cursor:pointer;display:flex;align-items:center;gap:6px;padding:5px 2px;border-top:1px solid #eee;font-weight:bold;color:#ae122a;font-size:11px;user-select:none;}
+        .tm-acc-group-head:hover{background:#fff5f5;}
+        .tm-acc-arrow{display:inline-block;width:10px;text-align:center;font-size:10px;}
+        /* Mỗi nhóm shop tự cuộn riêng → header user luôn hiện, không trôi khi cuộn */
+        .tm-acc-shops{display:grid;grid-template-columns:1fr 1fr;gap:4px;padding:4px 0;max-height:220px;overflow-y:auto;}
         .tm-sse-bar{display:flex;align-items:center;gap:6px;margin-top:8px;padding:4px 8px;background:#fafafa;border-radius:6px;font-size:11px;color:#666;}
         .tm-sse-bar .dot{width:8px;height:8px;border-radius:50%;background:#9ca3af;}
         #tm-overlay{position:fixed;inset:0;background:rgba(255,255,255,0.92);z-index:999998;display:none;align-items:center;justify-content:center;flex-direction:column;font-weight:bold;color:#ae122a;}
@@ -724,7 +735,7 @@
 
         const hasAny = ACCOUNT_SHOPS.some((a) => a.shops.length || a.error);
         if (!hasAny) {
-            wrap.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:#999;font-size:11px;padding:8px;">Chưa có shop — thêm token trong ⚙</div>';
+            wrap.innerHTML = '<div style="text-align:center;color:#999;font-size:11px;padding:8px;">Chưa có shop — thêm token trong ⚙</div>';
             return;
         }
 
@@ -734,8 +745,11 @@
         for (const k of [...SELECTED]) if (!valid.has(k)) SELECTED.delete(k);
 
         wrap.innerHTML = ACCOUNT_SHOPS.map((acc, idx) => {
-            const header = `<div style="grid-column:1/-1;display:flex;align-items:center;gap:6px;margin-top:6px;padding-top:5px;border-top:1px solid #eee;font-weight:bold;color:#ae122a;font-size:11px;">
-                <input type="checkbox" class="tm-acc-all" data-acc="${idx}"> 👤 ${esc(acc.name)} ${acc.error ? '<span style="color:#ef4444;">(lỗi token)</span>' : `(${acc.shops.length})`}
+            const open = EXPANDED.has(acc.name);
+            const header = `<div class="tm-acc-group-head" data-acc="${idx}" data-name="${esc(acc.name)}">
+                <span class="tm-acc-arrow">${open ? '▾' : '▸'}</span>
+                <input type="checkbox" class="tm-acc-all" data-acc="${idx}">
+                <span>👤 ${esc(acc.name)} ${acc.error ? '<span style="color:#ef4444;">(lỗi token)</span>' : `(${acc.shops.length})`}</span>
             </div>`;
             const shops = acc.shops.map((s) => {
                 const key = `${idx}::${s}`;
@@ -745,8 +759,23 @@
                     <input type="checkbox" class="tm-acc-checkbox" data-acc="${idx}" value="${esc(key)}" ${checked ? 'checked' : ''}> ${esc(s)}
                 </label>`;
             }).join('');
-            return header + shops;
+            return `${header}<div class="tm-acc-shops" data-acc="${idx}" style="display:${open ? 'grid' : 'none'};">${shops}</div>`;
         }).join('');
+
+        // Toggle gập/mở khi click header (trừ checkbox "chọn cả nhóm")
+        wrap.querySelectorAll('.tm-acc-group-head').forEach((head) => {
+            head.onclick = (e) => {
+                if (e.target.classList.contains('tm-acc-all')) return;
+                const name = head.dataset.name;
+                const shopsEl = wrap.querySelector(`.tm-acc-shops[data-acc="${head.dataset.acc}"]`);
+                const nowOpen = !EXPANDED.has(name);
+                if (nowOpen) EXPANDED.add(name); else EXPANDED.delete(name);
+                saveExpanded();
+                if (shopsEl) shopsEl.style.display = nowOpen ? 'grid' : 'none';
+                const arrow = head.querySelector('.tm-acc-arrow');
+                if (arrow) arrow.textContent = nowOpen ? '▾' : '▸';
+            };
+        });
 
         const syncAccAll = () => {
             wrap.querySelectorAll('.tm-acc-all').forEach((all) => {

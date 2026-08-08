@@ -847,6 +847,78 @@ export const startAdminServer = async () => {
     }
   });
 
+  // Clone N listing SUCCESS sang nhiều shop đích (kể cả khác user). Chỉ COPY file
+  // JSON vào shop đích dạng pending (không spawn — cron chạy sau). Mỗi shop đích
+  // resolve baseDir RIÊNG theo owner của shop đó (khác run-now dùng chung baseDir).
+  app.post("/admin/api/listings/clone", async (req, res) => {
+    try {
+      const sessionUser = (req.session as any).user as SessionUser;
+      if (sessionUser.role === "viewer") return res.status(403).json({ error: "Viewer không thể clone" });
+
+      const { ids, shops } = req.body as { ids?: string[]; shops?: string[] };
+      if (!Array.isArray(ids) || ids.length === 0) {
+        return res.status(400).json({ error: "Chọn ít nhất 1 listing" });
+      }
+      if (!Array.isArray(shops) || shops.length === 0) {
+        return res.status(400).json({ error: "Chọn ít nhất 1 shop đích" });
+      }
+
+      const cloned: { id: string; shop: string; file: string }[] = [];
+      const skipped: { id?: string; shop?: string; reason: string }[] = [];
+
+      // 1) Resolve baseDir + owner cho từng shop đích 1 lần
+      const targets = new Map<string, { base: string; owner: string }>();
+      for (const shop of shops) {
+        if (/[\/\\]|\.\./.test(shop)) { skipped.push({ shop, reason: "tên shop không hợp lệ" }); continue; }
+        const owner = await getShopOwner(shop);
+        if (!owner) { skipped.push({ shop, reason: "không tìm được owner của shop" }); continue; }
+        if (sessionUser.role !== "admin" && owner !== sessionUser.username) {
+          skipped.push({ shop, reason: "không có quyền ghi shop này" });
+          continue;
+        }
+        const dirs = await getUserDirsByName(owner);
+        if (!dirs?.baseSheinAutoDir) { skipped.push({ shop, reason: "owner chưa cấu hình baseSheinAutoDir" }); continue; }
+        targets.set(shop, { base: dirs.baseSheinAutoDir, owner });
+      }
+      if (targets.size === 0) {
+        return res.status(400).json({ error: "Không có shop đích hợp lệ", skipped });
+      }
+
+      // 2) Với mỗi listing nguồn (chỉ success) → copy sang mọi shop đích hợp lệ
+      let counter = 0;
+      for (const id of ids) {
+        const resolved = await resolveListingPath(id);
+        if (!resolved) { skipped.push({ id, reason: "id không hợp lệ" }); continue; }
+        if (resolved.status !== "success") {
+          skipped.push({ id, reason: `không phải success (${resolved.status})` });
+          continue;
+        }
+        if (sessionUser.role !== "admin" && !resolved.owner.split(",").includes(sessionUser.username)) {
+          skipped.push({ id, reason: "không có quyền clone listing này" });
+          continue;
+        }
+        if (!(await fs.pathExists(resolved.full))) {
+          skipped.push({ id, reason: "file nguồn không còn tồn tại" });
+          continue;
+        }
+        const raw = await fs.readFile(resolved.full, "utf-8");
+
+        for (const [shop, { base }] of targets) {
+          const folderPath = path.join(base, shop);
+          await fs.ensureDir(folderPath);
+          const fileName = `${shop}_${Date.now()}_${counter++}.json`;
+          await fs.writeFile(path.join(folderPath, fileName), raw, "utf-8");
+          cloned.push({ id, shop, file: fileName });
+        }
+      }
+
+      refreshQueueSnapshot().catch(() => {});
+      res.json({ ok: true, cloned, skipped });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? "Lỗi clone" });
+    }
+  });
+
   app.delete("/admin/api/listings", async (req, res) => {
     try {
       const sessionUser = (req.session as any).user as SessionUser;
@@ -864,6 +936,36 @@ export const startAdminServer = async () => {
       res.json({ ok: true });
     } catch (err: any) {
       res.status(500).json({ error: err?.message ?? "Lỗi xoá" });
+    }
+  });
+
+  // Xoá nhiều listing cùng lúc (admin). Xoá hẳn file JSON + error log.
+  app.post("/admin/api/listings/delete-batch", async (req, res) => {
+    try {
+      const sessionUser = (req.session as any).user as SessionUser;
+      if (sessionUser.role !== "admin") return res.status(403).json({ error: "Chỉ admin" });
+
+      const { ids } = req.body as { ids?: string[] };
+      if (!Array.isArray(ids) || ids.length === 0) {
+        return res.status(400).json({ error: "Chọn ít nhất 1 listing" });
+      }
+
+      const removed: string[] = [];
+      const skipped: { id: string; reason: string }[] = [];
+
+      for (const id of ids) {
+        const resolved = await resolveListingPath(id);
+        if (!resolved) { skipped.push({ id, reason: "id không hợp lệ" }); continue; }
+        if (!(await fs.pathExists(resolved.full))) { skipped.push({ id, reason: "file đã bị xoá" }); continue; }
+        await fs.remove(resolved.full);
+        const errLog = `${resolved.full}.error.log`;
+        if (await fs.pathExists(errLog)) await fs.remove(errLog).catch(() => {});
+        removed.push(id);
+      }
+
+      res.json({ ok: true, removed, skipped });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? "Lỗi xoá hàng loạt" });
     }
   });
 

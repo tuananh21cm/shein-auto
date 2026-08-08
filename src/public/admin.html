@@ -183,6 +183,19 @@
     .listing-card .actions button.delete:hover { background: var(--danger-soft); color: var(--danger); border-color: var(--danger); }
     .listing-card .error-snippet { padding: 8px 12px; margin: 0 12px 8px; font-size: 0.72rem; color: var(--danger); font-family: 'JetBrains Mono', monospace; line-height: 1.4; background: var(--danger-soft); border-radius: 6px; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; cursor: help; }
 
+    /* ── Clone modal ── */
+    .clone-group { margin-bottom: 6px; }
+    .clone-ghead { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; gap: 8px; padding: 7px 10px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 7px; }
+    .clone-ghead .clone-ghead-name { font-weight: 600; color: var(--text); font-size: 0.86rem; }
+    .clone-ghead .clone-ghead-count { margin-left: auto; font-size: 0.74rem; color: var(--text-mute); }
+    .clone-ghead input, .clone-shop-row input { width: 16px; height: 16px; flex: 0 0 auto; cursor: pointer; accent-color: var(--accent); }
+    .clone-gshops { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 6px; padding: 6px 4px 4px; }
+    .clone-shop-row { display: flex; align-items: center; gap: 7px; padding: 6px 9px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 6px; cursor: pointer; font-size: 0.82rem; transition: border-color .12s; }
+    .clone-shop-row:hover { border-color: var(--accent); }
+    .clone-shop-row:has(.clone-shop-cb:checked) { border-color: var(--accent); background: var(--accent-soft, rgba(99,102,241,0.12)); }
+    .clone-shop-row .clone-shop-name { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text); }
+    .clone-shop-row .clone-shop-stat { flex: 0 0 auto; font-size: 0.7rem; color: var(--text-mute); }
+
     .empty { text-align: center; padding: 40px; color: var(--text-mute); }
     .view { display: none; }
     .view.active { display: block; }
@@ -930,12 +943,12 @@ function renderListings() {
     return `${pr.currency}${pr.min.toFixed(2)} – ${pr.currency}${pr.max.toFixed(2)}`;
   };
 
-  const selectableCount = items.filter((i) => i.status === "pending" || i.status === "fail").length;
+  const selectableCount = items.length;
   const toolbar = selectableCount > 0 && canEdit ? `
     <div style="display:flex; align-items:center; gap:10px; margin-bottom: 12px; padding: 10px 14px; background: var(--bg-elev); border-radius: 8px; font-size: 0.85rem;">
       <button class="btn btn-ghost" onclick="selectAllVisible()" style="padding: 5px 12px;">☑ Chọn tất cả (${selectableCount})</button>
       <button class="btn btn-ghost" onclick="clearListingSelect()" style="padding: 5px 12px;">Bỏ chọn</button>
-      <span style="color: var(--text-mute);">Tick checkbox góc trái card để chọn từng cái · pending → Run · fail → Retry</span>
+      <span style="color: var(--text-mute);">Tick checkbox góc trái card · pending → Run · fail → Retry · success → Clone</span>
     </div>` : '';
 
   $("#listingsGrid").innerHTML =
@@ -947,7 +960,7 @@ function renderListings() {
         const isSelected = state.listings.selected?.has(it.id);
         return `
         <div class="listing-card${isSelected ? ' selected' : ''}">
-          ${(it.status === "pending" || it.status === "fail") && canEdit
+          ${canEdit
             ? `<input type="checkbox" class="select-cb listing-select-cb" data-id="${escapeHtml(it.id)}" ${isSelected ? 'checked' : ''} onclick="toggleListingSelect('${idEnc}', this.checked); event.stopPropagation();" />`
             : ''}
           <div class="img-wrap">
@@ -1057,7 +1070,7 @@ function selectAllVisible() {
   let items = state.listings.items || [];
   if (search) items = items.filter((it) => (it.title || "").toLowerCase().includes(search));
   for (const it of items) {
-    if (it.status === "pending" || it.status === "fail") state.listings.selected.add(it.id);
+    state.listings.selected.add(it.id);
   }
   renderListings();
   renderBulkBar();
@@ -1079,19 +1092,22 @@ function renderBulkBar() {
     bar.className = 'bulk-bar';
     document.body.appendChild(bar);
   }
-  // Phân loại selection: pending → Run, fail → Retry (bỏ qua id không còn trong view)
+  // Phân loại selection: pending → Run, fail → Retry, success → Clone
   const byId = new Map((state.listings.items || []).map((it) => [it.id, it]));
-  let pend = 0, fail = 0;
+  let pend = 0, fail = 0, succ = 0;
   for (const id of (state.listings.selected || [])) {
     const it = byId.get(id);
     if (!it) continue;
     if (it.status === "pending") pend++;
     else if (it.status === "fail") fail++;
+    else if (it.status === "success") succ++;
   }
   bar.innerHTML = `
     <span class="count">✓ ${n} đã chọn</span>
     ${pend > 0 ? `<button class="btn btn-primary" onclick="runBatch()">▶ Run ${pend} pending</button>` : ''}
     ${fail > 0 ? `<button class="btn btn-primary" onclick="retryBatch()">↻ Retry ${fail} fail</button>` : ''}
+    ${succ > 0 ? `<button class="btn btn-primary" onclick="openCloneModal()">⧉ Clone ${succ} → shop</button>` : ''}
+    ${state.user.role === "admin" ? `<button class="btn btn-danger" onclick="deleteBatch()">🗑 Xoá ${n}</button>` : ''}
     <button class="btn btn-ghost" onclick="clearListingSelect()">Bỏ chọn</button>
   `;
 }
@@ -1136,6 +1152,138 @@ async function retryBatch() {
     state.listings.selected = new Set();
     renderBulkBar();
     setTimeout(loadShopsOrListings, 1500);
+  } catch (err) {
+    toast(err.message, "error");
+  }
+}
+
+// ─── Clone listing success → nhiều shop (kể cả khác user) ──────────
+async function openCloneModal() {
+  const byId = new Map((state.listings.items || []).map((it) => [it.id, it]));
+  const ids = Array.from(state.listings.selected || []).filter((id) => byId.get(id)?.status === "success");
+  if (ids.length === 0) return toast("Chọn ít nhất 1 listing success để clone", "error");
+
+  // Luôn fetch mới để đủ TẤT CẢ shop mọi user (admin = tất cả).
+  let shopsAvail = [];
+  try {
+    const res = await fetch("/admin/api/listings/shops");
+    const data = await res.json();
+    shopsAvail = data.shops || [];
+    state.listings.shops = shopsAvail;
+  } catch { shopsAvail = state.listings.shops || []; }
+  if (shopsAvail.length === 0) return toast("Không có shop nào để clone tới", "error");
+
+  // Gom theo owner (username, có thể merged "a,b")
+  const byOwner = new Map();
+  for (const s of shopsAvail) {
+    const key = s.owner || "?";
+    if (!byOwner.has(key)) byOwner.set(key, []);
+    byOwner.get(key).push(s);
+  }
+  const groupsHtml = [...byOwner.entries()].map(([owner, list]) => `
+    <div class="clone-group" data-owner="${escapeHtml(owner)}">
+      <div class="clone-ghead">
+        <input type="checkbox" class="clone-owner-cb" data-owner="${escapeHtml(owner)}" onchange="toggleCloneOwner(this)" />
+        <span class="clone-ghead-name">👤 ${escapeHtml(owner)}</span>
+        <span class="clone-ghead-count">${list.length} shop</span>
+      </div>
+      <div class="clone-gshops">
+        ${list.map((s) => `
+          <label class="clone-shop-row" data-owner="${escapeHtml(owner)}" data-folder="${escapeHtml(s.folder.toLowerCase())}">
+            <input type="checkbox" class="clone-shop-cb" value="${escapeHtml(s.folder)}" data-owner="${escapeHtml(owner)}" onchange="updateCloneCount()" />
+            <code class="clone-shop-name">${escapeHtml(s.folder)}</code>
+            <span class="clone-shop-stat">✓${s.success}·⏳${s.pending}</span>
+          </label>
+        `).join('')}
+      </div>
+    </div>
+  `).join('');
+
+  $("#modalTitle").textContent = `⧉ Clone ${ids.length} listing → shop`;
+  $("#modalBody").innerHTML = `
+    <div style="color: var(--text-mute); font-size: 0.86rem; margin-bottom: 10px;">
+      Copy <b>${ids.length}</b> sản phẩm (success) sang các shop đã chọn dưới dạng <b>pending</b>. Cron sẽ chạy sau (hoặc Run tay).
+    </div>
+    <div style="display:flex; gap:8px; align-items:center; margin-bottom: 8px;">
+      <input id="cloneShopSearch" placeholder="🔍 Tìm shop..." oninput="filterCloneShops()" style="flex:1; margin:0;" />
+      <label style="display:flex; align-items:center; gap:6px; font-size:0.82rem; color:var(--text-dim); white-space:nowrap; cursor:pointer;">
+        <input type="checkbox" id="cloneSelectAll" onchange="toggleCloneAll(this)" /> Chọn tất cả
+      </label>
+    </div>
+    <div id="cloneShopList" style="max-height: 55vh; overflow-y: auto; padding: 6px; background: var(--bg-elev); border-radius: 8px;">
+      ${groupsHtml}
+    </div>
+    <div style="display:flex; gap:8px; margin-top: 16px;">
+      <button class="btn btn-ghost" onclick="closeModal()" style="flex:1;">Cancel</button>
+      <button class="btn btn-primary" id="cloneConfirmBtn" onclick="confirmClone()" style="flex:2;" disabled>⧉ Chọn shop đích</button>
+    </div>
+  `;
+  $("#modalBg").classList.add("show");
+}
+
+function filterCloneShops() {
+  const q = ($("#cloneShopSearch").value || "").toLowerCase().trim();
+  document.querySelectorAll("#cloneShopList .clone-group").forEach((grp) => {
+    let anyVisible = false;
+    grp.querySelectorAll(".clone-shop-row").forEach((row) => {
+      const show = !q || row.dataset.folder.includes(q);
+      row.style.display = show ? "" : "none";
+      if (show) anyVisible = true;
+    });
+    grp.style.display = anyVisible ? "" : "none"; // ẩn cả nhóm nếu không có shop khớp
+  });
+}
+
+function toggleCloneOwner(cb) {
+  document.querySelectorAll(`.clone-shop-cb[data-owner="${CSS.escape(cb.dataset.owner)}"]`).forEach((b) => {
+    if (b.closest(".clone-shop-row").style.display !== "none") b.checked = cb.checked;
+  });
+  updateCloneCount();
+}
+
+function toggleCloneAll(cb) {
+  document.querySelectorAll("#cloneShopList .clone-shop-row").forEach((row) => {
+    if (row.style.display === "none") return; // chỉ áp cho shop đang hiển thị
+    const b = row.querySelector(".clone-shop-cb");
+    if (b) b.checked = cb.checked;
+  });
+  document.querySelectorAll(".clone-owner-cb").forEach((o) => { o.checked = cb.checked; });
+  updateCloneCount();
+}
+
+function updateCloneCount() {
+  const n = document.querySelectorAll(".clone-shop-cb:checked").length;
+  const btn = document.getElementById("cloneConfirmBtn");
+  if (btn) {
+    btn.disabled = n === 0;
+    btn.textContent = n === 0 ? "⧉ Chọn shop đích" : `⧉ Clone vào ${n} shop`;
+  }
+  // Đồng bộ checkbox "chọn cả nhóm" theo trạng thái shop trong nhóm
+  document.querySelectorAll(".clone-owner-cb").forEach((o) => {
+    const boxes = [...document.querySelectorAll(`.clone-shop-cb[data-owner="${CSS.escape(o.dataset.owner)}"]`)];
+    o.checked = boxes.length > 0 && boxes.every((b) => b.checked);
+  });
+}
+
+async function confirmClone() {
+  const byId = new Map((state.listings.items || []).map((it) => [it.id, it]));
+  const ids = Array.from(state.listings.selected || []).filter((id) => byId.get(id)?.status === "success");
+  const shops = Array.from(document.querySelectorAll(".clone-shop-cb:checked")).map((cb) => cb.value);
+  if (ids.length === 0 || shops.length === 0) return;
+  try {
+    const res = await fetch("/admin/api/listings/clone", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids, shops }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+    const skipMsg = data.skipped?.length ? ` (bỏ qua ${data.skipped.length})` : '';
+    toast(`⧉ Đã clone ${data.cloned.length} file sang shop đích${skipMsg} — chờ cron/Run`);
+    closeModal();
+    state.listings.selected = new Set();
+    renderBulkBar();
+    setTimeout(loadShopsOrListings, 1200);
   } catch (err) {
     toast(err.message, "error");
   }
@@ -1292,6 +1440,28 @@ async function deleteListing(idEnc) {
     if (!res.ok) throw new Error(data.error);
     toast("Đã xoá");
     loadShopsOrListings();
+  } catch (err) {
+    toast(err.message, "error");
+  }
+}
+
+async function deleteBatch() {
+  const ids = Array.from(state.listings.selected || []);
+  if (ids.length === 0) return;
+  if (!confirm(`Xoá hẳn ${ids.length} listing đã chọn? Không thể khôi phục.`)) return;
+  try {
+    const res = await fetch("/admin/api/listings/delete-batch", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+    const skipMsg = data.skipped?.length ? ` (bỏ qua ${data.skipped.length})` : '';
+    toast(`🗑 Đã xoá ${data.removed.length} listing${skipMsg}`);
+    state.listings.selected = new Set();
+    renderBulkBar();
+    setTimeout(loadShopsOrListings, 1000);
   } catch (err) {
     toast(err.message, "error");
   }

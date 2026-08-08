@@ -19,7 +19,7 @@ import { config } from "./config";
 import { workerState } from "./state/workerState";
 import { refreshQueueSnapshot } from "./state/queueState";
 import { historyStore } from "./state/historyStore";
-import { scanListings, scanShopsSummary, resolveListingPath, ListingStatus } from "./state/listingScan";
+import { scanListings, scanShopsSummary, resolveListingPath, scanHub, resolveHubFile, recordHubListings, removeHubMeta, ListingStatus } from "./state/listingScan";
 import { validatePath, detectDirConflicts, getUserDirsByName, getShopOwner } from "./state/userDirs";
 import { processFile } from "./queue/queueManager";
 import { eventBus } from "./state/eventBus";
@@ -969,6 +969,155 @@ export const startAdminServer = async () => {
       res.json({ ok: true, removed, skipped });
     } catch (err: any) {
       res.status(500).json({ error: err?.message ?? "Lỗi xoá hàng loạt" });
+    }
+  });
+
+  // ── HUB sản phẩm (kho chung toàn hệ thống) ─────────────────
+  // Ghi 1 file JSON vào hub. Dùng chung cho userscript (Bearer) + kéo từ shop.
+  const writeHubFile = async (data: any): Promise<string> => {
+    await fs.ensureDir(config.hubDir);
+    const fileName = `hub_${Date.now()}_${Math.floor(Math.random() * 1e6)}.json`;
+    await fs.writeFile(path.join(config.hubDir, fileName), JSON.stringify(data, null, 2), "utf-8");
+    return fileName;
+  };
+
+  // Userscript đẩy sản phẩm cào được vào Hub (Bearer token, không cần shop).
+  app.post("/admin/api/hub/ingest", ingestAuth, async (req, res) => {
+    try {
+      const { data } = req.body as { data?: any };
+      if (!data || typeof data !== "object") return res.status(400).json({ error: "Thiếu data" });
+      const file = await writeHubFile(data);
+      res.json({ ok: true, file });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? "Lỗi ingest hub" });
+    }
+  });
+
+  // Liệt kê sản phẩm trong Hub.
+  app.get("/admin/api/hub", async (_req, res) => {
+    try {
+      const items = await scanHub();
+      res.json({ items });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? "Lỗi scan hub" });
+    }
+  });
+
+  // Xem JSON gốc 1 sản phẩm Hub.
+  app.get("/admin/api/hub/json", async (req, res) => {
+    try {
+      const full = resolveHubFile((req.query.file as string) || "");
+      if (!full || !(await fs.pathExists(full))) return res.status(404).json({ error: "File không tồn tại" });
+      const content = JSON.parse(await fs.readFile(full, "utf-8"));
+      res.json({ content });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? "Lỗi đọc file hub" });
+    }
+  });
+
+  // Kéo listing có sẵn (mọi status) từ shop vào Hub.
+  app.post("/admin/api/hub/add", async (req, res) => {
+    try {
+      const sessionUser = (req.session as any).user as SessionUser;
+      if (sessionUser.role === "viewer") return res.status(403).json({ error: "Viewer không thể thêm vào Hub" });
+
+      const { ids } = req.body as { ids?: string[] };
+      if (!Array.isArray(ids) || ids.length === 0) return res.status(400).json({ error: "Chọn ít nhất 1 listing" });
+
+      const added: { id: string; file: string }[] = [];
+      const skipped: { id: string; reason: string }[] = [];
+      for (const id of ids) {
+        const resolved = await resolveListingPath(id);
+        if (!resolved) { skipped.push({ id, reason: "id không hợp lệ" }); continue; }
+        if (sessionUser.role !== "admin" && !resolved.owner.split(",").includes(sessionUser.username)) {
+          skipped.push({ id, reason: "không có quyền" }); continue;
+        }
+        if (!(await fs.pathExists(resolved.full))) { skipped.push({ id, reason: "file không còn" }); continue; }
+        const raw = await fs.readFile(resolved.full, "utf-8");
+        let data: any;
+        try { data = JSON.parse(raw); } catch { skipped.push({ id, reason: "JSON hỏng" }); continue; }
+        const file = await writeHubFile(data);
+        added.push({ id, file });
+      }
+      res.json({ ok: true, added, skipped });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? "Lỗi thêm vào Hub" });
+    }
+  });
+
+  // List sản phẩm từ Hub lên nhiều shop (mọi user) — copy dạng pending, cron chạy sau.
+  app.post("/admin/api/hub/clone", async (req, res) => {
+    try {
+      const sessionUser = (req.session as any).user as SessionUser;
+      if (sessionUser.role === "viewer") return res.status(403).json({ error: "Viewer không thể list" });
+
+      const { files, shops } = req.body as { files?: string[]; shops?: string[] };
+      if (!Array.isArray(files) || files.length === 0) return res.status(400).json({ error: "Chọn ít nhất 1 sản phẩm Hub" });
+      if (!Array.isArray(shops) || shops.length === 0) return res.status(400).json({ error: "Chọn ít nhất 1 shop đích" });
+
+      // Resolve baseDir + owner cho từng shop đích 1 lần (giống listings/clone)
+      const targets = new Map<string, { base: string; owner: string }>();
+      const skipped: { file?: string; shop?: string; reason: string }[] = [];
+      for (const shop of shops) {
+        if (/[\/\\]|\.\./.test(shop)) { skipped.push({ shop, reason: "tên shop không hợp lệ" }); continue; }
+        const owner = await getShopOwner(shop);
+        if (!owner) { skipped.push({ shop, reason: "không tìm được owner" }); continue; }
+        if (sessionUser.role !== "admin" && owner !== sessionUser.username) {
+          skipped.push({ shop, reason: "không có quyền ghi shop này" }); continue;
+        }
+        const dirs = await getUserDirsByName(owner);
+        if (!dirs?.baseSheinAutoDir) { skipped.push({ shop, reason: "owner chưa cấu hình baseSheinAutoDir" }); continue; }
+        targets.set(shop, { base: dirs.baseSheinAutoDir, owner });
+      }
+      if (targets.size === 0) return res.status(400).json({ error: "Không có shop đích hợp lệ", skipped });
+
+      const cloned: { file: string; shop: string; out: string }[] = [];
+      let counter = 0;
+      for (const file of files) {
+        const full = resolveHubFile(file);
+        if (!full || !(await fs.pathExists(full))) { skipped.push({ file, reason: "file hub không tồn tại" }); continue; }
+        const raw = await fs.readFile(full, "utf-8");
+        for (const [shop, { base }] of targets) {
+          const folderPath = path.join(base, shop);
+          await fs.ensureDir(folderPath);
+          const out = `${shop}_${Date.now()}_${counter++}.json`;
+          await fs.writeFile(path.join(folderPath, out), raw, "utf-8");
+          cloned.push({ file, shop, out });
+        }
+      }
+      // Ghi nhận thống kê: mỗi hub file đã list lên những shop nào (distinct)
+      const fileToShops: Record<string, string[]> = {};
+      for (const c of cloned) (fileToShops[c.file] ||= []).push(c.shop);
+      if (Object.keys(fileToShops).length) await recordHubListings(fileToShops, Date.now());
+      refreshQueueSnapshot().catch(() => {});
+      res.json({ ok: true, cloned, skipped });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? "Lỗi list từ Hub" });
+    }
+  });
+
+  // Xoá sản phẩm khỏi Hub.
+  app.post("/admin/api/hub/delete", async (req, res) => {
+    try {
+      const sessionUser = (req.session as any).user as SessionUser;
+      if (sessionUser.role === "viewer") return res.status(403).json({ error: "Viewer không thể xoá" });
+
+      const { files } = req.body as { files?: string[] };
+      if (!Array.isArray(files) || files.length === 0) return res.status(400).json({ error: "Chọn ít nhất 1 sản phẩm" });
+
+      const removed: string[] = [];
+      const skipped: { file: string; reason: string }[] = [];
+      for (const file of files) {
+        const full = resolveHubFile(file);
+        if (!full) { skipped.push({ file, reason: "tên file không hợp lệ" }); continue; }
+        if (!(await fs.pathExists(full))) { skipped.push({ file, reason: "đã xoá" }); continue; }
+        await fs.remove(full);
+        removed.push(file);
+      }
+      await removeHubMeta(removed);
+      res.json({ ok: true, removed, skipped });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? "Lỗi xoá Hub" });
     }
   });
 

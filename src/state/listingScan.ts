@@ -2,6 +2,7 @@ import fs from "fs-extra";
 import path from "path";
 import { getAllUserDirs, UserDirs } from "./userDirs";
 import { historyStore } from "./historyStore";
+import { config } from "../config";
 
 export type ListingStatus = "pending" | "success" | "fail";
 
@@ -414,4 +415,102 @@ export const resolveListingPath = async (
     : path.join(dir.baseSheinAutoDir, folder, file);
 
   return { owner, folder, status, file, full, baseDir: dir.baseSheinAutoDir };
+};
+
+// ── HUB sản phẩm (kho chung, ngoài baseDir user) ───────────────────
+export interface HubItem {
+  id: string; // = filename (unique trong hubDir)
+  file: string;
+  title: string;
+  image: string | null;
+  priceRange: { min: number; max: number; currency: string } | null;
+  variantCount: number;
+  colorCount: number;
+  sizeCount: number;
+  scrapedAt: string | null;
+  mtimeMs: number;
+  /** Số shop (distinct) sản phẩm này đã được list lên + tên shop + lần list gần nhất. */
+  listedCount: number;
+  listedShops: string[];
+  lastListedMs: number;
+}
+
+// Metadata Hub: theo dõi mỗi hub file đã list lên những shop nào (distinct).
+const HUB_META_FILE = "__hub_meta.json";
+const hubMetaPath = () => path.join(config.hubDir, HUB_META_FILE);
+interface HubMetaEntry { shops: string[]; lastAt: number; }
+type HubMeta = Record<string, HubMetaEntry>;
+
+const readHubMeta = async (): Promise<HubMeta> => {
+  try {
+    const p = hubMetaPath();
+    if (!(await fs.pathExists(p))) return {};
+    return (JSON.parse(await fs.readFile(p, "utf-8")) as HubMeta) || {};
+  } catch {
+    return {};
+  }
+};
+const writeHubMeta = async (meta: HubMeta): Promise<void> => {
+  await fs.ensureDir(config.hubDir);
+  await fs.writeFile(hubMetaPath(), JSON.stringify(meta, null, 2), "utf-8");
+};
+
+/** Ghi nhận các hub file đã được list sang shop (gộp distinct theo tên shop). */
+export const recordHubListings = async (fileToShops: Record<string, string[]>, nowMs: number): Promise<void> => {
+  const meta = await readHubMeta();
+  for (const [file, shops] of Object.entries(fileToShops)) {
+    const cur = meta[file] || { shops: [], lastAt: 0 };
+    const set = new Set(cur.shops);
+    for (const s of shops) set.add(s);
+    meta[file] = { shops: [...set], lastAt: nowMs };
+  }
+  await writeHubMeta(meta);
+};
+
+/** Xoá metadata của các hub file đã bị xoá. */
+export const removeHubMeta = async (files: string[]): Promise<void> => {
+  if (!files.length) return;
+  const meta = await readHubMeta();
+  let changed = false;
+  for (const f of files) if (meta[f]) { delete meta[f]; changed = true; }
+  if (changed) await writeHubMeta(meta);
+};
+
+/** Quét toàn bộ sản phẩm trong Hub (config.hubDir). Tái dùng parseListingFile. */
+export const scanHub = async (): Promise<HubItem[]> => {
+  const dir = config.hubDir;
+  if (!(await fs.pathExists(dir))) return [];
+  const meta = await readHubMeta();
+  const files = (await fs.readdir(dir)).filter(
+    (f) => f.toLowerCase().endsWith(".json") && f !== HUB_META_FILE
+  );
+  const items = await Promise.all(
+    files.map(async (f) => {
+      const card = await parseListingFile(path.join(dir, f), "hub", "hub", "success");
+      if (!card) return null;
+      const m = meta[f];
+      return {
+        id: f,
+        file: f,
+        title: card.title,
+        image: card.image,
+        priceRange: card.priceRange,
+        variantCount: card.variantCount,
+        colorCount: card.colorCount,
+        sizeCount: card.sizeCount,
+        scrapedAt: card.scrapedAt,
+        mtimeMs: card.mtimeMs,
+        listedCount: m ? m.shops.length : 0,
+        listedShops: m ? m.shops : [],
+        lastListedMs: m ? m.lastAt : 0,
+      } as HubItem;
+    })
+  );
+  return items.filter((x): x is HubItem => x !== null).sort((a, b) => b.mtimeMs - a.mtimeMs);
+};
+
+/** Đường dẫn tuyệt đối 1 file hub (guard traversal). null nếu tên không hợp lệ. */
+export const resolveHubFile = (file: string): string | null => {
+  if (!file || /[\/\\]|\.\./.test(file) || !file.toLowerCase().endsWith(".json")) return null;
+  return path.join(config.hubDir, file);
 };

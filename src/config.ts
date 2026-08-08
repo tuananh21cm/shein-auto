@@ -6,6 +6,7 @@ const worker = workerConfig();
 
 const envDownload = process.env.DOWNLOAD_DIR?.trim() ?? "";
 const envBase = process.env.BASE_SHEINAUTO_DIR?.trim() ?? "";
+const envHub = process.env.HUB_DIR?.trim() ?? "";
 
 export const config = {
   geminiApiKey: process.env.GEMINI_API_KEY ?? "",
@@ -13,6 +14,8 @@ export const config = {
   downloadDir: envDownload ? path.normalize(envDownload) : "",
   /** Default fallback cho user không cấu hình baseSheinAutoDir riêng. Rỗng = user bắt buộc tự set. */
   baseSheinAutoDir: envBase ? path.normalize(envBase) : "",
+  /** Hub sản phẩm — kho chung toàn hệ thống, NẰM NGOÀI baseDir user nên cron không quét. */
+  hubDir: envHub ? path.normalize(envHub) : path.join(__dirname, "..", "data", "hub"),
   cronFileRouter: process.env.CRON_FILE_ROUTER || worker.fileRouterCron,
   cronQueueManager: process.env.CRON_QUEUE_MANAGER || worker.queueManagerCron,
   cookieFile: path.join(__dirname, "cookies", "listing4sellerCookie.json"),

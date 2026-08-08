@@ -190,12 +190,12 @@
     .clone-ghead .clone-ghead-name { font-weight: 600; color: var(--text); font-size: 0.86rem; }
     .clone-ghead .clone-ghead-count { margin-left: auto; font-size: 0.74rem; color: var(--text-mute); }
     .clone-ghead input, .clone-shop-row input { width: 16px; height: 16px; flex: 0 0 auto; cursor: pointer; accent-color: var(--accent); }
-    .clone-gshops { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 6px; padding: 6px 4px 4px; }
+    .clone-gshops { display: grid; grid-template-columns: repeat(auto-fill, minmax(215px, 1fr)); gap: 6px; padding: 6px 4px 4px; }
     .clone-shop-row { display: flex; align-items: center; gap: 7px; padding: 6px 9px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 6px; cursor: pointer; font-size: 0.82rem; transition: border-color .12s; }
     .clone-shop-row:hover { border-color: var(--accent); }
     .clone-shop-row:has(.clone-shop-cb:checked) { border-color: var(--accent); background: var(--accent-soft, rgba(99,102,241,0.12)); }
-    .clone-shop-row .clone-shop-name { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text); }
-    .clone-shop-row .clone-shop-stat { flex: 0 0 auto; font-size: 0.7rem; color: var(--text-mute); }
+    .clone-shop-row .clone-shop-name { flex: 1; min-width: 0; white-space: normal; word-break: break-word; line-height: 1.25; color: var(--text); }
+    .clone-shop-row .clone-shop-stat { flex: 0 0 auto; align-self: flex-start; margin-top: 1px; font-size: 0.7rem; color: var(--text-mute); white-space: nowrap; }
 
     .empty { text-align: center; padding: 40px; color: var(--text-mute); }
     .view { display: none; }
@@ -214,6 +214,9 @@
     </div>
     <div class="nav-item" data-view="listings">
       <span class="ico">🛍️</span><span>Listings</span>
+    </div>
+    <div class="nav-item" data-view="hub">
+      <span class="ico">🗂️</span><span>Hub sản phẩm</span>
     </div>
     <div class="nav-item" data-view="history">
       <span class="ico">📜</span><span>History</span>
@@ -308,6 +311,23 @@
         <div class="card">
           <div id="listingsGrid"><div class="empty">Đang tải…</div></div>
         </div>
+      </div>
+    </section>
+
+    <!-- ───── HUB SẢN PHẨM ───── -->
+    <section class="view" id="view-hub">
+      <div class="page-head">
+        <div>
+          <h1>Hub sản phẩm</h1>
+          <div class="subtitle" id="hubSubtitle">Kho chung — kéo sản phẩm về đây rồi list lên nhiều shop</div>
+        </div>
+        <button class="btn btn-ghost" onclick="loadHub()">Refresh</button>
+      </div>
+      <div class="card">
+        <div style="display:flex; gap:10px; align-items:center; margin-bottom:12px;">
+          <input id="hubSearch" placeholder="🔍 Tìm sản phẩm..." oninput="renderHub()" style="width:240px;" />
+        </div>
+        <div id="hubGrid"><div class="empty">Đang tải…</div></div>
       </div>
     </section>
 
@@ -566,10 +586,14 @@ document.querySelectorAll(".nav-item").forEach((item) => {
     const view = item.dataset.view;
     document.querySelectorAll(".nav-item").forEach((i) => i.classList.remove("active"));
     document.querySelectorAll(".view").forEach((v) => v.classList.remove("active"));
+    // Dọn các bulk bar nổi khi rời view
+    document.getElementById('bulkBar')?.remove();
+    document.getElementById('hubBulkBar')?.remove();
     item.classList.add("active");
     $(`#view-${view}`).classList.add("active");
     if (view === "history") loadHistory();
     if (view === "listings") loadShopsOrListings();
+    if (view === "hub") loadHub();
     if (view === "users") renderUsers();
     if (view === "settings") { loadSettings(); loadBrands(); loadPricing(); }
     if (view === "cookie") loadCookieStatus();
@@ -1117,9 +1141,33 @@ function renderBulkBar() {
     ${pend > 0 ? `<button class="btn btn-primary" onclick="runBatch()">▶ Run ${pend} pending</button>` : ''}
     ${fail > 0 ? `<button class="btn btn-primary" onclick="retryBatch()">↻ Retry ${fail} fail</button>` : ''}
     ${succ > 0 ? `<button class="btn btn-primary" onclick="openCloneModal()">⧉ Clone ${succ} → shop</button>` : ''}
+    <button class="btn btn-ghost" onclick="addToHub()">🗂️ Thêm ${n} vào Hub</button>
     ${state.user.role === "admin" ? `<button class="btn btn-danger" onclick="deleteBatch()">🗑 Xoá ${n}</button>` : ''}
     <button class="btn btn-ghost" onclick="clearListingSelect()">Bỏ chọn</button>
   `;
+}
+
+// Kéo listing đã tick (mọi status) vào Hub
+async function addToHub() {
+  const ids = Array.from(state.listings.selected || []);
+  if (ids.length === 0) return;
+  if (!confirm(`Thêm ${ids.length} sản phẩm vào Hub?`)) return;
+  try {
+    const res = await fetch("/admin/api/hub/add", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+    const skipMsg = data.skipped?.length ? ` (bỏ qua ${data.skipped.length})` : '';
+    toast(`🗂️ Đã thêm ${data.added.length} sản phẩm vào Hub${skipMsg}`);
+    state.listings.selected = new Set();
+    renderBulkBar();
+    renderListings();
+  } catch (err) {
+    toast(err.message, "error");
+  }
 }
 
 async function runBatch() {
@@ -1167,12 +1215,11 @@ async function retryBatch() {
   }
 }
 
-// ─── Clone listing success → nhiều shop (kể cả khác user) ──────────
-async function openCloneModal() {
-  const byId = new Map((state.listings.items || []).map((it) => [it.id, it]));
-  const ids = Array.from(state.listings.selected || []).filter((id) => byId.get(id)?.status === "success");
-  if (ids.length === 0) return toast("Chọn ít nhất 1 listing success để clone", "error");
+// ─── Shop picker dùng chung (clone listing / list Hub → shop) ──────
+let _shopPickerConfirm = null;
 
+async function openShopPicker({ title, subtitle, onConfirm }) {
+  _shopPickerConfirm = onConfirm;
   // Luôn fetch mới để đủ TẤT CẢ shop mọi user (all=1 → gồm cả shop chưa tạo folder).
   let shopsAvail = [];
   try {
@@ -1181,7 +1228,7 @@ async function openCloneModal() {
     shopsAvail = data.shops || [];
     state.listings.shops = shopsAvail;
   } catch { shopsAvail = state.listings.shops || []; }
-  if (shopsAvail.length === 0) return toast("Không có shop nào để clone tới", "error");
+  if (shopsAvail.length === 0) return toast("Không có shop nào để list tới", "error");
 
   // Gom theo owner (username, có thể merged "a,b")
   const byOwner = new Map();
@@ -1199,7 +1246,7 @@ async function openCloneModal() {
       </div>
       <div class="clone-gshops">
         ${list.map((s) => `
-          <label class="clone-shop-row" data-owner="${escapeHtml(owner)}" data-folder="${escapeHtml(s.folder.toLowerCase())}">
+          <label class="clone-shop-row" title="${escapeHtml(s.folder)}" data-owner="${escapeHtml(owner)}" data-folder="${escapeHtml(s.folder.toLowerCase())}">
             <input type="checkbox" class="clone-shop-cb" value="${escapeHtml(s.folder)}" data-owner="${escapeHtml(owner)}" onchange="updateCloneCount()" />
             <code class="clone-shop-name">${escapeHtml(s.folder)}</code>
             <span class="clone-shop-stat">✓${s.success}·⏳${s.pending}</span>
@@ -1209,11 +1256,9 @@ async function openCloneModal() {
     </div>
   `).join('');
 
-  $("#modalTitle").textContent = `⧉ Clone ${ids.length} listing → shop`;
+  $("#modalTitle").textContent = title;
   $("#modalBody").innerHTML = `
-    <div style="color: var(--text-mute); font-size: 0.86rem; margin-bottom: 10px;">
-      Copy <b>${ids.length}</b> sản phẩm (success) sang các shop đã chọn dưới dạng <b>pending</b>. Cron sẽ chạy sau (hoặc Run tay).
-    </div>
+    <div style="color: var(--text-mute); font-size: 0.86rem; margin-bottom: 10px;">${subtitle}</div>
     <div style="display:flex; gap:8px; align-items:center; margin-bottom: 8px;">
       <input id="cloneShopSearch" placeholder="🔍 Tìm shop..." oninput="filterCloneShops()" style="flex:1; margin:0;" />
       <label style="display:flex; align-items:center; gap:6px; font-size:0.82rem; color:var(--text-dim); white-space:nowrap; cursor:pointer;">
@@ -1225,10 +1270,49 @@ async function openCloneModal() {
     </div>
     <div style="display:flex; gap:8px; margin-top: 16px;">
       <button class="btn btn-ghost" onclick="closeModal()" style="flex:1;">Cancel</button>
-      <button class="btn btn-primary" id="cloneConfirmBtn" onclick="confirmClone()" style="flex:2;" disabled>⧉ Chọn shop đích</button>
+      <button class="btn btn-primary" id="cloneConfirmBtn" onclick="shopPickerConfirm()" style="flex:2;" disabled>Chọn shop đích</button>
     </div>
   `;
   $("#modalBg").classList.add("show");
+}
+
+function shopPickerConfirm() {
+  const shops = Array.from(document.querySelectorAll(".clone-shop-cb:checked")).map((cb) => cb.value);
+  if (shops.length === 0) return;
+  const fn = _shopPickerConfirm;
+  if (fn) fn(shops);
+}
+
+// Clone listing success → shop (dùng picker chung)
+function openCloneModal() {
+  const byId = new Map((state.listings.items || []).map((it) => [it.id, it]));
+  const ids = Array.from(state.listings.selected || []).filter((id) => byId.get(id)?.status === "success");
+  if (ids.length === 0) return toast("Chọn ít nhất 1 listing success để clone", "error");
+  openShopPicker({
+    title: `⧉ Clone ${ids.length} listing → shop`,
+    subtitle: `Copy <b>${ids.length}</b> sản phẩm (success) sang các shop đã chọn dưới dạng <b>pending</b>. Cron sẽ chạy sau (hoặc Run tay).`,
+    onConfirm: (shops) => postListingClone(ids, shops),
+  });
+}
+
+async function postListingClone(ids, shops) {
+  try {
+    const res = await fetch("/admin/api/listings/clone", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids, shops }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+    const skipMsg = data.skipped?.length ? ` (bỏ qua ${data.skipped.length})` : '';
+    toast(`⧉ Đã clone ${data.cloned.length} file sang shop đích${skipMsg} — chờ cron/Run`);
+    closeModal();
+    state.listings.selected = new Set();
+    renderBulkBar();
+    setTimeout(loadShopsOrListings, 1200);
+  } catch (err) {
+    toast(err.message, "error");
+  }
 }
 
 function filterCloneShops() {
@@ -1266,7 +1350,7 @@ function updateCloneCount() {
   const btn = document.getElementById("cloneConfirmBtn");
   if (btn) {
     btn.disabled = n === 0;
-    btn.textContent = n === 0 ? "⧉ Chọn shop đích" : `⧉ Clone vào ${n} shop`;
+    btn.textContent = n === 0 ? "Chọn shop đích" : `✓ Xác nhận ${n} shop`;
   }
   // Đồng bộ checkbox "chọn cả nhóm" theo trạng thái shop trong nhóm
   document.querySelectorAll(".clone-owner-cb").forEach((o) => {
@@ -1275,25 +1359,208 @@ function updateCloneCount() {
   });
 }
 
-async function confirmClone() {
-  const byId = new Map((state.listings.items || []).map((it) => [it.id, it]));
-  const ids = Array.from(state.listings.selected || []).filter((id) => byId.get(id)?.status === "success");
-  const shops = Array.from(document.querySelectorAll(".clone-shop-cb:checked")).map((cb) => cb.value);
-  if (ids.length === 0 || shops.length === 0) return;
+// ─── HUB sản phẩm ─────────────────────────────────────
+function ensureHubState() { if (!state.hub) state.hub = { items: [], selected: new Set() }; }
+
+async function loadHub() {
+  ensureHubState();
   try {
-    const res = await fetch("/admin/api/listings/clone", {
+    const res = await fetch("/admin/api/hub");
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+    state.hub.items = data.items || [];
+    const valid = new Set(state.hub.items.map((i) => i.id));
+    for (const k of [...state.hub.selected]) if (!valid.has(k)) state.hub.selected.delete(k);
+    renderHub();
+  } catch (err) {
+    toast("Không tải được Hub: " + err.message, "error");
+    $("#hubGrid").innerHTML = '<div class="empty">Lỗi tải dữ liệu</div>';
+  }
+}
+
+function renderHub() {
+  ensureHubState();
+  const search = ($("#hubSearch").value || "").toLowerCase().trim();
+  let items = state.hub.items;
+  if (search) items = items.filter((it) => (it.title || "").toLowerCase().includes(search));
+  const listedProducts = state.hub.items.filter((i) => (i.listedCount || 0) > 0).length;
+  const totalListings = state.hub.items.reduce((n, i) => n + (i.listedCount || 0), 0);
+  $("#hubSubtitle").innerHTML = `Kho chung · <b>${state.hub.items.length}</b> sản phẩm · đã list <b>${listedProducts}</b> sp lên tổng <b>${totalListings}</b> lượt shop`;
+  const canEdit = state.user.role !== "viewer";
+
+  if (items.length === 0) {
+    $("#hubGrid").innerHTML = '<div class="empty">Hub trống — tick sản phẩm ở Listings rồi “🗂️ Thêm vào Hub”, hoặc cào thẳng vào Hub từ userscript.</div>';
+    renderHubBulkBar();
+    return;
+  }
+
+  const fmtPrice = (pr) => {
+    if (!pr) return "—";
+    if (pr.min === pr.max) return `${pr.currency}${pr.min.toFixed(2)}`;
+    return `${pr.currency}${pr.min.toFixed(2)} – ${pr.currency}${pr.max.toFixed(2)}`;
+  };
+
+  const toolbar = canEdit ? `
+    <div style="display:flex; align-items:center; gap:10px; margin-bottom:12px; padding:10px 14px; background:var(--bg-elev); border-radius:8px; font-size:0.85rem;">
+      <button class="btn btn-ghost" onclick="selectAllHub()" style="padding:5px 12px;">☑ Chọn tất cả (${items.length})</button>
+      <button class="btn btn-ghost" onclick="clearHubSelect()" style="padding:5px 12px;">Bỏ chọn</button>
+      <span style="color:var(--text-mute);">Click card để chọn → “📤 List lên shop”</span>
+    </div>` : '';
+
+  $("#hubGrid").innerHTML = toolbar + '<div class="listings-grid">' + items.map((it) => {
+    const idEnc = encodeURIComponent(it.id);
+    const isSel = state.hub.selected.has(it.id);
+    return `
+      <div class="listing-card${isSel ? ' selected' : ''}${canEdit ? ' selectable' : ''}" ${canEdit ? `onclick="onHubCardClick(event, '${idEnc}')"` : ''}>
+        ${canEdit ? `<input type="checkbox" class="select-cb hub-select-cb" data-id="${escapeHtml(it.id)}" ${isSel ? 'checked' : ''} onclick="toggleHubSelect('${idEnc}', this.checked); event.stopPropagation();" />` : ''}
+        <div class="img-wrap">
+          ${it.image ? `<img src="${escapeHtml(it.image)}" alt="" loading="lazy" onerror="this.parentElement.innerHTML='<div class=&quot;placeholder&quot;>(no image)</div>'" />` : `<div class="placeholder">(no image)</div>`}
+        </div>
+        <div class="body">
+          <div class="title" title="${escapeHtml(it.title)}">${escapeHtml(it.title)}</div>
+          <div class="price">${escapeHtml(fmtPrice(it.priceRange))}</div>
+          <div class="meta">
+            <span class="pill">${it.variantCount} variant</span>
+            <span class="pill">${it.colorCount}c × ${it.sizeCount}s</span>
+            <span class="pill" title="${escapeHtml((it.listedShops || []).join(', ') || 'Chưa list lên shop nào')}" style="${it.listedCount > 0 ? 'border-color:var(--accent);color:var(--accent);' : ''}">📤 ${it.listedCount || 0} shop</span>
+          </div>
+        </div>
+        <div class="time-row"><span title="${escapeHtml(absTime(it.mtimeMs))}">⏱ ${escapeHtml(relTime(it.mtimeMs))}</span>${it.lastListedMs ? `<span class="scraped" title="List gần nhất">📤 ${escapeHtml(relTime(it.lastListedMs))}</span>` : ''}</div>
+        <div class="actions">
+          <button onclick="viewHub('${idEnc}')">View</button>
+          ${canEdit ? `<button class="retry" onclick="listHubOne('${idEnc}')">📤 List</button>` : ''}
+          ${canEdit ? `<button class="delete" onclick="deleteHubOne('${idEnc}')">🗑</button>` : ''}
+        </div>
+      </div>`;
+  }).join('') + '</div>';
+  renderHubBulkBar();
+}
+
+function onHubCardClick(event, idEnc) {
+  if (event.target.closest('button, a, input, .error-snippet')) return;
+  const cb = event.currentTarget.querySelector('.hub-select-cb');
+  if (!cb) return;
+  cb.checked = !cb.checked;
+  toggleHubSelect(idEnc, cb.checked);
+}
+
+function toggleHubSelect(idEnc, checked) {
+  ensureHubState();
+  const id = decodeURIComponent(idEnc);
+  if (checked) state.hub.selected.add(id); else state.hub.selected.delete(id);
+  renderHubBulkBar();
+  document.querySelectorAll('#hubGrid .listing-card').forEach((card) => {
+    const cb = card.querySelector('.hub-select-cb');
+    if (!cb) return;
+    if (cb.checked) card.classList.add('selected'); else card.classList.remove('selected');
+  });
+}
+
+function selectAllHub() {
+  ensureHubState();
+  const search = ($("#hubSearch").value || "").toLowerCase().trim();
+  let items = state.hub.items;
+  if (search) items = items.filter((it) => (it.title || "").toLowerCase().includes(search));
+  for (const it of items) state.hub.selected.add(it.id);
+  renderHub();
+}
+
+function clearHubSelect() { ensureHubState(); state.hub.selected = new Set(); renderHub(); }
+
+function renderHubBulkBar() {
+  const n = state.hub?.selected?.size ?? 0;
+  const inHub = document.getElementById('view-hub')?.classList.contains('active');
+  let bar = document.getElementById('hubBulkBar');
+  if (n === 0 || !inHub) { if (bar) bar.remove(); return; }
+  if (!bar) { bar = document.createElement('div'); bar.id = 'hubBulkBar'; bar.className = 'bulk-bar'; document.body.appendChild(bar); }
+  bar.innerHTML = `
+    <span class="count">✓ ${n} đã chọn</span>
+    <button class="btn btn-primary" onclick="listHubToShops()">📤 List ${n} → shop</button>
+    <button class="btn btn-danger" onclick="deleteHubSelected()">🗑 Xoá ${n}</button>
+    <button class="btn btn-ghost" onclick="clearHubSelect()">Bỏ chọn</button>
+  `;
+}
+
+function listHubToShops() {
+  const files = Array.from(state.hub?.selected || []);
+  if (!files.length) return;
+  openShopPicker({
+    title: `📤 List ${files.length} sản phẩm → shop`,
+    subtitle: `Copy <b>${files.length}</b> sản phẩm từ Hub sang các shop đã chọn dưới dạng <b>pending</b>. Cron sẽ chạy sau (hoặc Run tay).`,
+    onConfirm: (shops) => postHubClone(files, shops),
+  });
+}
+
+function listHubOne(idEnc) {
+  const id = decodeURIComponent(idEnc);
+  openShopPicker({
+    title: `📤 List 1 sản phẩm → shop`,
+    subtitle: `Copy sản phẩm này sang các shop đã chọn dưới dạng <b>pending</b>.`,
+    onConfirm: (shops) => postHubClone([id], shops),
+  });
+}
+
+async function postHubClone(files, shops) {
+  try {
+    const res = await fetch("/admin/api/hub/clone", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ids, shops }),
+      body: JSON.stringify({ files, shops }),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error);
     const skipMsg = data.skipped?.length ? ` (bỏ qua ${data.skipped.length})` : '';
-    toast(`⧉ Đã clone ${data.cloned.length} file sang shop đích${skipMsg} — chờ cron/Run`);
+    toast(`📤 Đã list ${data.cloned.length} file sang shop${skipMsg} — chờ cron/Run`);
     closeModal();
-    state.listings.selected = new Set();
-    renderBulkBar();
-    setTimeout(loadShopsOrListings, 1200);
+    ensureHubState();
+    state.hub.selected = new Set();
+    renderHubBulkBar();
+    loadHub(); // refetch để cập nhật số shop đã list
+  } catch (err) {
+    toast(err.message, "error");
+  }
+}
+
+function deleteHubSelected() {
+  const files = Array.from(state.hub?.selected || []);
+  if (!files.length) return;
+  if (!confirm(`Xoá ${files.length} sản phẩm khỏi Hub?`)) return;
+  postHubDelete(files);
+}
+
+function deleteHubOne(idEnc) {
+  const id = decodeURIComponent(idEnc);
+  if (!confirm("Xoá sản phẩm này khỏi Hub?")) return;
+  postHubDelete([id]);
+}
+
+async function postHubDelete(files) {
+  try {
+    const res = await fetch("/admin/api/hub/delete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ files }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+    toast(`🗑 Đã xoá ${data.removed.length} khỏi Hub`);
+    ensureHubState();
+    state.hub.selected = new Set();
+    loadHub();
+  } catch (err) {
+    toast(err.message, "error");
+  }
+}
+
+async function viewHub(idEnc) {
+  const id = decodeURIComponent(idEnc);
+  try {
+    const res = await fetch("/admin/api/hub/json?file=" + encodeURIComponent(id));
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+    $("#modalTitle").textContent = id;
+    $("#modalBody").innerHTML = `<div class="json-view">${escapeHtml(JSON.stringify(data.content, null, 2))}</div>`;
+    $("#modalBg").classList.add("show");
   } catch (err) {
     toast(err.message, "error");
   }

@@ -271,7 +271,12 @@ const scanListingsInDir = async (
   return cards;
 };
 
-export const scanShopsSummary = async (opts?: { username?: string }): Promise<ShopSummary[]> => {
+export const scanShopsSummary = async (opts?: {
+  username?: string;
+  /** Gồm cả shop có trong profiles nhưng CHƯA tạo folder trên đĩa (counts = 0).
+   *  Dùng cho picker clone — clone sẽ tự ensureDir folder khi ghi. */
+  includeEmptyProfiles?: boolean;
+}): Promise<ShopSummary[]> => {
   const allDirs = await getAllUserDirs();
   const targetDirs = opts?.username
     ? allDirs.filter((d) => d.username.split(",").includes(opts.username!))
@@ -280,18 +285,39 @@ export const scanShopsSummary = async (opts?: { username?: string }): Promise<Sh
   const summaries: ShopSummary[] = [];
   for (const dirs of targetDirs) {
     const { username, baseSheinAutoDir, profiles } = dirs;
-    if (!(await fs.pathExists(baseSheinAutoDir))) continue;
+    const baseExists = await fs.pathExists(baseSheinAutoDir);
 
-    const entries = await fs.readdir(baseSheinAutoDir);
-    let folders = entries.filter((n) => !n.startsWith(".") && n !== "Success" && n !== "Fail");
-    if (profiles.length > 0) folders = folders.filter((f) => profiles.includes(f));
+    let folders: string[];
+    if (profiles.length > 0) {
+      // includeEmptyProfiles → toàn bộ profile (kể cả chưa có folder); ngược lại chỉ folder đã tồn tại ∩ profiles.
+      if (opts?.includeEmptyProfiles) {
+        folders = [...profiles];
+      } else {
+        if (!baseExists) continue;
+        const entries = await fs.readdir(baseSheinAutoDir);
+        folders = entries.filter((n) => !n.startsWith(".") && n !== "Success" && n !== "Fail" && profiles.includes(n));
+      }
+    } else {
+      if (!baseExists) continue;
+      const entries = await fs.readdir(baseSheinAutoDir);
+      folders = entries.filter((n) => !n.startsWith(".") && n !== "Success" && n !== "Fail");
+    }
 
     for (const folderName of folders) {
       const folderPath = path.join(baseSheinAutoDir, folderName);
+      let isDir = false;
       try {
-        const stats = await fs.stat(folderPath);
-        if (!stats.isDirectory()) continue;
-      } catch {
+        isDir = (await fs.stat(folderPath)).isDirectory();
+      } catch { /* folder chưa tồn tại */ }
+      if (!isDir) {
+        // Shop trong profiles nhưng chưa tạo folder → summary rỗng (chỉ khi includeEmptyProfiles)
+        if (opts?.includeEmptyProfiles) {
+          summaries.push({
+            owner: username, folder: folderName,
+            pending: 0, success: 0, fail: 0, total: 0,
+            lastActivityMs: 0, cover: null, todayCount: 0, yesterdayCount: 0,
+          });
+        }
         continue;
       }
 

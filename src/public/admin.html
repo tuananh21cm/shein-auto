@@ -170,6 +170,7 @@
     .listing-card .meta .pill { background: var(--bg-elev); border: 1px solid var(--border); padding: 2px 8px; border-radius: 999px; }
     .listing-card .select-cb { position: absolute; top: 8px; left: 8px; z-index: 5; width: 20px; height: 20px; cursor: pointer; accent-color: var(--accent); background: rgba(0,0,0,0.55); border-radius: 4px; }
     .listing-card.selected { outline: 3px solid var(--accent); outline-offset: -2px; }
+    .listing-card.selectable { cursor: pointer; }
     .bulk-bar { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); background: var(--bg-card); border: 1px solid var(--accent); border-radius: 14px; padding: 12px 18px; display: flex; align-items: center; gap: 14px; box-shadow: 0 10px 40px rgba(0,0,0,0.4); z-index: 400; }
     .bulk-bar .count { font-weight: 700; color: var(--accent); }
     .listing-card .time-row { display: flex; align-items: center; gap: 6px; padding: 0 12px 8px; font-size: 0.72rem; color: var(--text-mute); }
@@ -959,7 +960,7 @@ function renderListings() {
         const idEnc = encodeURIComponent(it.id);
         const isSelected = state.listings.selected?.has(it.id);
         return `
-        <div class="listing-card${isSelected ? ' selected' : ''}">
+        <div class="listing-card${isSelected ? ' selected' : ''}${canEdit ? ' selectable' : ''}" ${canEdit ? `onclick="onCardClick(event, '${idEnc}')"` : ''}>
           ${canEdit
             ? `<input type="checkbox" class="select-cb listing-select-cb" data-id="${escapeHtml(it.id)}" ${isSelected ? 'checked' : ''} onclick="toggleListingSelect('${idEnc}', this.checked); event.stopPropagation();" />`
             : ''}
@@ -1050,6 +1051,15 @@ async function viewListing(idEnc) {
 }
 
 // ─── Bulk select cho pending listings ────────────────
+// Click bất kỳ đâu trên card (trừ nút/link/checkbox/error-snippet) → toggle chọn.
+function onCardClick(event, idEnc) {
+  if (event.target.closest('button, a, input, .error-snippet')) return;
+  const cb = event.currentTarget.querySelector('.listing-select-cb');
+  if (!cb) return;
+  cb.checked = !cb.checked;
+  toggleListingSelect(idEnc, cb.checked);
+}
+
 function toggleListingSelect(idEnc, checked) {
   const id = decodeURIComponent(idEnc);
   if (!state.listings.selected) state.listings.selected = new Set();
@@ -1163,10 +1173,10 @@ async function openCloneModal() {
   const ids = Array.from(state.listings.selected || []).filter((id) => byId.get(id)?.status === "success");
   if (ids.length === 0) return toast("Chọn ít nhất 1 listing success để clone", "error");
 
-  // Luôn fetch mới để đủ TẤT CẢ shop mọi user (admin = tất cả).
+  // Luôn fetch mới để đủ TẤT CẢ shop mọi user (all=1 → gồm cả shop chưa tạo folder).
   let shopsAvail = [];
   try {
-    const res = await fetch("/admin/api/listings/shops");
+    const res = await fetch("/admin/api/listings/shops?all=1");
     const data = await res.json();
     shopsAvail = data.shops || [];
     state.listings.shops = shopsAvail;

@@ -624,7 +624,10 @@ export const startAdminServer = async () => {
 
   app.get("/admin/api/listings/shops", async (req, res) => {
     try {
-      const shops = await scanShopsSummary({ username: ownerScope(req) });
+      const shops = await scanShopsSummary({
+        username: ownerScope(req),
+        includeEmptyProfiles: req.query.all === "1",
+      });
       res.json({ shops });
     } catch (err: any) {
       res.status(500).json({ error: err?.message ?? "Lỗi scan shops" });

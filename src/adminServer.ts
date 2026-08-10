@@ -68,6 +68,8 @@ export const startAdminServer = async () => {
     if (
       req.path.startsWith("/admin/api/auth") ||
       req.path.startsWith("/admin/api/ingest") || // tampermonkey: Bearer token auth riêng
+      req.path === "/admin/api/hub/ingest" || // tampermonkey đẩy vào Hub: Bearer token riêng
+      req.path === "/admin/api/hub/check" || // tampermonkey pre-check trùng Hub: Bearer token riêng
       req.path === "/admin/login" ||
       req.path === "/admin/logout"
     ) {
@@ -973,6 +975,36 @@ export const startAdminServer = async () => {
   });
 
   // ── HUB sản phẩm (kho chung toàn hệ thống) ─────────────────
+  // productId SHEIN của 1 sản phẩm (từ url -p-<id>.html, fallback variant_ids).
+  const extractProductId = (data: any): string | null => {
+    const url = typeof data?.url === "string" ? data.url : "";
+    const m = url.match(/-p-(\d+)\.html/);
+    if (m) return m[1];
+    if (Array.isArray(data?.variant_ids)) {
+      for (const v of data.variant_ids) {
+        const id = Object.values(v || {})[0];
+        if (id && /^\d+$/.test(String(id))) return String(id);
+      }
+    }
+    return null;
+  };
+
+  // Tập productId đã có sẵn trong Hub (bỏ file meta). Đọc mỗi file 1 lần.
+  const buildHubProductIds = async (): Promise<Set<string>> => {
+    const set = new Set<string>();
+    if (!(await fs.pathExists(config.hubDir))) return set;
+    const files = (await fs.readdir(config.hubDir)).filter(
+      (f) => f.toLowerCase().endsWith(".json") && f !== "__hub_meta.json"
+    );
+    for (const f of files) {
+      try {
+        const id = extractProductId(JSON.parse(await fs.readFile(path.join(config.hubDir, f), "utf-8")));
+        if (id) set.add(id);
+      } catch { /* ignore */ }
+    }
+    return set;
+  };
+
   // Ghi 1 file JSON vào hub. Dùng chung cho userscript (Bearer) + kéo từ shop.
   const writeHubFile = async (data: any): Promise<string> => {
     await fs.ensureDir(config.hubDir);
@@ -986,10 +1018,27 @@ export const startAdminServer = async () => {
     try {
       const { data } = req.body as { data?: any };
       if (!data || typeof data !== "object") return res.status(400).json({ error: "Thiếu data" });
+      // Bỏ qua nếu productId đã có trong Hub
+      const pid = extractProductId(data);
+      if (pid && (await buildHubProductIds()).has(pid)) {
+        return res.json({ ok: true, duplicate: true });
+      }
       const file = await writeHubFile(data);
-      res.json({ ok: true, file });
+      res.json({ ok: true, file, duplicate: false });
     } catch (err: any) {
       res.status(500).json({ error: err?.message ?? "Lỗi ingest hub" });
+    }
+  });
+
+  // Userscript pre-check: sản phẩm (productId) đã có trong Hub chưa (trước khi cào).
+  app.post("/admin/api/hub/check", ingestAuth, async (req, res) => {
+    try {
+      const { productId } = req.body as { productId?: string };
+      if (!productId) return res.json({ exists: false });
+      const exists = (await buildHubProductIds()).has(String(productId));
+      res.json({ exists });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? "Lỗi check hub" });
     }
   });
 
@@ -1024,8 +1073,10 @@ export const startAdminServer = async () => {
       const { ids } = req.body as { ids?: string[] };
       if (!Array.isArray(ids) || ids.length === 0) return res.status(400).json({ error: "Chọn ít nhất 1 listing" });
 
+      const hubIds = await buildHubProductIds(); // productId đã có trong Hub
       const added: { id: string; file: string }[] = [];
       const skipped: { id: string; reason: string }[] = [];
+      let duplicates = 0;
       for (const id of ids) {
         const resolved = await resolveListingPath(id);
         if (!resolved) { skipped.push({ id, reason: "id không hợp lệ" }); continue; }
@@ -1036,14 +1087,38 @@ export const startAdminServer = async () => {
         const raw = await fs.readFile(resolved.full, "utf-8");
         let data: any;
         try { data = JSON.parse(raw); } catch { skipped.push({ id, reason: "JSON hỏng" }); continue; }
+        const pid = extractProductId(data);
+        if (pid && hubIds.has(pid)) {
+          skipped.push({ id, reason: "trùng — đã có trong Hub" });
+          duplicates++;
+          continue;
+        }
         const file = await writeHubFile(data);
+        if (pid) hubIds.add(pid); // tránh trùng trong cùng lượt add
         added.push({ id, file });
       }
-      res.json({ ok: true, added, skipped });
+      res.json({ ok: true, added, skipped, duplicates });
     } catch (err: any) {
       res.status(500).json({ error: err?.message ?? "Lỗi thêm vào Hub" });
     }
   });
+
+  // Tập productId đã có trong 1 shop (quét pending + Success + Fail). Đọc mỗi file 1 lần.
+  const buildShopProductIds = async (base: string, shop: string): Promise<Set<string>> => {
+    const set = new Set<string>();
+    for (const sub of ["", "Success", "Fail"]) {
+      const dir = sub ? path.join(base, shop, sub) : path.join(base, shop);
+      if (!(await fs.pathExists(dir))) continue;
+      const files = (await fs.readdir(dir)).filter((f) => f.toLowerCase().endsWith(".json"));
+      for (const f of files) {
+        try {
+          const id = extractProductId(JSON.parse(await fs.readFile(path.join(dir, f), "utf-8")));
+          if (id) set.add(id);
+        } catch { /* ignore */ }
+      }
+    }
+    return set;
+  };
 
   // List sản phẩm từ Hub lên nhiều shop (mọi user) — copy dạng pending, cron chạy sau.
   app.post("/admin/api/hub/clone", async (req, res) => {
@@ -1055,8 +1130,8 @@ export const startAdminServer = async () => {
       if (!Array.isArray(files) || files.length === 0) return res.status(400).json({ error: "Chọn ít nhất 1 sản phẩm Hub" });
       if (!Array.isArray(shops) || shops.length === 0) return res.status(400).json({ error: "Chọn ít nhất 1 shop đích" });
 
-      // Resolve baseDir + owner cho từng shop đích 1 lần (giống listings/clone)
-      const targets = new Map<string, { base: string; owner: string }>();
+      // Resolve baseDir + owner + tập productId đã có cho từng shop đích 1 lần.
+      const targets = new Map<string, { base: string; owner: string; existing: Set<string> }>();
       const skipped: { file?: string; shop?: string; reason: string }[] = [];
       for (const shop of shops) {
         if (/[\/\\]|\.\./.test(shop)) { skipped.push({ shop, reason: "tên shop không hợp lệ" }); continue; }
@@ -1067,21 +1142,32 @@ export const startAdminServer = async () => {
         }
         const dirs = await getUserDirsByName(owner);
         if (!dirs?.baseSheinAutoDir) { skipped.push({ shop, reason: "owner chưa cấu hình baseSheinAutoDir" }); continue; }
-        targets.set(shop, { base: dirs.baseSheinAutoDir, owner });
+        const existing = await buildShopProductIds(dirs.baseSheinAutoDir, shop);
+        targets.set(shop, { base: dirs.baseSheinAutoDir, owner, existing });
       }
       if (targets.size === 0) return res.status(400).json({ error: "Không có shop đích hợp lệ", skipped });
 
       const cloned: { file: string; shop: string; out: string }[] = [];
+      let duplicates = 0;
       let counter = 0;
       for (const file of files) {
         const full = resolveHubFile(file);
         if (!full || !(await fs.pathExists(full))) { skipped.push({ file, reason: "file hub không tồn tại" }); continue; }
         const raw = await fs.readFile(full, "utf-8");
-        for (const [shop, { base }] of targets) {
-          const folderPath = path.join(base, shop);
+        let pid: string | null = null;
+        try { pid = extractProductId(JSON.parse(raw)); } catch { /* ignore */ }
+        for (const [shop, t] of targets) {
+          // Bỏ qua nếu sản phẩm (theo productId) ĐÃ có trong shop đích
+          if (pid && t.existing.has(pid)) {
+            skipped.push({ file, shop, reason: "trùng — đã có trong shop" });
+            duplicates++;
+            continue;
+          }
+          const folderPath = path.join(t.base, shop);
           await fs.ensureDir(folderPath);
           const out = `${shop}_${Date.now()}_${counter++}.json`;
           await fs.writeFile(path.join(folderPath, out), raw, "utf-8");
+          if (pid) t.existing.add(pid); // tránh trùng trong cùng lượt list
           cloned.push({ file, shop, out });
         }
       }
@@ -1090,7 +1176,7 @@ export const startAdminServer = async () => {
       for (const c of cloned) (fileToShops[c.file] ||= []).push(c.shop);
       if (Object.keys(fileToShops).length) await recordHubListings(fileToShops, Date.now());
       refreshQueueSnapshot().catch(() => {});
-      res.json({ ok: true, cloned, skipped });
+      res.json({ ok: true, cloned, skipped, duplicates });
     } catch (err: any) {
       res.status(500).json({ error: err?.message ?? "Lỗi list từ Hub" });
     }

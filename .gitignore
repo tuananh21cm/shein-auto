@@ -18,6 +18,7 @@ data/settings.json
 data/cache/
 data/screenshots/
 data/cookies/
+data/hub/
 
 # Worker temp
 *.log

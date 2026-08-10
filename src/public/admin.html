@@ -1160,8 +1160,9 @@ async function addToHub() {
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error);
-    const skipMsg = data.skipped?.length ? ` (bỏ qua ${data.skipped.length})` : '';
-    toast(`🗂️ Đã thêm ${data.added.length} sản phẩm vào Hub${skipMsg}`);
+    const dup = data.duplicates || 0;
+    const dupMsg = dup ? ` · ⚠️ ${dup} trùng đã bỏ qua` : '';
+    toast(`🗂️ Đã thêm ${data.added.length} sản phẩm vào Hub${dupMsg}`);
     state.listings.selected = new Set();
     renderBulkBar();
     renderListings();
@@ -1509,8 +1510,9 @@ async function postHubClone(files, shops) {
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error);
-    const skipMsg = data.skipped?.length ? ` (bỏ qua ${data.skipped.length})` : '';
-    toast(`📤 Đã list ${data.cloned.length} file sang shop${skipMsg} — chờ cron/Run`);
+    const dup = data.duplicates || 0;
+    const dupMsg = dup ? ` · ⚠️ ${dup} trùng đã bỏ qua` : '';
+    toast(`📤 Đã list ${data.cloned.length} file${dupMsg} — chờ cron/Run`);
     closeModal();
     ensureHubState();
     state.hub.selected = new Set();

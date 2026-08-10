@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SHEIN Scraper v29 - Direct API + SSE + Background
 // @namespace    http://tampermonkey.net/
-// @version      29.4.0
+// @version      29.6.0
 // @description  Cào SHEIN → POST thẳng lên shein-auto worker. Sync profile từ server. Realtime SSE. Detect out-of-stock per (color × size). Background tab vẫn cào nhờ silent audio.
 // @author       shein-auto
 // @match        *://*.shein.com/*
@@ -246,6 +246,15 @@
             token,
         });
     }
+    /** Pre-check: productId đã có trong Hub chưa (trước khi cào). */
+    async function apiHubCheck(productId, token) {
+        return gmRequest({
+            url: `${SERVER}/admin/api/hub/check`,
+            method: 'POST',
+            body: { productId },
+            token,
+        });
+    }
 
     /** Nạp shops cho MỌI account song song → ACCOUNT_SHOPS. Trả về {users, shops, errors}. */
     async function syncAllAccounts() {
@@ -354,8 +363,25 @@
         overlayMsg.innerText = 'CHECK DUPLICATE...';
 
         try {
+            // 0. HUB pre-check: bấm nút là báo trùng NGAY, chưa cào gì cả.
+            if (isHubMode) {
+                if (productId) {
+                    try {
+                        const r = await apiHubCheck(productId, hubToken);
+                        if (r && r.exists) {
+                            overlayMsg.innerText = '🗂️ ĐÃ CÓ TRONG HUB';
+                            status.innerText = `⚠️ Đã có trong Hub · ID ${productId}`;
+                            setTimeout(() => { overlay.style.display = 'none'; }, 1800);
+                            return;
+                        }
+                    } catch (e) {
+                        console.warn('[SHEIN-SCRAPER] hub check lỗi (skip):', e.message);
+                    }
+                }
+            }
+
             // 1. CHECK DEDUP theo TỪNG account (token riêng)
-            if (productId) {
+            if (!isHubMode && productId) {
                 try {
                     const dupByAcc = await Promise.all([...groups.entries()].map(async ([idx, g]) => {
                         try {
@@ -565,10 +591,15 @@
                 // Đẩy thẳng vào Hub chung (1 lần, dùng token account đầu tiên)
                 overlayMsg.innerText = 'ĐANG ĐẨY VÀO HUB...';
                 try {
-                    await apiHubIngest(data, hubToken);
-                    status.innerText = `✓ Đã đẩy vào Hub · ID ${productId}`;
-                    overlayMsg.innerText = '🗂️ ĐÃ VÀO HUB!';
-                    setTimeout(() => { overlay.style.display = 'none'; }, 1500);
+                    const r = await apiHubIngest(data, hubToken);
+                    if (r && r.duplicate) {
+                        status.innerText = `⚠️ Trùng — đã có trong Hub · ID ${productId}`;
+                        overlayMsg.innerText = '🗂️ TRÙNG — ĐÃ CÓ TRONG HUB';
+                    } else {
+                        status.innerText = `✓ Đã đẩy vào Hub · ID ${productId}`;
+                        overlayMsg.innerText = '🗂️ ĐÃ VÀO HUB!';
+                    }
+                    setTimeout(() => { overlay.style.display = 'none'; }, 1800);
                 } catch (e) {
                     console.error('[SHEIN-SCRAPER] hub ingest lỗi:', e.message);
                     status.innerText = 'FAIL Hub: ' + e.message;
@@ -754,6 +785,12 @@
         document.getElementById('tm-start').onclick = scrapeProduct;
         const shopSearch = document.getElementById('tm-shop-search');
         if (shopSearch) shopSearch.oninput = () => renderShops();
+        // Ghi nhớ trạng thái tick "Đẩy vào Hub" qua các lần tải trang
+        const hubModeCb = document.getElementById('tm-hub-mode');
+        if (hubModeCb) {
+            hubModeCb.checked = GM_getValue('hubMode', false);
+            hubModeCb.onchange = () => GM_setValue('hubMode', hubModeCb.checked);
+        }
         panel.querySelector('.settings').onclick = () => { modal.style.display = 'flex'; };
         document.getElementById('tm-modal-cancel').onclick = () => { modal.style.display = 'none'; };
         document.getElementById('tm-modal-save').onclick = () => {

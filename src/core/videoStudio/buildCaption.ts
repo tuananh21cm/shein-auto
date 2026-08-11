@@ -56,3 +56,23 @@ export function buildCaption(opts: {
   const tags = buildHashtags(opts.title, opts.seed, opts.script?.hashtags);
   return [head, cta, tags.join(" ")].filter(Boolean).join("\n").slice(0, 2200);
 }
+
+/**
+ * Tách 1 caption (dạng "hook\ncta\n#a #b #c") thành 2 phần cho flow Content Hub mới:
+ * Description (ô mô tả) và Hashtags (ô tag riêng, TikTok render thành chip).
+ * Dòng nào TOÀN hashtag → gom vào hashtags; còn lại là description.
+ */
+export function splitCaption(caption: string): { description: string; hashtags: string[] } {
+  const lines = caption.split("\n").map((l) => l.trim()).filter(Boolean);
+  const hashtags: string[] = [];
+  const descLines: string[] = [];
+  for (const line of lines) {
+    const toks = line.split(/\s+/);
+    if (toks.length && toks.every((t) => /^#\w/.test(t))) {
+      hashtags.push(...toks.map((t) => t.replace(/^#+/, "")).filter(Boolean));
+    } else {
+      descLines.push(line);
+    }
+  }
+  return { description: descLines.join(" ").trim(), hashtags };
+}

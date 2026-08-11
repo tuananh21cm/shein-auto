@@ -28,6 +28,9 @@ import { crawlImages } from "./core/imageCrawler/crawlImages";
 import { registerVideoRoutes } from "./core/videoStudio/routes";
 import crypto from "crypto";
 import { eventBus } from "./state/eventBus";
+import { VideoDb } from "./state/videoDb";
+import { createExternalVideoJob } from "./core/videoStudio/externalJob";
+import { buildCaption, splitCaption } from "./core/videoStudio/buildCaption";
 import { workerConfig, reloadAppConfig } from "./config/appConfig";
 import { configCookie, configCookieForAccount, userCookiePath } from "./utils/configCookie";
 import {
@@ -99,7 +102,12 @@ const sanitizeConfigForUi = (cfg: AdminConfig) => ({
 
 export const startAdminServer = async () => {
   const app = express();
-  app.use(express.json({ limit: "5mb" }));
+  // JSON parser toàn cục 5mb — TRỪ /api/video (payload ảnh lớn, router tự parse 40mb riêng).
+  const globalJson = express.json({ limit: "5mb" });
+  app.use((req, res, next) => {
+    if (req.path.startsWith("/api/video")) return next();
+    return globalJson(req, res, next);
+  });
   app.use(
     session({
       secret: adminSessionSecret,
@@ -114,6 +122,7 @@ export const startAdminServer = async () => {
     if (
       req.path.startsWith("/admin/api/auth") ||
       req.path.startsWith("/admin/api/ingest") || // tampermonkey: Bearer token auth riêng
+      req.path.startsWith("/api/video") ||        // API render video ngoài: API-key auth riêng
       req.path === "/admin/login" ||
       req.path === "/admin/logout"
     ) {
@@ -657,6 +666,85 @@ export const startAdminServer = async () => {
   });
 
   app.use("/admin/api/ingest", ingestRouter);
+
+  // ── Video API (máy-gọi-máy): bên ngoài đẩy ảnh+attribute → render → tải video ──
+  // Auth API-key riêng (VIDEO_API_KEY, tách phẩy cho nhiều client). jobId = product_id.
+  const videoApiRouter = express.Router();
+  videoApiRouter.use(cors({ origin: true, methods: ["GET", "POST", "OPTIONS"], allowedHeaders: ["Content-Type", "Authorization", "X-API-Key"] }));
+
+  const videoApiAuth: express.RequestHandler = (req, res, next) => {
+    const keys = (process.env.VIDEO_API_KEY ?? "").split(",").map((k) => k.trim()).filter(Boolean);
+    if (!keys.length) return res.status(503).json({ error: "Video API chưa bật (thiếu VIDEO_API_KEY)" });
+    const auth = req.headers.authorization || "";
+    const key = auth.startsWith("Bearer ") ? auth.slice(7).trim() : String(req.headers["x-api-key"] ?? "").trim();
+    if (!key || !keys.includes(key)) return res.status(401).json({ error: "API key không hợp lệ" });
+    (req as any).apiClient = "ext";
+    next();
+  };
+  videoApiRouter.use(videoApiAuth);
+
+  const downloadUrlFor = (jobId: string) => `${(process.env.PUBLIC_BASE_URL ?? "").replace(/\/+$/, "")}/api/video/jobs/${jobId}/download`;
+
+  // Tạo job: {title, images[≥3], attributes?, price?, pv?, orders?}
+  videoApiRouter.post("/jobs", express.json({ limit: "40mb" }), async (req, res) => {
+    try {
+      const { title, images, attributes, price, pv, orders } = req.body ?? {};
+      if (!title || typeof title !== "string") return res.status(400).json({ error: "Thiếu title" });
+      if (!Array.isArray(images) || images.length < 3) return res.status(400).json({ error: "Cần ≥3 ảnh (base64 data-URL hoặc http URL)" });
+      const { jobId, videoId } = await createExternalVideoJob({
+        client: (req as any).apiClient, title, images, attributes, price,
+        pv: Number.isFinite(pv) ? pv : undefined, orders: Number.isFinite(orders) ? orders : undefined,
+      });
+      res.status(202).json({ jobId, videoId, status: "queued" });
+    } catch (e: any) {
+      res.status(400).json({ error: e?.message ?? "Lỗi tạo job" });
+    }
+  });
+
+  // Caption (title + hashtag) từ script Gemini đã lưu → bên ngoài dùng để đăng video.
+  const buildContent = (row: { title: string; seed: string; script_json: string | null }) => {
+    if (!row.script_json) return undefined;
+    try {
+      const script = JSON.parse(row.script_json);
+      const caption = buildCaption({ title: row.title, seed: row.seed, script });
+      const { description, hashtags } = splitCaption(caption);
+      return {
+        title: (script.hook || row.title || "").trim(), // tiêu đề hấp dẫn (hook)
+        caption,                                          // caption đầy đủ (mô tả + hashtag) — dán thẳng khi đăng
+        description,                                       // chỉ phần chữ (hook + CTA)
+        hashtags: hashtags.map((h: string) => "#" + h),   // mảng hashtag có dấu #
+      };
+    } catch { return undefined; }
+  };
+
+  // Poll status theo jobId
+  videoApiRouter.get("/jobs/:jobId", (req, res) => {
+    const db = new VideoDb();
+    try {
+      const row = db.getByProductId(req.params.jobId);
+      if (!row) return res.status(404).json({ error: "Không có job" });
+      const ready = row.status === "ready" && !!row.file;
+      res.json({
+        jobId: req.params.jobId, status: row.status, ready,
+        error: row.status === "error" ? row.error : undefined,
+        downloadUrl: ready ? downloadUrlFor(req.params.jobId) : undefined,
+        content: buildContent(row), // {title, caption, description, hashtags} — có ngay khi script xong
+      });
+    } finally { db.close(); }
+  });
+
+  // Tải video mp4 khi ready
+  videoApiRouter.get("/jobs/:jobId/download", async (req, res) => {
+    const db = new VideoDb();
+    let row;
+    try { row = db.getByProductId(req.params.jobId); } finally { db.close(); }
+    if (!row) return res.status(404).json({ error: "Không có job" });
+    if (row.status !== "ready" || !row.file) return res.status(409).json({ error: `Chưa sẵn sàng (status=${row.status})` });
+    if (!(await fs.pathExists(row.file))) return res.status(410).json({ error: "File video không còn tồn tại" });
+    res.download(row.file, `${req.params.jobId}.mp4`);
+  });
+
+  app.use("/api/video", videoApiRouter);
 
   // ── Path validator ─────────────────────────────────────
   app.post("/admin/api/path/test", async (req, res) => {

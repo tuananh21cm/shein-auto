@@ -1,6 +1,6 @@
 /**
  * Gen script video TikTok (EN) từ title sản phẩm: {hook, lines[], cta}.
- * Tổng ~70-100 từ ≈ 25-35s voiceover. Model + retry pattern giống genTitleFromShein.
+ * Tổng ~45-55 từ ≈ 18-21s voiceover. Model + retry pattern giống genTitleFromShein.
  */
 import { GoogleGenerativeAI, SchemaType } from "@google/generative-ai";
 import { retryGemini } from "../../utils/retryGemini";
@@ -25,10 +25,11 @@ export function validateScript(raw: any): VideoScript {
   if (!hook) throw new Error("Script thiếu hook");
   if (!lines.length) throw new Error("Script thiếu lines");
   if (!cta) throw new Error("Script thiếu cta");
-  // Cap tổng ~110 từ: bỏ dần lines cuối (giữ hook + cta) để voiceover không quá 40s.
+  // Cap tổng 48 từ: bỏ dần lines cuối (giữ hook + cta) để voiceover không quá ~21s.
+  // Edge TTS ở rate +12% đọc ~2.34 từ/s → 48 từ ≈ 20.5s, cộng tail 0.8s trong planSegments.
   const wc = (s: string) => s.split(/\s+/).filter(Boolean).length;
   let total = wc(hook) + wc(cta) + (openLoop ? wc(openLoop) : 0) + lines.reduce((a: number, l: string) => a + wc(l), 0);
-  while (total > 110 && lines.length > 1) {
+  while (total > 48 && lines.length > 1) {
     total -= wc(lines[lines.length - 1]);
     lines = lines.slice(0, -1);
   }
@@ -71,7 +72,7 @@ export async function genVideoScript(
   style: HookStyle = "tease"
 ): Promise<VideoScript> {
   const systemInstruction = `
-    You write 30-second TikTok Shop US product video voiceover scripts (2025-2026 style).
+    You write 20-second TikTok Shop US product video voiceover scripts (2025-2026 style).
     The video shows close-up product photos with Ken Burns zoom effects.
     GOAL: maximum watch-time retention — viewer must want to watch to the END.
 
@@ -79,14 +80,15 @@ export async function genVideoScript(
     ${HOOK_STYLES[style]}
 
     RULES:
-    - "hook": <= 12 words, pattern-interrupt opener following the scenario above. No emoji.
-    - "openLoop": <= 12 words, spoken RIGHT AFTER the hook. Promise a specific payoff
-      that comes at the END ("stay till the end for the best part", "number three sold me").
-    - "lines": 3-5 short spoken sentences selling the product: material/fit feel, occasions
-      to wear, why it's trending. The LAST line MUST deliver the openLoop payoff explicitly.
-      Casual spoken English, contractions OK.
-    - "cta": <= 12 words, urgency + tap-the-cart style call to action.
-    - Total across hook+openLoop+lines+cta: 70-100 words (about 30 seconds spoken).
+    - "hook": <= 10 words, pattern-interrupt opener following the scenario above. No emoji.
+    - "openLoop": <= 8 words, spoken RIGHT AFTER the hook. Promise a specific payoff
+      that comes at the END ("stay till the end", "number three sold me").
+    - "lines": EXACTLY 3 short spoken sentences, <= 9 words each, selling the product:
+      material/fit feel, occasion to wear, why it's trending. The LAST line MUST deliver
+      the openLoop payoff explicitly. Casual spoken English, contractions OK.
+    - "cta": <= 8 words, urgency + tap-the-cart style call to action.
+    - Total across hook+openLoop+lines+cta: 42-46 words (about 20 seconds spoken).
+      This is a HARD limit — 20s is the target length. Cut adjectives, not the payoff.
     - NO brand/supplier names (SHEIN etc.), no hashtags, no emoji. Prices only if provided.
   `;
   const stats = extras?.stats;

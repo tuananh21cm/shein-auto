@@ -1,0 +1,16 @@
+{
+  "_comment": "Bật/tắt cron THEO MÁY. Cron = false thì KHÔNG đăng ký luôn (không tick, không tốn CPU). Máy này chỉ chạy mảng VIDEO: tiktokAnalytics + videoQueue (render) + videoPublish (đăng lên profile Kiki). Các mảng listing/crawl/promotion chạy ở máy khác. Đây là cổng NGOÀI CÙNG — cron bật ở đây vẫn phải qua cờ enabled riêng của nó (worker.json, publish.json, flash.json...).",
+  "fileRouter": false,
+  "podRouter": false,
+  "queueManager": false,
+  "research": false,
+  "tiktokAnalytics": true,
+  "dripPublish": false,
+  "autoCrawl": false,
+  "linkHarvester": false,
+  "promotionScan": false,
+  "flashAuto": false,
+  "videoQueue": true,
+  "videoPublish": true,
+  "dailyReport": false
+}

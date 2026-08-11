@@ -58,7 +58,10 @@ async function synthesizeOnce(text: string, voice: string, outFile: string): Pro
     wordBoundaryEnabled: true,
   });
 
-  const { audioStream, metadataStream } = tts.toStream(text);
+  // Đọc nhanh hơn mặc định: giọng mặc định ~2.1 từ/s, quá chậm so với nhịp TikTok
+  // và làm video vượt mốc 20s. +12% ≈ 2.34 từ/s, vẫn nghe tự nhiên (không "chipmunk").
+  // WordBoundary do Edge trả về đã tính theo rate này → caption vẫn sync.
+  const { audioStream, metadataStream } = tts.toStream(text, { rate: "+12%" });
 
   const metaChunks: string[] = [];
   if (metadataStream) {

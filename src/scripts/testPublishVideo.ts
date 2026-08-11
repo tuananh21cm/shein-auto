@@ -50,6 +50,8 @@ const main = async () => {
     dryRun: has("dry-run"),
     skipProduct: has("skip-product"),
     noWarmup: has("no-warmup"),
+    holdAfterPostMs: arg("hold") ? parseInt(arg("hold")!) * 1000 : undefined,
+    debugShots: has("shots"),
     onLog: (m) => console.log(m),
   });
 

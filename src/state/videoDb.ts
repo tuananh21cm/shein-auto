@@ -104,6 +104,13 @@ export class VideoDb {
     ).all(...args, f.limit ?? 200) as VideoRow[];
   }
 
+  /** Video mới nhất của 1 product_id (API ngoài dùng jobId = product_id để tra status/download). */
+  getByProductId(productId: string): VideoRow | undefined {
+    return this.db.prepare(
+      `SELECT * FROM videos WHERE product_id=? ORDER BY id DESC LIMIT 1`
+    ).get(productId) as VideoRow | undefined;
+  }
+
   /** Sản phẩm đã có video hoàn chỉnh chưa (ready hoặc posted). */
   hasReadyVideo(productId: string): boolean {
     return !!this.db.prepare(

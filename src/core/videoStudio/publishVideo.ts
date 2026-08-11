@@ -1,31 +1,32 @@
 /**
- * publishVideo — auto đăng 1 video lên TikTok Studio qua Kiki profile của shop.
+ * publishVideo — auto đăng 1 SHOPPABLE VIDEO qua Seller Center Content Hub (Kiki profile).
  *
- * Flow (đúng 10 bước UI TikTok Studio, xem docs ảnh trong session 2026-07-13):
- *   1. Mở /tiktokstudio/upload → setInputFiles vào input[type=file] (KHÔNG click "Select videos"
- *      vì Playwright không điều khiển được dialog file của Windows).
- *   2. Dialog "Turn on automatic content checks?" → Turn on   (OPTIONAL, không phải lúc nào cũng hiện)
- *   3. Tooltip "Preview your video on your phone" → Got it     (OPTIONAL)
- *   4. Description: xóa placeholder (tên file) → gõ caption + hashtag.
- *   5. Add link → nút "+ Add"
- *   6. Link type = Products (mặc định) → Next
- *   7. Điền product_id vào ô search → click kính lúp → chờ kết quả
- *   8. Chọn radio dòng đúng product_id → Next
- *   9. Dialog "Product name" → Add → chờ tag sản phẩm hiện
- *  10. Post
+ * ⚠️ ĐỔI FLOW (2026-07): flow cũ dùng tiktok.com/tiktokstudio/upload (creator upload) —
+ * TikTok đã đổi, video đăng kiểu đó KHÔNG thành shoppable, báo "published" mà không vào
+ * Posts (đã kiểm chứng: 48 video ma). Flow MỚI đăng ở seller-us.tiktok.com/content-hub:
  *
- * Mỗi bước fail → screenshot data/screenshots/publish-<videoId>-<step>.png + throw kèm tên bước.
- * Captcha hiện → CHỜ user giải (giống tiktokAutoEdit), quá hạn thì fail bước đó.
+ *   1. Mở Content Hub (Seller Center — login KHÁC tiktok.com, chính là phiên analytics cào).
+ *   2. Click "Post on TikTok" (nút header) → menu "Video post".
+ *   3. Panel "Upload a shoppable video" → setInputFiles vào input[type=file].
+ *   4. Chờ upload xong (progress → 100%).
+ *   5. Điền Description (ô mô tả) + Hashtags (ô tag riêng — TikTok render thành chip).
+ *   6. "Add product" → modal "Choose product": search product_id → chọn radio → Confirm.
+ *   7. "Post on TikTok" (nút footer) → dialog "Your video has been posted" → "Open TikTok".
+ *
+ * ⚠️ PILOT LIMIT: panel hiện "You have N of 3 shoppable videos left to post" — flow này
+ * giới hạn (pilot). Đọc số này ra log để biết còn quota không.
+ *
+ * Mỗi bước fail → screenshot data/screenshots/publish-<videoId>-<step>.png + throw kèm bước.
  */
 import fs from "fs-extra";
 import path from "path";
 import { chromium } from "playwright-core";
 import { kiki } from "../../services/kiki/client";
-import { browseFeed } from "./browseFeed";
+import { splitCaption } from "./buildCaption";
 
-const UPLOAD_URL = "https://www.tiktok.com/tiktokstudio/upload?from=creator_center";
+const CONTENT_HUB_URL = "https://seller-us.tiktok.com/content-hub?lng=en&shop_region=US";
 const SHOT_DIR = path.resolve(process.cwd(), "data", "screenshots");
-const UPLOAD_WAIT_MS = 240_000;   // video 20MB upload + xử lý
+const UPLOAD_WAIT_MS = 300_000;   // video upload + xử lý cover (có thể lâu)
 const CAPTCHA_WAIT_MS = 180_000;  // chờ user giải captcha
 
 export interface PublishOptions {
@@ -34,12 +35,16 @@ export interface PublishOptions {
   videoFile: string;
   caption: string;
   productId: string;
-  /** true = làm hết TRỪ nút Post (test an toàn). */
+  /** true = làm hết TRỪ nút Post cuối (test an toàn, KHÔNG tốn pilot quota). */
   dryRun?: boolean;
-  /** Bỏ qua bước gắn sản phẩm (dùng khi test chéo shop, product không thuộc shop đang login). */
+  /** Bỏ qua bước gắn sản phẩm (test chéo shop, product không thuộc shop đang login). */
   skipProduct?: boolean;
-  /** Tắt warm-up lướt feed trước/sau khi đăng (mặc định BẬT). */
+  /** (Giữ để tương thích — flow Content Hub không lướt feed nữa.) */
   noWarmup?: boolean;
+  /** Giữ browser mở thêm N ms sau khi bấm Post cuối để soi bằng mắt. */
+  holdAfterPostMs?: number;
+  /** Chụp screenshot MỖI bước (debug selector lần đầu). */
+  debugShots?: boolean;
   onLog?: (m: string) => void;
 }
 
@@ -48,12 +53,20 @@ export interface PublishResult {
   dryRun: boolean;
   productLinked: boolean;
   caption: string;
+  /** Số shoppable video còn được đăng (pilot), -1 nếu không đọc được. */
+  pilotLeft?: number;
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-const rand = (min: number, max: number) => min + Math.random() * (max - min);
 
-/** Captcha ĐANG CHẶN (node visible + đủ to; TikTok preload node ẩn 0x0 → không tính). */
+async function shot(page: any, videoId: number, step: string): Promise<string> {
+  await fs.ensureDir(SHOT_DIR);
+  const file = path.join(SHOT_DIR, `publish-${videoId}-${step}-${Date.now()}.png`);
+  await page.screenshot({ path: file, fullPage: false }).catch(() => {});
+  return file;
+}
+
+/** Captcha ĐANG CHẶN (node visible + đủ to). */
 async function hasCaptcha(page: any): Promise<boolean> {
   try {
     if (/captcha[-_]?verify|\/secsdk[-_]?verify/i.test(page.url())) return true;
@@ -73,7 +86,6 @@ async function hasCaptcha(page: any): Promise<boolean> {
   } catch { return false; }
 }
 
-/** Chờ user giải captcha nếu có. Throw nếu quá hạn. */
 async function waitCaptcha(page: any, log: (m: string) => void): Promise<void> {
   if (!(await hasCaptcha(page))) return;
   log(`⚠️ CAPTCHA — giải trong cửa sổ Kiki, script đang CHỜ (tối đa ${CAPTCHA_WAIT_MS / 1000}s)…`);
@@ -85,338 +97,321 @@ async function waitCaptcha(page: any, log: (m: string) => void): Promise<void> {
   throw new Error("Captcha không được giải trong thời gian chờ");
 }
 
-/**
- * Đóng modal HTML "Are you sure you want to exit?" của TikTok (KHÔNG phải native dialog
- * nên page.on("dialog") không bắt được) — backdrop của nó chặn pointer-events, che nút Post.
- *
- * BẤM "Cancel" — TUYỆT ĐỐI KHÔNG bấm "Exit": Exit = rời trang, MẤT TOÀN BỘ bài đang soạn
- * ("Your progress and changes will not be saved").
- */
-async function dismissExitModal(page: any, log: (m: string) => void): Promise<void> {
-  const visible = await page.locator('text=/Are you sure you want to exit/i').first()
-    .isVisible({ timeout: 2500 }).catch(() => false);
-  if (!visible) return;
-  await page.locator('button, div[role="button"]').filter({ hasText: /^Cancel$/ }).first()
-    .click({ timeout: 8000 }).catch(() => {});
-  log(`   ✓ Đã đóng modal exit (bấm Cancel — giữ nguyên bài đang soạn)`);
-  await sleep(1500);
-}
-
-/** Chờ mọi backdrop modal tan hết — backdrop chặn pointer-events làm click hụt. */
-async function waitNoBackdrop(page: any, timeoutMs = 30_000): Promise<boolean> {
-  const t0 = Date.now();
-  while (Date.now() - t0 < timeoutMs) {
-    const blocked = await page.evaluate(() =>
-      [...document.querySelectorAll('[class*="TUXModal-backdrop"], [class*="modal-backdrop" i]')]
-        .some((el) => {
-          const r = (el as HTMLElement).getBoundingClientRect();
-          return r.width > 50 && r.height > 50 && getComputedStyle(el as HTMLElement).display !== "none";
-        })
-    ).catch(() => false);
-    if (!blocked) return true;
-    await sleep(1000);
-  }
-  return false;
-}
-
-async function shot(page: any, videoId: number, step: string): Promise<string> {
-  await fs.ensureDir(SHOT_DIR);
-  const file = path.join(SHOT_DIR, `publish-${videoId}-${step}-${Date.now()}.png`);
-  await page.screenshot({ path: file, fullPage: false }).catch(() => {});
-  return file;
-}
-
-/** Click element nếu nó XUẤT HIỆN trong waitMs; không hiện → bỏ qua (dialog optional). */
+/** Click element nếu XUẤT HIỆN trong waitMs; không hiện → bỏ qua (dialog optional). */
 async function clickIfVisible(page: any, selector: string, waitMs: number, log: (m: string) => void, label: string): Promise<boolean> {
   const loc = page.locator(selector).first();
   try {
     await loc.waitFor({ state: "visible", timeout: waitMs });
     await loc.click({ timeout: 5000 });
     log(`   ✓ ${label}`);
-    await sleep(700);
+    await sleep(600);
     return true;
   } catch {
-    log(`   – ${label}: không hiện, bỏ qua`);
     return false;
   }
 }
 
-/** Chuẩn hóa để so sánh nội dung editor với caption (bỏ khác biệt whitespace/xuống dòng). */
 const normText = (s: string) => s.replace(/\s+/g, " ").trim().toLowerCase();
-
-/**
- * Điền Description. Editor là contenteditable (DraftJS) và NUỐT KÝ TỰ khi gõ nhanh
- * (đã thấy thật: caption 207 ký tự chỉ vào 179, cụt giữa từ). Nên: gõ chậm → ĐỌC LẠI
- * nội dung editor → thiếu thì xóa gõ lại (tối đa 3 lần), lần cuối dùng insertText (chèn
- * 1 phát qua CDP, không mô phỏng phím).
- */
-async function typeCaption(page: any, caption: string, log: (m: string) => void): Promise<void> {
-  const editor = page.locator('div[contenteditable="true"]').first();
-  await editor.waitFor({ state: "visible", timeout: 20_000 });
-  const lines = caption.split("\n");
-
-  for (let attempt = 1; attempt <= 3; attempt++) {
-    await editor.click();
-    await page.keyboard.press("Control+A");
-    await page.keyboard.press("Delete");
-    await sleep(500);
-
-    if (attempt < 3) {
-      for (let i = 0; i < lines.length; i++) {
-        await page.keyboard.type(lines[i], { delay: 70 }); // 25ms nuốt ký tự → 70ms
-        await sleep(700);
-        await page.keyboard.press("Escape").catch(() => {}); // đóng dropdown gợi ý hashtag
-        await sleep(300);
-        if (i < lines.length - 1) await page.keyboard.press("Enter");
-      }
-    } else {
-      // Fallback: chèn thẳng, không mô phỏng phím (không bị nuốt, nhưng không trigger dropdown tag)
-      await page.keyboard.insertText(caption);
-      await sleep(1000);
-      log(`   ↻ Dùng insertText (fallback lần 3)`);
-    }
-
-    await sleep(800);
-    const got = await editor.innerText().catch(() => "");
-    if (normText(got) === normText(caption)) return;
-    log(`   ⚠️ Caption vào thiếu (${got.length}/${caption.length} ký tự) — gõ lại (${attempt}/3)`);
-  }
-  const got = await editor.innerText().catch(() => "");
-  throw new Error(`Không điền được caption đầy đủ sau 3 lần (chỉ vào ${got.length}/${caption.length} ký tự)`);
-}
 
 export async function publishVideo(opts: PublishOptions): Promise<PublishResult> {
   const log = opts.onLog ?? ((m: string) => console.log(m));
   if (!(await fs.pathExists(opts.videoFile))) throw new Error(`Không thấy file video: ${opts.videoFile}`);
 
+  const { description, hashtags } = splitCaption(opts.caption);
+
   log(`🔌 Kiki profile ${opts.profileId} — force stop + start…`);
   await kiki.forceStop(opts.profileId);
   const started = await kiki.startWithRetry(opts.profileId, (m) => log("   " + m));
-  const browser = await chromium.connectOverCDP(started.websocketDebuggerUrl);
+  // timeout 120s: profile Kiki mở nhiều tab (tiktokstudio/seller) → Playwright liệt kê
+  // target chậm, mặc định 30s không đủ (đã thấy ws connected nhưng handshake quá hạn).
+  const browser = await chromium.connectOverCDP(started.websocketDebuggerUrl, { timeout: 120_000 });
   const ctx = browser.contexts()[0] ?? (await browser.newContext());
-  const page = ctx.pages()[0] ?? (await ctx.newPage());
-  // TikTok chặn rời trang bằng dialog "Are you sure you want to exit?" khi còn thay đổi
-  // chưa lưu → dialog này giữ browser không đóng được, profile Kiki kẹt ở trạng thái "bận".
+  // Dùng tab MỚI (không giành tab tiktokstudio đang mở của lần trước → tránh modal "exit?").
+  const page = await ctx.newPage();
+  // Đóng bớt tab cũ để phiên nhẹ (giữ lại tab mới vừa mở).
+  for (const p of ctx.pages()) { if (p !== page) await p.close().catch(() => {}); }
   page.on("dialog", (d: any) => d.accept().catch(() => {}));
 
   let step = "open";
-  const result: PublishResult = { posted: false, dryRun: !!opts.dryRun, productLinked: false, caption: opts.caption };
+  const result: PublishResult = { posted: false, dryRun: !!opts.dryRun, productLinked: false, caption: opts.caption, pilotLeft: -1 };
+  const dbg = async (name: string) => { if (opts.debugShots) log(`   📸 ${await shot(page, opts.videoId, name)}`); };
 
   try {
-    // ── Bước 1: mở upload + set file ──
-    // ── Warm-up TRƯỚC khi đăng: lướt feed như người thật (phiên không chỉ toàn upload) ──
-    if (!opts.noWarmup) {
-      step = "warmup-before";
-      await browseFeed(page, { minVideos: 4, maxVideos: 9, onLog: log });
-    }
-
-    log(`📤 [1] Mở TikTok Studio upload…`);
-    await page.goto(UPLOAD_URL, { waitUntil: "domcontentloaded", timeout: 60_000 });
-    await sleep(3000);
-    // Kiki khôi phục tab upload dang dở của lần trước → TikTok chặn điều hướng bằng modal exit
-    await dismissExitModal(page, log);
+    // ── Bước 1: mở Content Hub ──
+    log(`📤 [1] Mở Content Hub (Seller Center)…`);
+    await page.goto(CONTENT_HUB_URL, { waitUntil: "domcontentloaded", timeout: 60_000 });
+    await sleep(5000);
     await waitCaptcha(page, log);
+    await dbg("01-hub");
 
-    // Profile Kiki có thể CHƯA login tiktok.com (login Seller Center là phiên KHÁC).
-    // Bắt sớm để báo rõ, không phải đợi timeout tìm input file.
+    // Login check — Seller Center (KHÁC tiktok.com). Chưa login → có form login / redirect.
     step = "check-login";
-    const loggedOut = await page.locator('text=/Log in to TikTok/i').first()
-      .isVisible({ timeout: 5000 }).catch(() => false);
-    if (loggedOut || /\/login/i.test(page.url())) {
+    const loggedOut = await page.locator('text=/Log in|Sign in to.*Seller/i').first()
+      .isVisible({ timeout: 4000 }).catch(() => false);
+    if (loggedOut || /\/(login|account\/login)/i.test(page.url())) {
       const f = await shot(page, opts.videoId, "not-logged-in");
       throw new Error(
-        `Profile Kiki chưa đăng nhập tiktok.com (đang ở màn "Log in to TikTok"). ` +
-        `Mở profile trong Kiki → vào tiktok.com → đăng nhập tài khoản TikTok của shop → chạy lại. ` +
-        `Lưu ý: login Seller Center KHÁC login tiktok.com. Screenshot: ${f}`
+        `Profile Kiki chưa đăng nhập Seller Center (seller-us.tiktok.com). ` +
+        `Mở profile trong Kiki → đăng nhập Seller Center của shop → chạy lại. Screenshot: ${f}`
       );
     }
 
-    step = "select-file";
-    const fileInput = page.locator('input[type="file"]').first();
-    await fileInput.waitFor({ state: "attached", timeout: 30_000 });
-    await fileInput.setInputFiles(opts.videoFile);
-    log(`   ✓ Đã chọn file ${path.basename(opts.videoFile)}`);
+    // ── Bước 2: "Post on TikTok" (header) → "Video post" ──
+    // CHẬP CHỜN: mouse.click theo toạ độ đôi khi trượt (banner thông báo Seller Center bật lên
+    // làm layout xê dịch giữa lúc đo toạ độ và lúc click → dropdown đóng, panel không mở).
+    // → retry cả cụm: đảm bảo dropdown mở → click "Video post" (trusted) → chờ panel, tối đa 4 lần.
+    step = "post-menu";
+    log(`🎬 [2] Post on TikTok → Video post…`);
+    // Toạ độ tâm item "Video post" đang HIỆN (item = <div role=menuitem><icon/>Video post</div>
+    // → có children nên không lọc children===0). null nếu dropdown chưa mở.
+    const findVideoPost = () => page.evaluate(() => {
+      const matches = [...document.querySelectorAll("div,li,a,button,span,p")]
+        .filter((el) => (el.textContent || "").trim() === "Video post")
+        .sort((a, b) => a.querySelectorAll("*").length - b.querySelectorAll("*").length);
+      for (const el of matches) {
+        const r = (el as HTMLElement).getBoundingClientRect();
+        const st = getComputedStyle(el as HTMLElement);
+        if (r.width > 0 && r.height > 0 && st.visibility !== "hidden" && st.display !== "none") {
+          return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+        }
+      }
+      return null;
+    });
+    // Item "Video post" đang HIỆN (Playwright locator, lọc visible để tránh node ẩn).
+    const vpLoc = page.locator(':text-is("Video post")').locator("visible=true").first();
+    let panelOpen = false;
+    for (let attempt = 1; attempt <= 6 && !panelOpen; attempt++) {
+      // đảm bảo dropdown mở
+      if (!(await vpLoc.isVisible().catch(() => false))) {
+        await page.locator('button:has-text("Post on TikTok"), div[role="button"]:has-text("Post on TikTok")')
+          .first().click({ timeout: 15_000 }).catch(() => {});
+        await sleep(1500);
+      }
+      if (attempt === 1) await dbg("02-menu");
+      // Click ưu tiên Playwright (trusted, click actionable point + auto-scroll); fallback mouse.click toạ độ.
+      const clicked = await vpLoc.click({ timeout: 4000 }).then(() => true).catch(() => false);
+      if (!clicked) { const b = await findVideoPost(); if (b) await page.mouse.click(b.x, b.y); }
+      panelOpen = await page.locator('text=/Upload a shoppable video|Choose video/i').first()
+        .waitFor({ state: "visible", timeout: 6000 }).then(() => true).catch(() => false);
+      if (!panelOpen) log(`   ↻ Panel chưa mở, thử lại (${attempt}/6)…`);
+    }
+    if (!panelOpen) { const f = await shot(page, opts.videoId, "no-upload-panel"); throw new Error(`Không mở được panel "Upload a shoppable video" sau 6 lần. Screenshot: ${f}`); }
+    await sleep(1500);
+    await dbg("03-upload-panel");
 
-    // ── Bước 2-3: dialog optional ──
-    step = "dialogs";
-    await clickIfVisible(page, 'button:has-text("Turn on")', 12_000, log, "[2] Turn on content checks");
-    await clickIfVisible(page, 'button:has-text("Got it")', 8_000, log, "[3] Got it (tooltip preview)");
+    // Đọc pilot quota nếu hiện.
+    const pilotTxt = await page.locator('text=/shoppable videos? left to post/i').first()
+      .innerText().catch(() => "");
+    const m = pilotTxt.match(/(\d+)\s+of\s+(\d+)\s+shoppable/i);
+    if (m) { result.pilotLeft = parseInt(m[1]); log(`   ℹ️ Pilot: còn ${m[1]}/${m[2]} shoppable video được đăng.`); }
 
-    // ── Chờ upload xong ──
+    // ── Bước 3: chọn file ──
+    // "Choose video" mở dialog file — input[type=file] có thể tạo ĐỘNG khi click, nên
+    // dùng filechooser (bắt sự kiện) thay vì tìm input tĩnh. Fallback input tĩnh nếu có.
+    step = "choose-video";
+    let fileSet = false;
+    try {
+      const [fc] = await Promise.all([
+        page.waitForEvent("filechooser", { timeout: 15_000 }),
+        page.locator('button:has-text("Choose video"), div[role="button"]:has-text("Choose video")')
+          .first().click({ timeout: 10_000 }),
+      ]);
+      await fc.setFiles(opts.videoFile);
+      fileSet = true;
+    } catch {
+      const fi = page.locator('input[type="file"]').first();
+      if (await fi.count().catch(() => 0)) { await fi.setInputFiles(opts.videoFile); fileSet = true; }
+    }
+    if (!fileSet) { const f = await shot(page, opts.videoId, "no-file-input"); throw new Error(`Không chọn được file (không có filechooser lẫn input[type=file]). Screenshot: ${f}`); }
+    log(`   ✓ [3] Đã chọn file ${path.basename(opts.videoFile)}`);
+    await sleep(3000);
+    await dbg("04-uploading");
+
+    // ── Bước 4: chờ upload xong ──
     step = "upload-wait";
-    log(`   ⏳ Chờ upload xong (tối đa ${UPLOAD_WAIT_MS / 1000}s)…`);
-    await page.locator('text=/Uploaded/i').first().waitFor({ state: "visible", timeout: UPLOAD_WAIT_MS });
+    log(`   ⏳ [4] Chờ upload xong (tối đa ${UPLOAD_WAIT_MS / 1000}s)…`);
+    const t0 = Date.now();
+    let uploaded = false;
+    while (Date.now() - t0 < UPLOAD_WAIT_MS) {
+      await sleep(3000);
+      // Upload xong khi KHÔNG còn "Uploading" / progress %, và ô Description đã có mặt.
+      const stillUploading = await page.locator('text=/Uploading/i').first().isVisible().catch(() => false);
+      const descReady = await page.locator('textarea').first().isVisible().catch(() => false);
+      if (!stillUploading && descReady) { uploaded = true; break; }
+    }
+    if (!uploaded) { const f = await shot(page, opts.videoId, "upload-timeout"); throw new Error(`Upload không xong sau ${UPLOAD_WAIT_MS / 1000}s. Screenshot: ${f}`); }
     log(`   ✓ Uploaded`);
-    // dialog có thể hiện MUỘN sau khi upload xong
-    await clickIfVisible(page, 'button:has-text("Turn on")', 4000, log, "[2b] Turn on (hiện muộn)");
-    await clickIfVisible(page, 'button:has-text("Got it")', 3000, log, "[3b] Got it (hiện muộn)");
+    await dbg("05-uploaded");
 
-    // ── Bước 4: Description ──
+    // ── Bước 5: Description + Hashtags ──
     step = "description";
-    log(`✍️ [4] Điền description…`);
-    await typeCaption(page, opts.caption, log);
-    log(`   ✓ Caption: "${opts.caption.split("\n")[0].slice(0, 50)}…"`);
+    log(`✍️ [5] Điền description + hashtags…`);
+    // Description: textarea có placeholder "Share more about..."; fallback textarea đầu tiên.
+    let descBox = page.locator('textarea[placeholder*="Share more" i]').first();
+    if (!(await descBox.count().catch(() => 0))) descBox = page.locator('textarea').first();
+    await descBox.click();
+    await descBox.fill(description);
+    await sleep(500);
+    const gotDesc = await descBox.inputValue().catch(() => "");
+    if (normText(gotDesc) !== normText(description)) log(`   ⚠️ Description vào ${gotDesc.length}/${description.length} ký tự.`);
+    log(`   ✓ Description: "${description.slice(0, 50)}…"`);
 
-    // ── Bước 5-9: gắn link sản phẩm ──
+    // Hashtags: ô riêng — gõ từng tag + Enter để tạo chip.
+    step = "hashtags";
+    if (hashtags.length) {
+      let tagBox = page.locator('textarea[placeholder*="hashtag" i], input[placeholder*="hashtag" i]').first();
+      if (!(await tagBox.count().catch(() => 0))) {
+        // fallback: textarea thứ 2 (sau description)
+        tagBox = page.locator('textarea').nth(1);
+      }
+      await tagBox.click().catch(() => {});
+      for (const tag of hashtags) {
+        await page.keyboard.type(`#${tag}`, { delay: 40 });
+        await sleep(300);
+        await page.keyboard.press("Enter");
+        await sleep(300);
+      }
+      log(`   ✓ Hashtags: ${hashtags.map((t) => "#" + t).join(" ")}`);
+    }
+    await dbg("06-text-filled");
+
+    // ── Bước 6: Add product ──
     if (opts.skipProduct) {
-      log(`⏭️ [5-9] BỎ QUA gắn sản phẩm (--skip-product)`);
+      log(`⏭️ [6] BỎ QUA gắn sản phẩm (--skip-product)`);
     } else {
-      step = "add-link";
-      log(`🔗 [5] Add link → chọn sản phẩm ${opts.productId}…`);
-      // Nút "+ Add" dưới label "Add link". EXACT "^\+?\s*Add$" — has-text("Add") khớp
-      // substring nên dính cả "Add link" / "Add product links".
-      const addBtn = page.locator('button, div[role="button"]')
-        .filter({ hasText: /^\+?\s*Add$/ }).first();
-      await addBtn.scrollIntoViewIfNeeded().catch(() => {});
-      await addBtn.click({ timeout: 15_000 });
-      await sleep(1200);
+      step = "add-product";
+      log(`🔗 [6] Add product ${opts.productId}…`);
+      // CHẬP CHỜN như "Video post": banner onboarding của shop chưa setup đẩy layout →
+      // nút "+ Add product" lệch/không actionable → click timeout. Retry: click nút (Playwright
+      // trước, fallback mouse.click theo toạ độ) → chờ modal "Choose product", tối đa 4 lần.
+      let productModalOpen = false;
+      for (let attempt = 1; attempt <= 4 && !productModalOpen; attempt++) {
+        const addBtn = page.locator('button:has-text("Add product"), div[role="button"]:has-text("Add product")').first();
+        const clicked = await addBtn.click({ timeout: 6000 }).then(() => true).catch(() => false);
+        if (!clicked) {
+          // fallback: mouse.click theo toạ độ tâm nút (tránh vấn đề actionable/che khuất)
+          const box = await page.evaluate(() => {
+            const btn = [...document.querySelectorAll("button,div[role='button']")]
+              .find((el) => /add product/i.test((el.textContent || "").trim()));
+            if (!btn) return null;
+            (btn as HTMLElement).scrollIntoView({ block: "center" });
+            const r = (btn as HTMLElement).getBoundingClientRect();
+            return r.width > 0 ? { x: r.x + r.width / 2, y: r.y + r.height / 2 } : null;
+          });
+          if (box) await page.mouse.click(box.x, box.y);
+        }
+        productModalOpen = await page.locator('text=/Choose product/i').first()
+          .waitFor({ state: "visible", timeout: 5000 }).then(() => true).catch(() => false);
+        if (!productModalOpen) log(`   ↻ Modal Choose product chưa mở, thử lại (${attempt}/4)…`);
+      }
+      if (!productModalOpen) { const f = await shot(page, opts.videoId, "no-product-modal"); throw new Error(`Không mở được modal "Choose product" sau 4 lần. Screenshot: ${f}`); }
+      await sleep(1000);
+      await dbg("07-product-modal");
 
-      step = "link-type-next";
-      // [6] Dialog "Add link" — Link type mặc định Products → Next
-      await page.locator('button:has-text("Next")').first().click({ timeout: 15_000 });
-      log(`   ✓ [6] Next (link type = Products)`);
-      await sleep(1500);
-
+      // Modal "Choose product": search product_id
       step = "search-product";
-      // [7] Ô search + nút kính lúp
-      const searchBox = page.locator('input[placeholder], input[type="text"]').last();
-      await searchBox.waitFor({ state: "visible", timeout: 20_000 });
+      const searchBox = page.locator('input[placeholder*="Search product" i], input[placeholder*="product name or id" i]').first();
+      await searchBox.waitFor({ state: "visible", timeout: 15_000 });
       await searchBox.fill(opts.productId);
-      await sleep(300);
-      // Nút kính lúp cạnh ô search; fallback Enter nếu không tìm được nút.
-      const searchBtn = page.locator('[class*="search"] button, button[class*="search"], svg[class*="search"]').first();
+      await sleep(400);
+      // Nút kính lúp cạnh ô search; fallback Enter.
+      const searchBtn = page.locator('[class*="search" i] button, button[class*="search" i]').first();
       if (await searchBtn.count().catch(() => 0)) await searchBtn.click({ timeout: 5000 }).catch(() => searchBox.press("Enter"));
       else await searchBox.press("Enter");
-      log(`   ✓ [7] Tìm product ${opts.productId}`);
       await sleep(3000);
+      await dbg("08-product-search");
 
+      // Chọn radio dòng đúng product_id (DOM-agnostic: tìm text = pid, leo lên tìm radio)
       step = "select-product";
-      // [8] Chọn radio của ĐÚNG dòng product. Bảng TikTok KHÔNG dùng <tr>/div[class=row]
-      // → tìm node chứa product id rồi leo lên ancestor gần nhất có radio (DOM-agnostic).
       const found = await page.locator(`text=/${opts.productId}/`).first()
-        .waitFor({ state: "visible", timeout: 20_000 }).then(() => true).catch(() => false);
+        .waitFor({ state: "visible", timeout: 15_000 }).then(() => true).catch(() => false);
       if (!found) {
         const f = await shot(page, opts.videoId, "product-not-found");
-        throw new Error(
-          `Không tìm thấy product ${opts.productId} trong shop này (product thuộc shop khác, ` +
-          `hoặc listing không còn Active). Screenshot: ${f}`
-        );
+        throw new Error(`Không tìm thấy product ${opts.productId} trong shop này (product thuộc shop khác / listing inactive). Screenshot: ${f}`);
       }
-      const picked = await page.evaluate((pid: string) => {
-        const hit = [...document.querySelectorAll("*")].find(
+      // Chọn radio bằng CLICK CHUỘT THẬT tại toạ độ — Arco radio KHÔNG nhận synthetic
+      // .click() (Confirm sẽ vẫn disabled). Tìm control radio trong dòng chứa product id,
+      // nếu input bị ẩn (width 0) thì lấy label/wrapper bọc ngoài.
+      const radioBox = await page.evaluate((pid: string) => {
+        const idEl = [...document.querySelectorAll("*")].find(
           (el) => el.children.length === 0 && (el.textContent || "").trim() === pid
         );
-        if (!hit) return false;
-        // leo lên tìm khối chứa cả product id lẫn radio → chính là dòng của product đó
-        let node: HTMLElement | null = hit as HTMLElement;
-        for (let i = 0; i < 8 && node; i++) {
-          const radio = node.querySelector('input[type="radio"]') as HTMLInputElement | null;
-          if (radio) { radio.click(); return true; }
-          node = node.parentElement;
+        let row: HTMLElement | null = idEl as HTMLElement | null;
+        for (let i = 0; i < 10 && row; i++) {
+          if (row.querySelector('input[type="radio"],[class*="radio" i]')) break;
+          row = row.parentElement;
         }
-        return false;
+        const scope: ParentNode = row || document.body;
+        let ctrl = (scope.querySelector('label[class*="radio" i]')
+          || scope.querySelector('[class*="radio" i]')
+          || scope.querySelector('input[type="radio"]')) as HTMLElement | null;
+        if (!ctrl) return null;
+        if (ctrl.getBoundingClientRect().width === 0) {
+          ctrl = (ctrl.closest('label,[class*="radio" i]') as HTMLElement) || ctrl.parentElement || ctrl;
+        }
+        const r = ctrl.getBoundingClientRect();
+        if (r.width === 0 || r.height === 0) return null;
+        return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
       }, opts.productId);
-      if (!picked) {
-        // fallback: search theo ID chính xác thường chỉ ra 1 dòng → radio duy nhất
-        const radios = page.locator('input[type="radio"]');
-        if ((await radios.count().catch(() => 0)) === 1) await radios.first().click({ timeout: 10_000 });
-        else {
-          const f = await shot(page, opts.videoId, "radio-not-found");
-          throw new Error(`Thấy product ${opts.productId} nhưng không click được radio. Screenshot: ${f}`);
-        }
-      }
+      if (!radioBox) { const f = await shot(page, opts.videoId, "radio-not-found"); throw new Error(`Thấy product ${opts.productId} nhưng không tìm được radio để click. Screenshot: ${f}`); }
+      await page.mouse.click(radioBox.x, radioBox.y);
       await sleep(1000);
-      await page.locator('button:has-text("Next")').last().click({ timeout: 15_000 });
-      log(`   ✓ [8] Chọn sản phẩm + Next`);
+      // Confirm trong modal (click thật auto-chờ enabled; radio đã chọn → nút bật)
+      await page.locator('button:has-text("Confirm")').last().click({ timeout: 15_000 });
+      log(`   ✓ [6] Chọn sản phẩm + Confirm`);
       await sleep(3000);
-
-      step = "confirm-add";
-      // [9] Dialog "Product name" → Add
-      await page.locator('button').filter({ hasText: /^Add$/ }).last().click({ timeout: 20_000 });
-      log(`   ✓ [9] Add — chờ gắn link…`);
-      await sleep(5000);
-      // Xác nhận sản phẩm ĐÃ gắn thật (tag hiện cạnh nút + Add) — không thì Post ra video
-      // không có giỏ hàng.
-      const linked = await page.locator(`text=/${opts.productId}/`).first().isVisible().catch(() => false)
-        || await page.locator('[class*="product" i], [class*="anchor" i]').first().isVisible().catch(() => false);
-      if (!linked) log(`   ⚠️ Không xác nhận được tag sản phẩm — kiểm tra lại sau khi đăng.`);
+      await dbg("09-product-added");
       result.productLinked = true;
     }
 
-    // ── Bước 10: Post ──
+    // ── Bước 7: Post ──
     step = "post";
     await waitCaptcha(page, log);
     if (opts.dryRun) {
       const f = await shot(page, opts.videoId, "dryrun-before-post");
-      log(`🧪 [10] DRY-RUN: DỪNG trước nút Post. Screenshot: ${f}`);
-      log(`   → Kiểm tra cửa sổ Kiki: caption, sản phẩm đã gắn đúng chưa. Browser giữ mở 60s.`);
+      log(`🧪 [7] DRY-RUN: DỪNG trước nút "Post on TikTok" (KHÔNG tốn pilot quota). Screenshot: ${f}`);
+      log(`   → Soi cửa sổ Kiki: description, hashtag, sản phẩm đã đúng chưa. Giữ 60s.`);
       await sleep(60_000);
       return result;
     }
-    log(`🚀 [10] Post…`);
-    // Dọn sạch modal/backdrop còn sót (dialog gắn sản phẩm, modal exit) — backdrop che nút Post.
-    await dismissExitModal(page, log);
-    if (!(await waitNoBackdrop(page))) {
-      const f = await shot(page, opts.videoId, "backdrop-stuck");
-      throw new Error(`Có modal che nút Post không tự đóng sau 30s. Screenshot: ${f}`);
-    }
-    // EXACT match "^Post$" — `has-text("Post")` khớp substring nên dính nút menu "Posts"
-    // ở sidebar (đứng trước trong DOM) → click nhầm = điều hướng đi + hiện modal exit.
-    const postBtn = page.locator('button').filter({ hasText: /^Post$/ }).last();
+    log(`🚀 [7] Post on TikTok…`);
+    // Nút footer submit "Post on TikTok" (nút cuối trong DOM, KHÁC nút header).
+    const postBtn = page.locator('button:has-text("Post on TikTok")').last();
     await postBtn.waitFor({ state: "visible", timeout: 20_000 });
-
-    // TikTok chạy "Checks" (music copyright + content check) sau khi gắn sản phẩm và
-    // GIỮ NÚT POST DISABLED trong lúc đó → click ngay là click hụt (đã thấy thật: video
-    // không lên, trang vẫn ở /upload). Chờ nút thực sự bấm được.
-    log(`   ⏳ Chờ nút Post sẵn sàng (TikTok đang chạy checks)…`);
+    // Chờ nút enabled (TikTok chạy checks / cover đang render).
     const enabled = async (): Promise<boolean> =>
       postBtn.evaluate((el: HTMLButtonElement) => {
         const st = getComputedStyle(el);
-        return !el.disabled
-          && el.getAttribute("aria-disabled") !== "true"
-          && !/disabled/i.test(el.className)
-          && st.pointerEvents !== "none";
+        return !el.disabled && el.getAttribute("aria-disabled") !== "true"
+          && !/disabled/i.test(el.className) && st.pointerEvents !== "none";
       }).catch(() => false);
+    const tp = Date.now();
+    while (Date.now() - tp < 120_000) { if (await enabled()) break; await sleep(2000); }
+    if (!(await enabled())) { const f = await shot(page, opts.videoId, "post-btn-disabled"); throw new Error(`Nút "Post on TikTok" vẫn disabled sau 120s. Screenshot: ${f}`); }
 
-    const t0 = Date.now();
-    while (Date.now() - t0 < 120_000) {
-      if (await enabled()) break;
-      await sleep(2000);
-    }
-    if (!(await enabled())) {
-      const f = await shot(page, opts.videoId, "post-btn-disabled");
-      throw new Error(`Nút Post vẫn disabled sau 120s (checks chưa xong?). Screenshot: ${f}`);
-    }
+    await postBtn.click({ timeout: 20_000 });
+    log(`   ✓ Đã bấm Post on TikTok — chờ xác nhận…`);
 
-    // Click + verify THẬT: trang phải rời khỏi /upload. Thử tối đa 2 lần.
-    let left = false;
-    for (let attempt = 1; attempt <= 2 && !left; attempt++) {
-      await postBtn.scrollIntoViewIfNeeded().catch(() => {});
-      await postBtn.click({ timeout: 20_000 });
-      log(`   ✓ Đã bấm Post (lần ${attempt}) — chờ xác nhận…`);
-      const tc = Date.now();
-      while (Date.now() - tc < 60_000) {
-        await sleep(2000);
-        if (!/\/upload/i.test(page.url())) { left = true; break; }
-        const ok = await page.locator('text=/Your video is being uploaded|Manage your posts|Post scheduled/i')
-          .first().isVisible().catch(() => false);
-        if (ok) { left = true; break; }
-      }
-    }
-    if (!left) {
+    // ── Xác nhận THẬT: dialog "Your video has been posted" ──
+    step = "confirm-posted";
+    const confirmed = await page.locator('text=/Your video has been posted/i').first()
+      .waitFor({ state: "visible", timeout: 90_000 }).then(() => true).catch(() => false);
+    await dbg("10-after-post");
+    if (!confirmed) {
       const f = await shot(page, opts.videoId, "post-no-confirm");
-      throw new Error(`Bấm Post nhưng video không lên (trang vẫn ở /upload). Screenshot: ${f}`);
+      throw new Error(`Bấm Post nhưng KHÔNG thấy dialog "Your video has been posted". Screenshot: ${f}`);
     }
-
     result.posted = true;
-    log(`✅ Đăng thành công video #${opts.videoId}`);
+    log(`✅ Đăng thành công video #${opts.videoId} (TikTok xác nhận "Your video has been posted")`);
 
-    // ── Warm-up SAU khi đăng: không thoát ngay sau upload (hành vi bot rõ rệt) ──
-    if (!opts.noWarmup) {
-      step = "warmup-after";
-      await sleep(rand(4000, 9000));
-      await browseFeed(page, { minVideos: 3, maxVideos: 7, onLog: log });
+    if (opts.holdAfterPostMs) {
+      log(`   ⏸️ GIỮ MÀN HÌNH ${Math.round(opts.holdAfterPostMs / 1000)}s để soi.`);
+      await sleep(opts.holdAfterPostMs);
+      await shot(page, opts.videoId, "after-hold");
     }
+
+    // Đóng dialog bằng "Open TikTok" (hoặc X) để phiên sạch cho lần sau.
+    await clickIfVisible(page, 'button:has-text("Open TikTok")', 4000, log, "Open TikTok (đóng dialog)");
     return result;
   } catch (e: any) {
     const f = await shot(page, opts.videoId, step);

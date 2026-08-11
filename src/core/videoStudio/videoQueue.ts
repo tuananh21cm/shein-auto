@@ -33,12 +33,15 @@ export interface CreateVideoItem {
   /** Stats thật cho kịch bản social_proof. */
   pv?: number;
   orders?: number;
+  /** Attribute/giá do nguồn NGOÀI cung cấp — bơm vào prompt Gemini (job "api:*"). */
+  attributes?: string;
+  price?: string;
 }
 
 const safeName = (s: string) => s.replace(/[\/\\:*?"<>|]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 60) || "shop";
 
-/** Meta per-product lưu cạnh ảnh cache: fallback ảnh + stats cho script. */
-interface ProductMeta { mainImage?: string; pv?: number; orders?: number }
+/** Meta per-product lưu cạnh ảnh cache: fallback ảnh + stats + attribute cho script. */
+interface ProductMeta { mainImage?: string; pv?: number; orders?: number; attributes?: string; price?: string }
 
 class VideoQueue {
   private running = false;
@@ -53,7 +56,7 @@ class VideoQueue {
         const id = db.create({
           shop, productId: it.productId, listingId: it.listingId, title: it.title, seed, hookStyle,
         });
-        const meta: ProductMeta = { mainImage: it.mainImage, pv: it.pv, orders: it.orders };
+        const meta: ProductMeta = { mainImage: it.mainImage, pv: it.pv, orders: it.orders, attributes: it.attributes, price: it.price };
         fs.ensureDirSync(path.join(ASSETS_DIR, it.productId));
         fs.writeJsonSync(path.join(ASSETS_DIR, it.productId, "meta.json"), meta);
         return id;
@@ -105,9 +108,12 @@ class VideoQueue {
       const row = db.get(id);
       if (!row) return;
       const seed = row.seed;
-      const account = await resolveAccountForShop(row.shop);
-      if (!account) throw new Error(`Shop "${row.shop}" không có tài khoản 4Seller`);
-      const principal = `acct:${account.uid}`;
+      // Job NGOÀI (shop "api:*"): ảnh do bên ngoài đẩy vào src_N.jpg sẵn → fetchImages KHÔNG
+      // gọi 4Seller → không cần account. Shop THẬT vẫn bắt buộc có account như cũ.
+      const isExternal = row.shop.startsWith("api:");
+      const account = isExternal ? null : await resolveAccountForShop(row.shop);
+      if (!isExternal && !account) throw new Error(`Shop "${row.shop}" không có tài khoản 4Seller`);
+      const principal = account ? `acct:${account.uid}` : "external";
       const workDir = path.join(ASSETS_DIR, row.product_id, String(id));
       await fs.ensureDir(workDir);
       const metaFile = path.join(ASSETS_DIR, row.product_id, "meta.json");
@@ -135,6 +141,8 @@ class VideoQueue {
           const style = (row.hook_style as HookStyle) || "tease";
           script = await genVideoScript(row.title, {
             stats: { pv28d: meta.pv, orders28d: meta.orders },
+            attributes: meta.attributes,
+            price: meta.price,
           }, style);
           db.setScript(id, JSON.stringify(script));
           console.log(`   ✅ Script [${style}]: "${script.hook}"`);

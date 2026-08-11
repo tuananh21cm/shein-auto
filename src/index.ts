@@ -19,6 +19,7 @@ import { scheduleFlashAuto } from "./core/flashDeal";
 import { schedulePublishCron } from "./core/videoStudio/publishScheduler";
 import { scheduleVideoQueueCron } from "./core/videoStudio/videoQueue";
 import { scheduleDailyReport } from "./core/dailyReport";
+import { cronEnabled, logDisabledCrons, CronName } from "./config/cronToggles";
 
 // Pipe console.* lên eventBus để SSE stream xuống UI. Phải gọi sớm.
 installConsoleTap();
@@ -41,19 +42,28 @@ const bootstrap = async () => {
 
   // Cron CHỈ đăng ký SAU khi bind port thành công → đảm bảo 1 instance duy nhất
   // chạy cron. Tránh nhiều server zombie cùng pick 1 file → đăng trùng nhiều lần.
-  cron.schedule(config.cronFileRouter, runFileRouterOnce);
-  cron.schedule(config.cronFileRouter, () => runPodRouterOnce()); // POD inbox → JSON vào queue
-  cron.schedule(config.cronQueueManager, runQueueManagerOnce);
-  scheduleResearchCron();
-  scheduleTiktokCron();
-  scheduleDripPublisher();
-  scheduleAutoCrawler();
-  scheduleHarvester();
-  schedulePromotionCron();
-  scheduleFlashAuto();
-  schedulePublishCron();
-  scheduleVideoQueueCron();
-  scheduleDailyReport();
+  // Mỗi cron còn qua cổng config/crons.json (bật/tắt theo MÁY) — xem cronToggles.ts.
+  const on = (n: CronName, fn: () => void) => { if (cronEnabled(n)) fn(); };
+
+  on("fileRouter", () => cron.schedule(config.cronFileRouter, runFileRouterOnce));
+  on("podRouter", () => cron.schedule(config.cronFileRouter, () => runPodRouterOnce())); // POD inbox → JSON vào queue
+  on("queueManager", () => cron.schedule(config.cronQueueManager, runQueueManagerOnce));
+  on("research", scheduleResearchCron);
+  on("tiktokAnalytics", scheduleTiktokCron);
+  on("dripPublish", scheduleDripPublisher);
+  on("autoCrawl", scheduleAutoCrawler);
+  on("linkHarvester", scheduleHarvester);
+  on("promotionScan", schedulePromotionCron);
+  on("flashAuto", scheduleFlashAuto);
+  on("videoPublish", schedulePublishCron);
+  on("videoQueue", scheduleVideoQueueCron);
+  on("dailyReport", scheduleDailyReport);
+
+  logDisabledCrons([
+    "fileRouter", "podRouter", "queueManager", "research", "tiktokAnalytics",
+    "dripPublish", "autoCrawl", "linkHarvester", "promotionScan", "flashAuto",
+    "videoQueue", "videoPublish", "dailyReport",
+  ]);
   console.log("⏰ Đã đăng ký cron (instance này giữ port → chạy cron).");
 };
 bootstrap().catch((err: any) => {

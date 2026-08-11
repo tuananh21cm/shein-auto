@@ -2,20 +2,22 @@ import { describe, it, expect } from "vitest";
 import { planSegments, buildFfmpegArgs, escapeFilterPath } from "./renderPlan";
 
 describe("planSegments", () => {
-  it("tổng duration trừ overlap xfade = voice + 0.8s tail; video dài có intro 3 cắt nhanh 0.9s", () => {
+  it("tổng duration trừ overlap xfade = voice + 0.8s tail; video dài có intro 3 cắt 1.4s", () => {
     const p = planSegments(6, 30000); // 6 ảnh, voice 30s → có intro
     const total = 30.8;
     const sum = p.durations.reduce((a, b) => a + b, 0);
     expect(sum - p.fade * (p.n - 1)).toBeCloseTo(total, 1);
     expect(p.n).toBe(p.durations.length);
-    // 3 segment đầu = intro cắt nhanh giữ chân (0.9s), còn lại Ken Burns bình thường
-    expect(p.durations.slice(0, 3)).toEqual([0.9, 0.9, 0.9]);
+    // 3 segment đầu = intro giữ chân (1.4s — chậm hơn 0.9s cũ cho đỡ giật), còn lại Ken Burns
+    expect(p.durations.slice(0, 3)).toEqual([1.4, 1.4, 1.4]);
+    expect(p.introCount).toBe(3);
     for (const d of p.durations.slice(3)) { expect(d).toBeGreaterThanOrEqual(2.0); expect(d).toBeLessThanOrEqual(6.5); }
   });
 
   it("video ngắn (<12s) → KHÔNG intro, chia đều trong [2, 6.5]", () => {
     const p = planSegments(6, 9000); // 9.8s
     const sum = p.durations.reduce((a, b) => a + b, 0);
+    expect(p.introCount).toBe(0);
     expect(sum - p.fade * (p.n - 1)).toBeCloseTo(9.8, 1);
     for (const d of p.durations) { expect(d).toBeGreaterThanOrEqual(2.0); expect(d).toBeLessThanOrEqual(6.5); }
   });

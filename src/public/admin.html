@@ -325,6 +325,16 @@
       </div>
       <div class="card">
         <div style="display:flex; gap:10px; align-items:center; margin-bottom:12px;">
+          <select id="hubFilter" onchange="renderHub()" style="width:auto; min-width:160px;">
+            <option value="">Tất cả</option>
+            <option value="listed">📤 Đã đẩy</option>
+            <option value="unlisted">⏳ Chưa đẩy</option>
+          </select>
+          <select id="hubSort" onchange="renderHub()" style="width:auto; min-width:190px;">
+            <option value="">Mới nhất</option>
+            <option value="listed_desc">📤 Đã đẩy: nhiều → ít</option>
+            <option value="listed_asc">📤 Đã đẩy: ít → nhiều</option>
+          </select>
           <input id="hubSearch" placeholder="🔍 Tìm sản phẩm..." oninput="renderHub()" style="width:240px;" />
         </div>
         <div id="hubGrid"><div class="empty">Đang tải…</div></div>
@@ -1382,8 +1392,15 @@ async function loadHub() {
 function renderHub() {
   ensureHubState();
   const search = ($("#hubSearch").value || "").toLowerCase().trim();
+  const filter = $("#hubFilter")?.value || "";
   let items = state.hub.items;
+  if (filter === "listed") items = items.filter((it) => (it.listedCount || 0) > 0);
+  else if (filter === "unlisted") items = items.filter((it) => (it.listedCount || 0) === 0);
   if (search) items = items.filter((it) => (it.title || "").toLowerCase().includes(search));
+  // Sort theo số shop đã đẩy (tạo bản sao để không mutate state.hub.items)
+  const sort = $("#hubSort")?.value || "";
+  if (sort === "listed_desc") items = [...items].sort((a, b) => (b.listedCount || 0) - (a.listedCount || 0));
+  else if (sort === "listed_asc") items = [...items].sort((a, b) => (a.listedCount || 0) - (b.listedCount || 0));
   const listedProducts = state.hub.items.filter((i) => (i.listedCount || 0) > 0).length;
   const totalListings = state.hub.items.reduce((n, i) => n + (i.listedCount || 0), 0);
   $("#hubSubtitle").innerHTML = `Kho chung · <b>${state.hub.items.length}</b> sản phẩm · đã list <b>${listedProducts}</b> sp lên tổng <b>${totalListings}</b> lượt shop`;
@@ -1460,7 +1477,10 @@ function toggleHubSelect(idEnc, checked) {
 function selectAllHub() {
   ensureHubState();
   const search = ($("#hubSearch").value || "").toLowerCase().trim();
+  const filter = $("#hubFilter")?.value || "";
   let items = state.hub.items;
+  if (filter === "listed") items = items.filter((it) => (it.listedCount || 0) > 0);
+  else if (filter === "unlisted") items = items.filter((it) => (it.listedCount || 0) === 0);
   if (search) items = items.filter((it) => (it.title || "").toLowerCase().includes(search));
   for (const it of items) state.hub.selected.add(it.id);
   renderHub();

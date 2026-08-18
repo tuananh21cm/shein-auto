@@ -336,6 +336,9 @@
             <option value="listed_asc">📤 Đã đẩy: ít → nhiều</option>
           </select>
           <input id="hubSearch" placeholder="🔍 Tìm sản phẩm..." oninput="renderHub()" style="width:240px;" />
+          <div style="flex:1;"></div>
+          <button class="btn btn-primary" id="hubImportBtn" onclick="document.getElementById('hubImportInput').click()">📥 Import file</button>
+          <input type="file" id="hubImportInput" accept=".json,application/json" multiple hidden onchange="hubImportFiles(this.files)" />
         </div>
         <div id="hubGrid"><div class="empty">Đang tải…</div></div>
       </div>
@@ -1386,6 +1389,50 @@ async function loadHub() {
   } catch (err) {
     toast("Không tải được Hub: " + err.message, "error");
     $("#hubGrid").innerHTML = '<div class="empty">Lỗi tải dữ liệu</div>';
+  }
+}
+
+// Import sản phẩm vào Hub bằng file JSON (đọc + parse phía client, gửi theo lô).
+async function hubImportFiles(fileList) {
+  const files = Array.from(fileList || []);
+  if (files.length === 0) return;
+  const btn = document.getElementById("hubImportBtn");
+  const input = document.getElementById("hubImportInput");
+  if (btn) { btn.disabled = true; }
+
+  // Đọc + parse tất cả file
+  const items = [];
+  let parseErr = 0;
+  for (const f of files) {
+    try {
+      items.push(JSON.parse(await f.text()));
+    } catch { parseErr++; }
+  }
+
+  let imported = 0, duplicates = 0, invalid = parseErr;
+  try {
+    const CHUNK = 40;
+    for (let i = 0; i < items.length; i += CHUNK) {
+      const batch = items.slice(i, i + CHUNK);
+      if (btn) btn.textContent = `📥 Đang import ${Math.min(i + batch.length, items.length)}/${items.length}...`;
+      const res = await fetch("/admin/api/hub/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ items: batch }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      imported += data.imported || 0;
+      duplicates += data.duplicates || 0;
+      invalid += data.invalid || 0;
+    }
+    toast(`📥 Import: ${imported} mới · ⚠️ ${duplicates} trùng · ✗ ${invalid} lỗi`);
+    loadHub();
+  } catch (err) {
+    toast(err.message, "error");
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = "📥 Import file"; }
+    if (input) input.value = ""; // cho phép chọn lại cùng file
   }
 }
 

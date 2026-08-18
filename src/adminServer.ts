@@ -1103,6 +1103,34 @@ export const startAdminServer = async () => {
     }
   });
 
+  // Import sản phẩm vào Hub bằng file JSON (client parse sẵn, gửi mảng object).
+  app.post("/admin/api/hub/import", async (req, res) => {
+    try {
+      const sessionUser = (req.session as any).user as SessionUser;
+      if (sessionUser.role === "viewer") return res.status(403).json({ error: "Viewer không thể import" });
+
+      const { items } = req.body as { items?: any[] };
+      if (!Array.isArray(items) || items.length === 0) return res.status(400).json({ error: "Không có sản phẩm để import" });
+
+      const hubIds = await buildHubProductIds();
+      let imported = 0, duplicates = 0, invalid = 0;
+      for (const data of items) {
+        // Phải là object giống sản phẩm (có ít nhất 1 field nhận dạng)
+        const looksLikeProduct = data && typeof data === "object" && !Array.isArray(data) &&
+          (data.product_name || data.product_images || data.variant_images || data.listing_variations);
+        if (!looksLikeProduct) { invalid++; continue; }
+        const pid = extractProductId(data);
+        if (pid && hubIds.has(pid)) { duplicates++; continue; }
+        await writeHubFile(data);
+        if (pid) hubIds.add(pid);
+        imported++;
+      }
+      res.json({ ok: true, imported, duplicates, invalid });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? "Lỗi import Hub" });
+    }
+  });
+
   // Tập productId đã có trong 1 shop (quét pending + Success + Fail). Đọc mỗi file 1 lần.
   const buildShopProductIds = async (base: string, shop: string): Promise<Set<string>> => {
     const set = new Set<string>();

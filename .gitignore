@@ -27,3 +27,6 @@ temp_images_*/
 temp_variants_*/
 temp_size_chart_*.png
 .last_folder.txt
+
+# IDE/agent skills (không phải code dự án)
+.agents/

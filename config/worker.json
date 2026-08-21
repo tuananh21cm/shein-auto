@@ -8,5 +8,7 @@
   "imageUploadWaitPerImageMs": 7000,
   "imageUploadMaxImages": 9,
   "descriptionImagesCount": 8,
-  "descriptionMaxAttributes": 8
+  "descriptionMaxAttributes": 8,
+  "fillSpecifics": false,
+  "colorShowcase": { "enabled": false, "style": "B" }
 }

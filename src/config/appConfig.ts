@@ -34,9 +34,27 @@ interface WorkerFile {
   imageUploadMaxImages: number;
   descriptionImagesCount: number;
   descriptionMaxAttributes: number;
+  /** Bật/tắt điền mục Specifics (map SHEIN attributes → dropdown 4Seller). Mặc định false. */
+  fillSpecifics?: boolean;
+  /** Color showcase: chèn 1 ảnh collage màu (per-shop, chống trùng) làm ảnh Main. Mặc định tắt. */
+  colorShowcase?: { enabled: boolean; style?: "A" | "B" | "C" };
 }
 interface SizeMapFile {
   map: Record<string, string>;
+}
+export interface SpecificsMapFile {
+  // 1 key SHEIN có thể trỏ 1 hoặc NHIỀU field 4Seller (thử lần lượt, field nào có + khớp thì điền).
+  keyMap: Record<string, string | string[]>;
+  valueSynonyms: Record<string, string>;
+}
+export interface PublishFile {
+  enabled: boolean;
+  cookieUser: string;
+  intervalMinMinutes: number;
+  intervalMaxMinutes: number;
+  perShopPerCycle: number;
+  interShopJitterMinSec: number;
+  interShopJitterMaxSec: number;
 }
 interface CategoriesFile {
   categories: string[];
@@ -47,6 +65,7 @@ let _pricing: PricingFile | null = null;
 let _worker: WorkerFile | null = null;
 let _sizeMap: SizeMapFile | null = null;
 let _categories: CategoriesFile | null = null;
+let _specificsMap: SpecificsMapFile | null = null;
 
 export const brandProfiles = (): BrandProfilesFile =>
   (_brandProfiles ??= readJson<BrandProfilesFile>("brand-profiles.json"));
@@ -62,6 +81,13 @@ export const sizeMap = (): Record<string, string> =>
 
 export const tiktokCategories = (): string[] =>
   (_categories ??= readJson<CategoriesFile>("tiktok-categories.json")).categories;
+
+export const specificsMap = (): SpecificsMapFile =>
+  (_specificsMap ??= readJson<SpecificsMapFile>("specifics-map.json"));
+
+let _publish: PublishFile | null = null;
+export const publishConfig = (): PublishFile =>
+  (_publish ??= readJson<PublishFile>("publish.json"));
 
 /** Resolve brand cho 1 profile shop. Fallback về default nếu chưa định nghĩa. */
 export const resolveBrand = (profile: string): string => {
@@ -96,4 +122,6 @@ export const reloadAppConfig = (): void => {
   _worker = null;
   _sizeMap = null;
   _categories = null;
+  _specificsMap = null;
+  _publish = null;
 };

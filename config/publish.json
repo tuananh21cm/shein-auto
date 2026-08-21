@@ -1,0 +1,10 @@
+{
+  "_comment": "Drip-publish 4Seller: mỗi cycle publish perShopPerCycle draft/shop, các cycle cách nhau intervalMin-Max phút (random tránh bot bắt). cookieUser = user cookie 4Seller. enabled=false → TẮT (publish live nên mặc định opt-in). Đổi enabled phải restart worker.",
+  "enabled": false,
+  "cookieUser": "tuananh",
+  "intervalMinMinutes": 30,
+  "intervalMaxMinutes": 40,
+  "perShopPerCycle": 1,
+  "interShopJitterMinSec": 30,
+  "interShopJitterMaxSec": 90
+}

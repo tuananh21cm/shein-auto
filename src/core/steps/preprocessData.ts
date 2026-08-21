@@ -1,4 +1,5 @@
 import { sizeMap, workerConfig } from "../../config/appConfig";
+import { fixInflatedVariantPrices } from "./fixVariantPrices";
 
 interface VariantImageParam {
   [color: string]: string | string[];
@@ -16,6 +17,9 @@ const normalizeSize = (s: string): string => sizeMap()[s.toLowerCase().trim()] ?
  * Trả về object data đã mutate + mergedProductImages.
  */
 export const preprocessData = (data: any): { mergedProductImages: string[] } => {
+  // 0. FIX GIÁ VARIANT BỊ SHEIN THỔI (anti-crawler x3-x4) — chạy trên giá raw trước mọi bước.
+  fixInflatedVariantPrices(data.variant_price, { onLog: (m) => console.log(m) });
+
   // 1. SIZE NORMALIZATION
   if (data.listing_variations?.sizes) {
     const before = [...data.listing_variations.sizes];

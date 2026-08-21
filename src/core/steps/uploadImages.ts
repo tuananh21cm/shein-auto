@@ -67,7 +67,11 @@ const downloadToFile = async (url: string, filePath: string, maxRetries = 3): Pr
   }
 };
 
-export const uploadProductImages = async (page: any, imageUrls: string[]): Promise<void> => {
+export const uploadProductImages = async (
+  page: any,
+  imageUrls: string[],
+  prependFiles: string[] = []
+): Promise<void> => {
   console.log("--- Bắt đầu quy trình Upload Ảnh (Bản an toàn đa luồng) ---");
 
   const uniqueId = crypto.randomBytes(8).toString("hex");
@@ -78,13 +82,15 @@ export const uploadProductImages = async (page: any, imageUrls: string[]): Promi
   try {
     // Download song song — tăng tốc N lần so với for-await sequential
     const t0 = Date.now();
-    const localFilePaths = await Promise.all(
+    const downloaded = await Promise.all(
       imageUrls.map(async (url, i) => {
         const filePath = path.join(tempDir, `img_${i}.jpg`);
         await downloadToFile(url, filePath);
         return filePath;
       })
     );
+    // prependFiles = ảnh LOCAL đã render sẵn (vd color showcase) → đứng ĐẦU làm ảnh Main.
+    const localFilePaths = [...prependFiles.filter((f) => fs.existsSync(f)), ...downloaded];
     console.log(`⬇️ [${uniqueId}] Download ${imageUrls.length} ảnh song song mất ${Math.round((Date.now() - t0) / 1000)}s`);
 
     const productUploadContainer = page.locator(".file_upload__index").first();

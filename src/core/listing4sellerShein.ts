@@ -15,6 +15,8 @@ import { fillVariations } from "./steps/fillVariations";
 import { fillTableData } from "./steps/fillTableData";
 import { uploadProductImages, uploadVariantImages } from "./steps/uploadImages";
 import { handleBrand } from "./steps/handleBrand";
+import { fillSpecifics } from "./steps/fillSpecifics";
+import { buildColorShowcaseImageFile } from "./steps/colorShowcase";
 import {
   fillDescription,
   generateDescriptionHtml,
@@ -137,11 +139,36 @@ export const listing4sellerShein = async (
       await assertNoErrors(page, "setOosVariantQuantity");
     }
 
-    await uploadProductImages(page, mergedProductImages);
+    // Color showcase (opt-in): render 1 ảnh collage màu theo shop (bgSeed=targetProfile → mỗi
+    // shop 1 kiểu, chống trùng ảnh Main khi list 1 sp lên nhiều shop). Ảnh phụ — lỗi thì bỏ qua.
+    const showcaseCfg = workerConfig().colorShowcase;
+    let showcaseFile: string | null = null;
+    if (showcaseCfg?.enabled) {
+      try {
+        showcaseFile = await buildColorShowcaseImageFile(
+          data.product_images,
+          data.variant_images,
+          showcaseCfg.style ?? "B",
+          { bgSeed: targetProfile }
+        );
+      } catch (e: any) {
+        console.warn(`⚠️ color showcase lỗi, bỏ qua: ${e?.message ?? e}`);
+      }
+    }
+
+    await uploadProductImages(page, mergedProductImages, showcaseFile ? [showcaseFile] : []);
+    if (showcaseFile) fs.promises.unlink(showcaseFile).catch(() => {});
     await uploadVariantImages(page, data.variant_images);
     await assertNoErrors(page, "uploadImages");
 
     await handleBrand(page, data.brand_name);
+
+    // Điền Specifics (Optional): map SHEIN attributes → dropdown 4Seller. Mặc định TẮT —
+    // bật "fillSpecifics": true trong config/worker.json sau khi verify trên 4Seller.
+    if (workerConfig().fillSpecifics) {
+      await fillSpecifics(page, data.attributes || {});
+      await assertNoErrors(page, "fillSpecifics");
+    }
 
     const colorList = data.listing_variations?.colors || [];
     const descHtml = generateDescriptionHtml(

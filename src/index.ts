@@ -8,6 +8,7 @@ import { historyStore } from "./state/historyStore";
 import { refreshQueueSnapshot } from "./state/queueState";
 import { geminiCache } from "./services/gemini/geminiCache";
 import { initDb, closeDb } from "./state/db";
+import { scheduleDripPublisher } from "./core/dripPublisher";
 
 // Pipe console.* lên eventBus để SSE stream xuống UI. Phải gọi sớm.
 installConsoleTap();
@@ -39,6 +40,9 @@ const bootstrap = async () => {
   cron.schedule(config.cronFileRouter, runFileRouterOnce);
   cron.schedule(config.cronQueueManager, runQueueManagerOnce);
   console.log("⏰ Cron đã lên lịch (file router + queue manager).");
+
+  // Drip-publish draft 4Seller nhỏ giọt (bật/tắt qua config/publish.json → enabled).
+  scheduleDripPublisher();
 };
 bootstrap().catch((err) => {
   console.error("❌ Bootstrap failed:", err?.message ?? err);

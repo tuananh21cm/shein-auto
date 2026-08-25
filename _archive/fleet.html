@@ -1,0 +1,140 @@
+<!doctype html><html lang="vi"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Fleet Dashboard · TookTik</title>
+<style>
+  :root{--bg:#eef3f1;--card:#fff;--sunk:#e7edeb;--line:#d5dedb;--ink:#122420;--mut:#566b66;--faint:#879893;
+    --teal:#00918d;--good:#0f9d54;--warn:#c26a09;--bad:#d0362c;--violet:#6d3fd6;
+    --shadow:0 1px 2px rgba(18,36,32,.05),0 6px 18px rgba(18,36,32,.05)}
+  @media(prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#0c1513;--card:#14201d;--sunk:#1b2723;--line:#293733;--ink:#e9f1ee;--mut:#a3b4af;--faint:#6d807b;
+    --teal:#37bcb6;--good:#3fc276;--warn:#e5963c;--bad:#ee6a5f;--violet:#a488f0;--shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px rgba(0,0,0,.35)}}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1280px;margin:0 auto;padding:26px 22px 70px}
+  header{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:4px}
+  h1{font-size:22px;margin:0;letter-spacing:-.01em}
+  .sub{color:var(--mut);font-size:13px}
+  .tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:12px;margin:20px 0 22px}
+  .tile{background:var(--card);border:1px solid var(--line);border-radius:13px;padding:14px 16px;box-shadow:var(--shadow)}
+  .tile b{display:block;font-size:26px;font-weight:700;line-height:1;font-variant-numeric:tabular-nums}
+  .tile span{font-size:12px;color:var(--mut);margin-top:6px;display:block}
+  .tile.crit b{color:var(--bad)} .tile.warn b{color:var(--warn)} .tile.tealt b{color:var(--teal)}
+  .toolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px}
+  #q{flex:1;min-width:180px;background:var(--card);border:1px solid var(--line);border-radius:9px;padding:9px 12px;font-size:14px;color:var(--ink)}
+  .chip{background:var(--card);border:1px solid var(--line);border-radius:999px;padding:7px 13px;font-size:13px;cursor:pointer;color:var(--mut);white-space:nowrap}
+  .chip.on{background:var(--teal);border-color:var(--teal);color:#fff;font-weight:600}
+  .tablebox{background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);overflow-x:auto}
+  table{width:100%;border-collapse:collapse;font-size:13.5px;min-width:940px}
+  th,td{padding:11px 12px;text-align:left;border-bottom:1px solid var(--line);white-space:nowrap}
+  th{position:sticky;top:0;background:var(--sunk);font-size:11.5px;letter-spacing:.03em;text-transform:uppercase;color:var(--mut);font-weight:600;cursor:pointer;user-select:none}
+  th.num,td.num{text-align:right;font-variant-numeric:tabular-nums}
+  th .ar{opacity:.5;font-size:10px;margin-left:3px}
+  tbody tr:hover{background:var(--sunk)}
+  tbody tr:last-child td{border-bottom:none}
+  tr.attn td:first-child{box-shadow:inset 3px 0 0 var(--bad)}
+  .shopnm{font-weight:600} .shopcode{font-size:11px;color:var(--faint);font-family:ui-monospace,Consolas,monospace}
+  .pill{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11.5px;font-weight:600}
+  .p-ok{background:color-mix(in srgb,var(--good) 15%,transparent);color:var(--good)}
+  .p-bad{background:color-mix(in srgb,var(--bad) 15%,transparent);color:var(--bad)}
+  .p-warn{background:color-mix(in srgb,var(--warn) 16%,transparent);color:var(--warn)}
+  .p-mut{background:var(--sunk);color:var(--mut)}
+  .score{font-weight:700} .score.lo{color:var(--bad)} .score.mid{color:var(--warn)} .score.hi{color:var(--good)}
+  .warncell{color:var(--bad);font-weight:600} .warncell.zero{color:var(--faint);font-weight:400}
+  .recmini{font-size:12px;color:var(--mut);white-space:nowrap}
+  .rbtn{background:var(--teal);color:#fff;text-decoration:none;padding:6px 12px;border-radius:8px;font-size:12.5px;font-weight:600;white-space:nowrap}
+  .rbtn:hover{filter:brightness(.93)}
+  .empty{padding:40px;text-align:center;color:var(--faint)}
+  .foot{margin-top:14px;color:var(--faint);font-size:12.5px}
+</style></head><body>
+<div class="wrap">
+  <header><h1>🛰️ Fleet Dashboard</h1><span class="sub" id="sub">Đang tải…</span></header>
+  <div class="tiles" id="tiles"></div>
+  <div class="toolbar">
+    <input id="q" placeholder="🔎 Tìm shop theo tên / mã…"/>
+    <span class="chip on" data-f="all">Tất cả</span>
+    <span class="chip" data-f="attn">⚠️ Cần chú ý</span>
+    <span class="chip" data-f="4s">Có 4Seller</span>
+    <span class="chip" data-f="lo">Điểm &lt; 200</span>
+  </div>
+  <div class="tablebox"><table id="tbl"><thead></thead><tbody><tr><td class="empty">Đang tải…</td></tr></tbody></table></div>
+  <div class="foot" id="foot"></div>
+</div>
+<script>
+var esc=function(s){return (s==null?"":String(s)).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c];});};
+var n=function(v){return (v==null||v===""||isNaN(Number(v)))?(v==null?"—":v):Number(v).toLocaleString();};
+var money=function(v){return v==null?"—":Number(v).toLocaleString(undefined,{maximumFractionDigits:0});};
+var COLS=[
+ {k:"shop_name",t:"Shop",cell:function(r){return '<div class="shopnm">'+esc(r.shop_name||r.shop_code)+'</div><div class="shopcode">'+esc(r.shop_code)+'</div>';}},
+ {k:"shop_status",t:"Trạng thái",cell:function(r){return statusPill(r.shop_status);}},
+ {k:"violation_score",t:"Điểm",num:1,cell:function(r){var v=Number(r.violation_score);if(!isFinite(v))return '<span class="score">—</span>';var c=v>=200?"hi":(v<160?"lo":"mid");return '<span class="score '+c+'">'+v+'</span><span style="color:var(--faint);font-size:11px">/200</span>';}},
+ {k:"net_earnings",t:"Net $",num:1,cell:function(r){return "$"+money(r.net_earnings);}},
+ {k:"listing_count",t:"Listing",num:1,cell:function(r){return n(r.listing_count!=null?r.listing_count:r.total_listings);}},
+ {k:"listing_pv_sum",t:"View 28d",num:1,cell:function(r){return n(r.listing_pv_sum);}},
+ {k:"total_order",t:"Đơn",num:1,cell:function(r){return n(r.total_order);}},
+ {k:"_warn",t:"⚠️ Đơn",num:1,cell:function(r){var w=(Number(r.overdue)||0)+(Number(r.logistics)||0);return '<span class="warncell '+(w?"":"zero")+'">'+w+'</span>';}},
+ {k:"_promo",t:"Promo",num:1,cell:function(r){return n((Number(r.promo_flash)||0)+(Number(r.promo_discount)||0));}},
+ {k:"_rec",t:"Đề xuất",cell:function(r){var a=[];if(r.rec_delist)a.push("🗑️"+r.rec_delist);if(r.rec_flash)a.push("⚡"+r.rec_flash);if(r.rec_video)a.push("🎬"+r.rec_video);return '<span class="recmini">'+(a.length?a.join(" · "):"—")+'</span>';}},
+ {k:"day",t:"Cập nhật",cell:function(r){return '<span style="color:var(--mut);font-size:12px">'+esc(r.day||"")+'</span>';}},
+ {k:"_r",t:"",sort:0,cell:function(r){return '<a class="rbtn" href="/admin/tikcrm/r/'+encodeURIComponent(r.shop_code)+'" target="_blank">Report ↗</a>';}}
+];
+function statusPill(s){var t=String(s||"").toLowerCase();if(t==="live")return '<span class="pill p-ok">Live</span>';if(/closed|ban|terminat/.test(t))return '<span class="pill p-bad">'+esc(s)+'</span>';if(!s)return '<span class="pill p-mut">?</span>';return '<span class="pill p-warn">'+esc(s)+'</span>';}
+function sortVal(r,k){
+  if(k==="_warn")return (Number(r.overdue)||0)+(Number(r.logistics)||0);
+  if(k==="_promo")return (Number(r.promo_flash)||0)+(Number(r.promo_discount)||0);
+  if(k==="_rec")return (Number(r.rec_delist)||0)+(Number(r.rec_flash)||0)+(Number(r.rec_video)||0);
+  if(k==="shop_name")return String(r.shop_name||r.shop_code||"").toLowerCase();
+  var v=r[k]; var num=Number(v); return isFinite(num)&&v!==""&&v!=null?num:String(v==null?"":v).toLowerCase();
+}
+var ALL=[], sortKey="_warn", sortDir=-1, filter="all", q="";
+function passFilter(r){
+  if(q){var s=(String(r.shop_name||"")+" "+String(r.shop_code||"")).toLowerCase();if(s.indexOf(q)<0)return false;}
+  if(filter==="attn")return ((Number(r.overdue)||0)+(Number(r.logistics)||0))>0;
+  if(filter==="4s")return Number(r.has_4seller)===1;
+  if(filter==="lo")return isFinite(Number(r.violation_score))&&Number(r.violation_score)<200;
+  return true;
+}
+function renderHead(){
+  var h="<tr>";
+  COLS.forEach(function(c){
+    if(c.sort===0){h+="<th></th>";return;}
+    var ar=sortKey===c.k?(sortDir<0?"▾":"▴"):"";
+    h+='<th class="'+(c.num?"num":"")+'" data-k="'+c.k+'">'+esc(c.t)+'<span class="ar">'+ar+'</span></th>';
+  });
+  document.querySelector("#tbl thead").innerHTML=h+"</tr>";
+}
+function renderBody(){
+  var rows=ALL.filter(passFilter);
+  rows.sort(function(a,b){var x=sortVal(a,sortKey),y=sortVal(b,sortKey);if(x<y)return sortDir;if(x>y)return -sortDir;return 0;});
+  var tb=document.querySelector("#tbl tbody");
+  if(!rows.length){tb.innerHTML='<tr><td class="empty" colspan="'+COLS.length+'">Không có shop khớp.</td></tr>';document.getElementById("foot").textContent="";return;}
+  tb.innerHTML=rows.map(function(r){
+    var attn=((Number(r.overdue)||0)+(Number(r.logistics)||0))>0;
+    return '<tr class="'+(attn?"attn":"")+'">'+COLS.map(function(c){return '<td class="'+(c.num?"num":"")+'">'+c.cell(r)+'</td>';}).join("")+'</tr>';
+  }).join("");
+  document.getElementById("foot").textContent="Hiển thị "+rows.length+" / "+ALL.length+" shop.";
+}
+function renderTiles(o){
+  var t=[
+    {b:o.with_daily,s:"Shop có data",c:"tealt"},
+    {b:o.has_4seller,s:"Có 4Seller"},
+    {b:o.order_issues.overdue,s:"⚠️ Đơn quá hạn",c:o.order_issues.overdue?"crit":""},
+    {b:o.order_issues.logistics,s:"🚚 Logistics issue",c:o.order_issues.logistics?"warn":""},
+    {b:o.rec_totals.delist,s:"🗑️ SP nên xoá"},
+    {b:o.rec_totals.flash,s:"⚡ SP nên flash",c:"warn"},
+    {b:o.rec_totals.video,s:"🎬 SP nên video",c:"tealt"}
+  ];
+  document.getElementById("tiles").innerHTML=t.map(function(x){return '<div class="tile '+(x.c||"")+'"><b>'+n(x.b)+'</b><span>'+x.s+'</span></div>';}).join("");
+}
+function load(){
+  fetch("/admin/api/tikcrm/fleet").then(function(r){if(r.status===401){location.href="/admin/login";throw 0;}return r.json();}).then(function(d){
+    ALL=d.shops||[]; renderTiles(d.overview); renderHead(); renderBody();
+    document.getElementById("sub").textContent=(d.overview.meta_total||ALL.length)+" shop đã biết · "+ALL.length+" shop có data hôm nay";
+  }).catch(function(){document.querySelector("#tbl tbody").innerHTML='<tr><td class="empty">Không tải được dữ liệu.</td></tr>';});
+}
+document.addEventListener("click",function(e){
+  var th=e.target.closest&&e.target.closest("th[data-k]");
+  if(th){var k=th.getAttribute("data-k");if(sortKey===k)sortDir=-sortDir;else{sortKey=k;sortDir=-1;}renderHead();renderBody();return;}
+  var ch=e.target.closest&&e.target.closest(".chip");
+  if(ch){document.querySelectorAll(".chip").forEach(function(c){c.classList.remove("on");});ch.classList.add("on");filter=ch.getAttribute("data-f");renderBody();}
+});
+document.getElementById("q").addEventListener("input",function(e){q=e.target.value.trim().toLowerCase();renderBody();});
+load();
+</script></body></html>

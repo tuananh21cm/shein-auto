@@ -18,6 +18,21 @@ export const generateDescriptionHtml = (
   return items.map((item) => `<p><strong>${item.key}:</strong> ${item.value}</p>`).join("");
 };
 
+/** Fallback text "How To Measure" khi không build được ảnh Size Guide (port từ main). */
+export const generateMeasureGuideHtml = (measureGuide?: {
+  items: { index?: string; name: string; desc: string }[];
+  image?: string | null;
+}): string => {
+  if (!measureGuide || !measureGuide.items?.length) return "";
+  const img = measureGuide.image
+    ? `<figure class="image"><img src="${measureGuide.image}" alt="How to measure guide"></figure>`
+    : "";
+  const list = measureGuide.items
+    .map((it, i) => `<p><strong>${it.index || i + 1}. ${it.name}:</strong> ${it.desc}</p>`)
+    .join("");
+  return `<p><strong>📏 How To Measure</strong></p>${list}${img}`;
+};
+
 export const fillDescription = async (page: any, text: string): Promise<void> => {
   const editor = page.locator(".ck-editor__editable_inline");
 

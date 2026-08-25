@@ -8,6 +8,7 @@ import { refreshQueueSnapshot } from "../state/queueState";
 import { historyStore } from "../state/historyStore";
 import { notifyFail } from "../services/notification/telegram";
 import { getAllUsersForCron, getAllUserDirs, UserDirs, getEffectiveSettings } from "../state/userDirs";
+import { pushRegistryForListingJson } from "../core/crmSync";
 import { loadAdminConfig } from "../adminConfig";
 
 const LAST_FOLDER_FILE_NAME = ".last_folder.txt";
@@ -156,6 +157,16 @@ export const processFile = async (
         );
       }
       console.log(`✅ [${owner}/${folderName}] Hoàn thành: ${fileName}`);
+
+      // Đẩy registry lên CRM (agent bridge) — fire-and-forget, lỗi không ảnh hưởng flow.
+      void (async () => {
+        try {
+          const movedPath = path.join(successDir, fileName);
+          const src = (await fs.pathExists(movedPath)) ? movedPath : claimedPath;
+          const data = JSON.parse(await fs.readFile(src, "utf-8"));
+          await pushRegistryForListingJson(data, folderName, profile);
+        } catch { /* bridge tắt / file đã bị dọn — snapshot cron sẽ bù */ }
+      })();
 
       const finishedAt = Date.now();
       await historyStore.add({

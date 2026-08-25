@@ -30,3 +30,12 @@ temp_size_chart_*.png
 
 # IDE/agent skills (không phải code dự án)
 .agents/
+
+# Runtime data (toan bo) + temp render + junk
+data/
+src/core/steps/temp_*.png
+*.stackdump
+config/proxies.txt
+config/trend.json
+config/tiktok-categories.backup-*.json
+_gv3.ts

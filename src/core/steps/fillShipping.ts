@@ -12,20 +12,25 @@ export const fillShippingAndCertification = async (page: any): Promise<void> => 
 
   try {
     const p = pricing();
-    await page.getByPlaceholder("Enter the product weight").fill(p.defaultWeight);
-    await page.getByPlaceholder("Length").fill(p.defaultDimensions.length);
-    await page.getByPlaceholder("Width").fill(p.defaultDimensions.width);
+    await page.getByPlaceholder("Enter the product weight").first().fill(p.defaultWeight);
 
-    const heightInput = page.locator('input[placeholder="Height"]');
-    if ((await heightInput.count()) > 0) {
-      await heightInput.first().fill(p.defaultDimensions.height);
-    } else {
-      const dimRow = page
-        .locator(".el-form-item")
-        .filter({ hasText: "Product Dimensions" });
+    // Form 4Seller có NHIỀU ô placeholder "Length"/"Width"/"Height" (size chart, section khác)
+    // → phải scope vào đúng form-item "Product Dimensions", tuyệt đối không match toàn trang.
+    const dimRow = page.locator(".el-form-item").filter({ hasText: "Product Dimensions" }).first();
+    const dimScoped = (await dimRow.count()) > 0;
+    const scope = dimScoped ? dimRow : page;
+    const fillDim = async (ph: string, val: string) => {
+      const inp = scope.getByPlaceholder(ph);
+      if ((await inp.count()) > 0) { await inp.first().fill(val); return true; }
+      return false;
+    };
+    await fillDim("Length", p.defaultDimensions.length);
+    await fillDim("Width", p.defaultDimensions.width);
+    if (!(await fillDim("Height", p.defaultDimensions.height)) && dimScoped) {
+      // Không có placeholder Height → ô thứ 3 trong dimensions row
       await dimRow.locator("input.el-input__inner").nth(2).fill(p.defaultDimensions.height);
     }
-    console.log(`✅ Đã điền Height: ${p.defaultDimensions.height}`);
+    console.log(`✅ Đã điền Dimensions L/W/H (scope: ${dimScoped ? "Product Dimensions row" : "toàn trang"})`);
 
     for (const labelText of CERT_FIELDS) {
       const formItem = page.locator(".el-form-item").filter({ hasText: labelText });

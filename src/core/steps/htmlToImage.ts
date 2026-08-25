@@ -1,10 +1,11 @@
+import nodeHtmlToImage from "node-html-to-image";
 import axios from "axios";
-import { chromium } from "playwright-core";
 
 /**
- * Tải 1 ảnh remote → data URI base64. SHEIN chặn hotlink từ Chrome headless (Cloudflare/referer)
- * → `<img src=URL>` không load (ảnh trắng/timeout). Tải bằng Node kèm Referer rồi nhúng base64
- * → render khỏi cần mạng. Trả null nếu lỗi.
+ * Tải 1 ảnh remote → data URI base64. Dùng khi render HTML→ảnh: ảnh SHEIN bị chặn hotlink
+ * từ Chrome headless (Cloudflare/referer) → nếu để `<img src=URL>` thì ảnh KHÔNG load
+ * (banner trắng/timeout). Tải bằng Node (kèm Referer) rồi nhúng base64 → render khỏi cần mạng.
+ * Trả null nếu tải lỗi.
  */
 export async function fetchAsDataUri(url: string): Promise<string | null> {
   try {
@@ -25,18 +26,32 @@ export async function fetchAsDataUri(url: string): Promise<string | null> {
   }
 }
 
-/** Tải nhiều ảnh → data URI song song; bỏ ảnh lỗi (giữ thứ tự tải được). */
+/** Tải nhiều ảnh → data URI song song; bỏ ảnh tải lỗi (giữ thứ tự ảnh tải được). */
 export async function fetchImagesAsDataUris(urls: string[]): Promise<string[]> {
   const out = await Promise.all(urls.map(fetchAsDataUri));
   return out.filter((u): u is string => !!u);
 }
 
-const STABLE_ARGS = ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", "--disable-gpu"];
+/**
+ * Args Chromium ổn định cho render HTML→ảnh (node-html-to-image dùng puppeteer).
+ * Giảm crash launch + tránh treo do /dev/shm nhỏ.
+ */
+const STABLE_ARGS = [
+  "--no-sandbox",
+  "--disable-setuid-sandbox",
+  "--disable-dev-shm-usage",
+  "--disable-gpu",
+];
 
 /**
- * Render HTML → file PNG. Dùng playwright-core (đã có sẵn cho listing) thay node-html-to-image
- * → khỏi thêm dep bundle Chromium. Ảnh marketing là phụ: quá timeoutMs thì throw để caller
- * bỏ qua, KHÔNG treo pipeline. Ảnh remote nên nhúng base64 trước (fetchAsDataUri) để render offline.
+ * Render HTML → file PNG AN TOÀN. Dùng chung cho banner / color showcase / size guide.
+ *
+ * - Luôn pass STABLE_ARGS để Chromium con ổn định.
+ * - Bọc timeout cứng: render nạp ảnh REMOTE (SHEIN) có thể treo → quá hạn thì reject
+ *   để caller bắt và bỏ qua (ảnh marketing là phụ), KHÔNG để treo cả pipeline.
+ *
+ * Lỗi luôn ném ra dưới dạng rejected Promise (caller phải try/catch) — không bao giờ
+ * crash process. Mọi 'error' event lạ của puppeteer được chặn ở handler global (index.ts).
  */
 export async function renderHtmlToImage(opts: {
   output: string;
@@ -45,13 +60,24 @@ export async function renderHtmlToImage(opts: {
   timeoutMs?: number;
 }): Promise<void> {
   const { output, html, viewport, timeoutMs = 40_000 } = opts;
-  const browser = await chromium.launch({ args: STABLE_ARGS });
+  let timer: NodeJS.Timeout | undefined;
+  const guard = new Promise<never>((_, reject) => {
+    timer = setTimeout(
+      () => reject(new Error(`renderHtmlToImage quá hạn ${timeoutMs}ms (ảnh remote chậm/chặn)`)),
+      timeoutMs
+    );
+  });
+  const task = nodeHtmlToImage({
+    output,
+    html,
+    puppeteerArgs: {
+      args: STABLE_ARGS,
+      ...(viewport ? { defaultViewport: viewport } : {}),
+    },
+  });
   try {
-    const page = await browser.newPage(viewport ? { viewport } : {});
-    await page.setContent(html, { waitUntil: "load", timeout: timeoutMs });
-    // Screenshot body (clip đúng nội dung render) — khớp hành vi node-html-to-image.
-    await page.locator("body").screenshot({ path: output, timeout: timeoutMs });
+    await Promise.race([task, guard]);
   } finally {
-    await browser.close().catch(() => {});
+    if (timer) clearTimeout(timer);
   }
 }

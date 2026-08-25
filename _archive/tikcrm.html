@@ -1,0 +1,656 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>TikCRM · Shop Health</title>
+<style>
+  :root{
+    --bg:#f6f7f9; --card:#fff; --line:#e4e7ec; --tx:#1a1d21; --mut:#667085;
+    --accent:#009995; --bad:#d92d20; --warn:#dc6803; --ok:#12b76a; --head:#f0f2f5;
+  }
+  @media (prefers-color-scheme:dark){
+    :root{ --bg:#14171a; --card:#1c2024; --line:#2c3138; --tx:#e6e9ee; --mut:#8a94a3;
+      --accent:#2dd4cf; --head:#22272e; }
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font:14px/1.5 system-ui,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--tx)}
+  header{display:flex;align-items:center;gap:14px;padding:14px 20px;border-bottom:1px solid var(--line);background:var(--card);position:sticky;top:0;z-index:5}
+  header h1{font-size:17px;margin:0;font-weight:650}
+  header .sp{flex:1}
+  a.back{color:var(--accent);text-decoration:none;font-weight:600}
+  .stats{display:flex;gap:10px;flex-wrap:wrap;padding:14px 20px}
+  .stat{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 14px;min-width:110px;cursor:pointer}
+  .stat.act{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent) inset}
+  .ov{padding:16px 20px 0}
+  .ovgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+  .ovcard{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+  .ovcard .big{font-size:22px;font-weight:730;letter-spacing:-.01em;display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}
+  .ovcard .lbl{color:var(--mut);font-size:12px;margin-bottom:4px;text-transform:uppercase;letter-spacing:.05em}
+  .ovcard .seg{font-size:13px;font-weight:600}
+  .seg.ok{color:var(--ok)} .seg.warn{color:var(--warn)} .seg.bad{color:var(--bad)}
+  .attn{margin-top:10px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 14px}
+  .attn .h{font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--bad);font-weight:700;margin-bottom:6px}
+  .attn .row{display:flex;flex-wrap:wrap;gap:6px}
+  .attn .a{cursor:pointer;background:rgba(217,45,32,.1);color:var(--bad);border:1px solid rgba(217,45,32,.25);border-radius:8px;padding:3px 9px;font-size:12.5px}
+  .attn .a:hover{background:rgba(217,45,32,.18)}
+  .stat b{display:block;font-size:20px;font-weight:700}
+  .stat span{color:var(--mut);font-size:12px}
+  .toolbar{padding:0 20px 12px;display:flex;gap:10px;align-items:center}
+  input[type=search]{flex:1;max-width:340px;padding:8px 12px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--tx)}
+  select{padding:8px 12px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--tx);max-width:320px}
+  .chip{display:inline-flex;align-items:center;gap:8px;padding:7px 10px;border-radius:8px;background:rgba(0,153,149,.12);color:var(--accent);font-size:12px;font-weight:600}
+  .chip .x{cursor:pointer;font-weight:800}
+  .modal-back{position:fixed;inset:0;background:rgba(0,0,0,.4);opacity:0;pointer-events:none;transition:.2s;z-index:25}
+  .modal-back.open{opacity:1;pointer-events:auto}
+  .modal{position:fixed;top:50%;left:50%;transform:translate(-50%,-46%) scale(.98);opacity:0;pointer-events:none;transition:.2s;width:min(560px,94vw);background:var(--card);border:1px solid var(--line);border-radius:12px;padding:18px 20px;z-index:26;box-shadow:0 20px 60px rgba(0,0,0,.3)}
+  .modal.open{opacity:1;pointer-events:auto;transform:translate(-50%,-50%) scale(1)}
+  .modal h3{margin:0 0 6px}
+  .modal p{margin:0 0 10px;color:var(--mut);font-size:13px}
+  .modal textarea{width:100%;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--tx);padding:10px;font:12px/1.5 ui-monospace,Consolas,monospace;resize:vertical}
+  .modal-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:12px}
+  .modal-actions .primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+  button{padding:8px 12px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--tx);cursor:pointer}
+  button:hover{border-color:var(--accent)}
+  button.on{border-color:var(--accent);background:rgba(0,153,149,.14);color:var(--accent)}
+  .wrap{padding:0 20px 40px}
+  .tblbox{overflow-x:auto;border:1px solid var(--line);border-radius:10px;background:var(--card)}
+  table{border-collapse:collapse;width:100%;min-width:1240px;font-size:13px}
+  th,td{padding:9px 12px;text-align:left;border-bottom:1px solid var(--line);white-space:nowrap}
+  th{background:var(--head);font-weight:600;color:var(--mut);position:sticky;top:0}
+  tbody tr:hover{background:var(--head)}
+  .cp{cursor:copy}
+  .cp:hover{text-decoration:underline dotted;color:var(--accent)}
+  .detbtn{padding:4px 10px;font-size:12px}
+  #copytip{position:fixed;z-index:40;background:var(--tx);color:var(--card);padding:4px 10px;border-radius:6px;font-size:12px;pointer-events:none;opacity:0;transition:opacity .15s;white-space:nowrap}
+  #copytip.show{opacity:1}
+  .num{text-align:right;font-variant-numeric:tabular-nums}
+  .pill{display:inline-block;padding:1px 8px;border-radius:999px;font-size:12px;font-weight:600}
+  .p-ok{background:rgba(18,183,106,.14);color:var(--ok)}
+  .p-warn{background:rgba(220,104,3,.14);color:var(--warn)}
+  .p-bad{background:rgba(217,45,32,.14);color:var(--bad)}
+  .p-mut{background:var(--head);color:var(--mut)}
+  .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;vertical-align:middle}
+  .d-ok{background:var(--ok)} .d-warn{background:var(--warn)} .d-bad{background:var(--bad)} .d-mut{background:var(--mut)}
+  .fresh{font-size:12px;color:var(--mut)}
+  .empty{padding:40px;text-align:center;color:var(--mut)}
+  .drawer{position:fixed;top:0;right:0;height:100%;width:min(620px,96vw);background:var(--card);border-left:1px solid var(--line);box-shadow:-8px 0 30px rgba(0,0,0,.18);transform:translateX(100%);transition:.22s;overflow:auto;z-index:20}
+  .drawer.open{transform:none}
+  .dh{display:flex;align-items:center;gap:10px;padding:16px 18px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--card);z-index:2}
+  .dh h2{font-size:16px;margin:0;flex:1}
+  .dh button{border:none;background:none;font-size:22px;line-height:1;color:var(--mut)}
+  .dbody{padding:16px 18px}
+  .kv{display:grid;grid-template-columns:180px 1fr;gap:6px 12px;font-size:13px;margin-bottom:8px}
+  .kv .k{color:var(--mut)}
+  .kv .v{word-break:break-word}
+  pre{background:var(--head);border:1px solid var(--line);border-radius:8px;padding:12px;overflow:auto;font-size:12px;max-height:360px;white-space:pre-wrap;word-break:break-word}
+  .sec{font-weight:650;margin:16px 0 8px;padding-top:8px;border-top:1px solid var(--line)}
+  .sec2{font-weight:650;font-size:13px;margin:12px 0 5px;color:var(--mut)}
+  .recbox{background:var(--sunk,var(--head));border:1px solid var(--line);border-radius:10px;padding:12px 14px}
+  .recbtn{margin-top:10px;background:var(--accent);color:#fff;border-color:var(--accent)}
+  details{margin:2px 0}
+  summary{cursor:pointer;color:var(--accent)}
+  .lbox{max-height:340px;overflow:auto;border:1px solid var(--line);border-radius:8px;margin-top:6px}
+  .ltbl{width:100%;border-collapse:collapse;font-size:12px}
+  .ltbl th,.ltbl td{padding:5px 8px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}
+  .ltbl th:first-child,.ltbl td:first-child{text-align:left;white-space:normal;max-width:220px}
+  .ltbl th{color:var(--mut);font-weight:600;position:sticky;top:0;background:var(--head)}
+  .up{color:var(--ok);font-weight:600} .down{color:var(--bad);font-weight:600}
+  .vrec{border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin:6px 0;font-size:12px}
+  .vrec b{display:block}
+  .backdrop{position:fixed;inset:0;background:rgba(0,0,0,.35);opacity:0;pointer-events:none;transition:.2s;z-index:15}
+  .backdrop.open{opacity:1;pointer-events:auto}
+</style>
+</head>
+<body>
+<header>
+  <h1>🩺 TikCRM · Shop Health</h1>
+  <span class="fresh" id="updated"></span>
+  <span class="sp"></span>
+  <a class="back" href="/admin">← Admin</a>
+</header>
+
+<div id="overview"></div>
+
+<div class="stats" id="stats"></div>
+
+<div class="toolbar">
+  <input type="search" id="q" placeholder="Tìm theo tên shop / code / trạng thái…" />
+  <select id="status" title="Lọc theo trạng thái shop"><option value="all">Tất cả trạng thái</option></select>
+  <select id="newf" title="Chỉ hiện shop MỚI THÊM trong khoảng thời gian (theo lần đầu gửi data về, không tính update)">
+    <option value="0">🆕 Mới thêm: tắt</option>
+    <option value="2">Mới thêm 2h</option>
+    <option value="8">Mới thêm 8h</option>
+    <option value="12">Mới thêm 12h</option>
+    <option value="24">Mới thêm 24h</option>
+    <option value="72">Mới thêm 3 ngày</option>
+    <option value="168">Mới thêm 7 ngày</option>
+    <option value="720">Mới thêm 30 ngày</option>
+  </select>
+  <button id="emOpen">📧 Lọc email</button>
+  <span id="emChip" class="chip" style="display:none"></span>
+  <button id="hide9999" title="Ẩn shop có Health = 9999">🙈 Ẩn Health 9999</button>
+  <button id="reload">↻ Tải lại</button>
+  <span id="count" class="chip" title="Số shop khớp bộ lọc hiện tại / tổng"></span>
+</div>
+
+<div class="wrap">
+  <div class="tblbox">
+    <table id="tbl">
+      <thead><tr>
+        <th>Shop</th><th>Email (thuế)</th><th>Trạng thái</th><th>apps.kbt</th><th>Health</th><th>Vi phạm</th>
+        <th class="num">Net earnings</th><th class="num">On hold</th><th class="num">Total holding</th>
+        <th class="num">Đơn hôm nay</th><th class="num">Tổng đơn</th><th class="num">Listings</th><th>Cập nhật</th><th></th>
+      </tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </div>
+  <div class="empty" id="empty" style="display:none">Chưa có shop nào gửi data về. Bật extension + tunnel rồi chờ lần sync đầu.</div>
+</div>
+
+<div class="modal-back" id="emBack"></div>
+<div class="modal" id="emModal">
+  <h3>📧 Lọc theo danh sách email</h3>
+  <p>Dán danh sách email (mỗi dòng 1 email, hoặc cách nhau bởi dấu phẩy/xuống dòng). Khớp theo <b>domain</b> — email shop bị TikTok che phần đầu nên chỉ so phần sau <code>@</code>. Có thể dán thẳng domain.</p>
+  <textarea id="emText" rows="11" placeholder="info@pupandgrind.com&#10;info@ralliepets.com&#10;..."></textarea>
+  <div class="modal-actions">
+    <button id="emClear">Xóa lọc</button>
+    <button id="emCancel">Đóng</button>
+    <button id="emApply" class="primary">Áp dụng</button>
+  </div>
+</div>
+
+<div class="backdrop" id="backdrop"></div>
+<aside class="drawer" id="drawer">
+  <div class="dh"><h2 id="dTitle">Shop</h2><button id="dClose">×</button></div>
+  <div class="dbody">
+    <div id="dStatus" style="margin-bottom:12px"></div>
+    <div class="sec" style="border:none;padding:0;margin-top:0">🤖 Đề xuất AI</div>
+    <div id="dRec" class="recbox">—</div>
+    <div class="sec">Toàn bộ dữ liệu</div>
+    <div class="kv" id="dKv"></div>
+    <div id="dViol"></div>
+    <div class="sec">📦 Listings & view (28 ngày)</div>
+    <div id="dListings" class="fresh">—</div>
+    <div class="sec">📊 Biến động view (theo ngày)</div>
+    <div id="dMove" class="fresh">—</div>
+    <div class="sec">🚚 Trạng thái đơn (Action needed)</div>
+    <div id="dOrders" class="fresh">—</div>
+    <div class="sec">💰 Sao kê tài chính</div>
+    <div id="dFinance" class="fresh">—</div>
+    <div class="sec">🎁 Promotion</div>
+    <div id="dPromo" class="fresh">—</div>
+    <div class="sec">Lịch sử gần đây</div>
+    <div id="dHist" class="fresh"></div>
+    <div class="sec">Payload JSON thô</div>
+    <pre id="dJson"></pre>
+  </div>
+</aside>
+
+<script>
+const $ = (s)=>document.querySelector(s);
+let SHOPS = [], FILTER = "all", STATUS = "all", NEWF = 0, KBT = {};
+
+// Click-to-copy: copy text + tooltip xác nhận tại vị trí chuột
+let _tipTimer = null;
+async function copyText(text, ev){
+  if(!text) return;
+  try {
+    if(navigator.clipboard && window.isSecureContext) await navigator.clipboard.writeText(text);
+    else { const ta=document.createElement("textarea"); ta.value=text; ta.style.position="fixed"; ta.style.opacity="0"; document.body.appendChild(ta); ta.select(); document.execCommand("copy"); ta.remove(); }
+    showCopyTip(ev, "✓ Đã copy: " + (text.length>40? text.slice(0,40)+"…" : text));
+  } catch { showCopyTip(ev, "✗ Copy lỗi"); }
+}
+function showCopyTip(ev, msg){
+  let tip = document.getElementById("copytip");
+  if(!tip){ tip=document.createElement("div"); tip.id="copytip"; document.body.appendChild(tip); }
+  tip.textContent = msg;
+  tip.style.left = Math.min(ev.clientX+12, innerWidth-260)+"px";
+  tip.style.top = (ev.clientY+14)+"px";
+  tip.classList.add("show");
+  clearTimeout(_tipTimer); _tipTimer = setTimeout(()=> tip.classList.remove("show"), 1100);
+}
+
+// Shop "mới thêm" = first_seen (lần ĐẦU gửi data về) trong vòng `hours` giờ — update không tính.
+const firstSeenMs = (s)=> s.first_seen ? Date.parse(s.first_seen) : NaN;
+const isNewWithin = (s, hours)=> { const t=firstSeenMs(s); return Number.isFinite(t) && (Date.now()-t) <= hours*3.6e6; };
+
+const isMoney = (v)=> v && typeof v==="object" && ("amount" in v) && ("currency" in v);
+const money = (m)=>{ if(m==null) return "—"; if(isMoney(m)) return (m.amount??"0")+" "+(m.currency??""); return String(m); };
+const n = (v)=> (v==null||v==="") ? "—" : (isNaN(Number(v))?String(v):Number(v).toLocaleString());
+function ago(iso){ if(!iso) return "—"; const s=(Date.now()-new Date(iso))/1000;
+  if(s<60) return Math.floor(s)+"s"; if(s<3600) return Math.floor(s/60)+"m";
+  if(s<86400) return Math.floor(s/3600)+"h"; return Math.floor(s/86400)+"d"; }
+function freshClass(iso){ if(!iso) return "p-mut"; const h=(Date.now()-new Date(iso))/3.6e6; return h<24?"p-ok":h<72?"p-warn":"p-bad"; }
+function esc(s){ return (s==null?"":String(s)).replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c])); }
+const taxEmail = (p)=> (p && p.tax_detail && p.tax_detail.tax_email) || "";
+let EMAILFILTER = null; // null=tắt; {emails:Set, domains:Set, count, raw}
+let HIDE9999 = false;   // true = ẩn shop có assessment_current_level = 9999
+const is9999 = (s)=> s.assessment_current_level==null || s.assessment_current_level===9999;
+function parseEmailList(text){
+  const emails=new Set(), domains=new Set();
+  const toks = String(text||"").split(/[\s,;]+/).map(x=>x.trim().toLowerCase()).filter(Boolean);
+  toks.forEach(tok=>{
+    if(tok.includes("@")){ emails.add(tok); const d=tok.split("@")[1]; if(d) domains.add(d); }
+    else domains.add(tok.replace(/^@/,""));
+  });
+  return {emails, domains, count:toks.length, raw:text};
+}
+function inEmailList(s){
+  if(!EMAILFILTER) return true;
+  const e = taxEmail(s).toLowerCase();
+  if(!e) return false;
+  if(EMAILFILTER.emails.has(e)) return true;
+  const d = e.split("@")[1];
+  return d ? EMAILFILTER.domains.has(d) : false;
+}
+const netVal = (p)=>{ const a = p && p.net_earnings; const x = isMoney(a)?a.amount:a; const nn=Number(x); return isNaN(nn)?-Infinity:nn; };
+
+// ── Sống / Chết / Nguy hiểm — suy từ shop_status + cờ restriction ──
+function life(p){
+  const raw = String(p.shop_status||"").trim();
+  const s = raw.toLowerCase();
+  const restricted = p.is_shop_restricted===true || p.enforcement_is_enforced===true;
+  if(!raw && !restricted) return {cat:"unknown", dot:"d-mut", cls:"p-mut", label:"?"};
+  if(s==="live") return {cat:"alive", dot:"d-ok", cls:"p-ok", label:raw};
+  if(/closed|đóng|terminat|deactiv|banned/.test(s)) return {cat:"dead", dot:"d-bad", cls:"p-bad", label:raw};
+  if(restricted || /die|restrict|ivr|improve|verif|jumio|updoc|suspend|frozen|review|punish/.test(s))
+    return {cat:"risk", dot:"d-warn", cls:"p-warn", label:raw||"Restricted"};
+  return {cat:"risk", dot:"d-warn", cls:"p-warn", label:raw};
+}
+function kbtPill(s){
+  if(s.kbt_linked===true) return '<span class="pill p-ok">Đã có</span>';
+  if(s.kbt_linked===false) return '<span class="pill p-bad">Chưa có</span>';
+  return '<span class="pill p-mut">?</span>';
+}
+function healthPill(p){
+  const lvl = p.assessment_current_level;
+  if(lvl==null || lvl===9999) return '<span class="pill p-mut">?</span>';
+  const cls = lvl<=1?"p-bad":lvl<=2?"p-warn":"p-ok";
+  return `<span class="pill ${cls}">Lv ${lvl}</span>`;
+}
+function violPill(p){
+  const sc = Number(p.violation_score||0);
+  const cnt = Array.isArray(p.violation_records)?p.violation_records.length:0;
+  const cls = sc>0||cnt>0 ? (sc>=6?"p-bad":"p-warn") : "p-ok";
+  return `<span class="pill ${cls}">${sc}${cnt?` · ${cnt} rec`:""}</span>`;
+}
+
+function render(){
+  const q = $("#q").value.trim().toLowerCase();
+  let list = SHOPS.filter(s=> !q ||
+    (s.shop_name||"").toLowerCase().includes(q) ||
+    (s.shop_code||"").toLowerCase().includes(q) ||
+    (s.shop_status||"").toLowerCase().includes(q) ||
+    taxEmail(s).toLowerCase().includes(q));
+  if(FILTER==="alive"||FILTER==="risk"||FILTER==="dead") list = list.filter(s=> life(s).cat===FILTER);
+  else if(FILTER==="kbt_yes") list = list.filter(s=> s.kbt_linked===true);
+  else if(FILTER==="kbt_no")  list = list.filter(s=> s.kbt_linked===false);
+  if(HIDE9999) list = list.filter(s=> !is9999(s));
+  if(STATUS!=="all") list = list.filter(s=> String(s.shop_status||"")===STATUS);
+  if(NEWF>0) list = list.filter(s=> isNewWithin(s, NEWF));
+  if(EMAILFILTER) list = list.filter(inEmailList);
+  updateChip();
+  updateHideBtn();
+  // Số kết quả sau khi áp mọi bộ lọc (search/status/mới thêm/email/9999)
+  const filtered = list.length !== SHOPS.length;
+  $("#count").textContent = filtered ? `Lọc: ${list.length.toLocaleString()} / ${SHOPS.length.toLocaleString()} shop` : `${SHOPS.length.toLocaleString()} shop`;
+  $("#count").style.background = filtered ? "rgba(220,104,3,.14)" : "";
+  $("#count").style.color = filtered ? "var(--warn)" : "";
+  if(NEWF>0) list.sort((a,b)=> (firstSeenMs(b)||0)-(firstSeenMs(a)||0)); // đang lọc mới thêm → mới nhất lên đầu
+  else list.sort((a,b)=> netVal(b)-netVal(a)); // mặc định sort net earnings cao → thấp
+  $("#empty").style.display = SHOPS.length?"none":"block";
+
+  const now=Date.now();
+  const c = {alive:0, risk:0, dead:0, unknown:0};
+  SHOPS.forEach(s=> c[life(s).cat]++);
+  const stale = SHOPS.filter(s=> (now-new Date(s.received_at))/3.6e6 > 24).length;
+  const kbtYes = SHOPS.filter(s=> s.kbt_linked===true).length;
+  const kbtNo  = SHOPS.filter(s=> s.kbt_linked===false).length;
+  const cards = [
+    ["all","Tất cả",SHOPS.length,""],
+    ["alive","🟢 Sống",c.alive,""],
+    ["risk","🟠 Nguy hiểm",c.risk,""],
+    ["dead","🔴 Chết",c.dead,""],
+  ];
+  if(KBT.configured) cards.push(["kbt_yes","✅ Đã có KBT",kbtYes,""], ["kbt_no","❌ Chưa có KBT",kbtNo,""]);
+  cards.push(["__stale","Data cũ >24h",stale,""]);
+  $("#stats").innerHTML = cards.map(([k,lbl,v])=>
+    `<div class="stat ${FILTER===k?'act':''}" data-f="${k}"><b>${v}</b><span>${lbl}</span></div>`).join("");
+  $("#stats").querySelectorAll(".stat").forEach(el=> el.onclick=()=>{
+    const f=el.dataset.f; if(f==="__stale") return; FILTER=(FILTER===f?"all":f); render();
+  });
+
+  $("#rows").innerHTML = list.map((s)=>{
+    const L=life(s);
+    return `<tr data-code="${encodeURIComponent(s.shop_code||s.shop_id||'')}">
+      <td><div>${s.shop_name?`<span class="cp" data-copy="${esc(s.shop_name)}" title="Click để copy tên shop">${esc(s.shop_name)}</span>`:"—"}${isNewWithin(s,168)?` <span class="pill p-ok" title="Thêm vào: ${new Date(firstSeenMs(s)).toLocaleString()}">🆕 ${ago(s.first_seen)}</span>`:""}</div><div class="fresh">${(s.shop_code||s.shop_id)?`<span class="cp" data-copy="${esc(s.shop_code||s.shop_id)}" title="Click để copy code">${esc(s.shop_code)||esc(s.shop_id)}</span>`:""}</div></td>
+      <td class="fresh">${taxEmail(s)?`<span class="cp" data-copy="${esc(taxEmail(s))}" title="Click để copy email">${esc(taxEmail(s))}</span>`:"—"}</td>
+      <td><span class="pill ${L.cls}"><span class="dot ${L.dot}"></span>${esc(L.label)}</span></td>
+      <td>${kbtPill(s)}</td>
+      <td>${healthPill(s)}</td>
+      <td>${violPill(s)}</td>
+      <td class="num">${money(s.net_earnings)}</td>
+      <td class="num">${money(s.on_hold)}</td>
+      <td class="num">${money(s.total_holding)}</td>
+      <td class="num">${n(s.daily_orders)}</td>
+      <td class="num">${n(s.total_order)}</td>
+      <td class="num">${n(s.total_listings_active)}</td>
+      <td><span class="pill ${freshClass(s.received_at)}">${ago(s.received_at)}</span></td>
+      <td><button class="detbtn" data-det="${encodeURIComponent(s.shop_code||s.shop_id||'')}">Chi tiết</button></td>
+    </tr>`;}).join("");
+  // Click row KHÔNG mở sidebar nữa — chỉ nút "Chi tiết" mở; click tên/code/email = copy
+  $("#rows").querySelectorAll(".detbtn").forEach(b=> b.onclick=(e)=>{ e.stopPropagation(); openShop(b.dataset.det, list); });
+  $("#rows").querySelectorAll(".cp").forEach(el=> el.onclick=(e)=>{ e.stopPropagation(); copyText(el.dataset.copy||"", e); });
+}
+
+// ── format 1 giá trị bất kỳ để show hết ──
+const TIME_KEY = /(_time|_at|date|first_into)/i;
+function fmtVal(k, v){
+  if(v==null || v==="") return "—";
+  if(isMoney(v)) return esc(money(v));
+  if(TIME_KEY.test(k) && typeof v==="number" && v>1e9){
+    const ms = v<1e12 ? v*1000 : v; return esc(new Date(ms).toLocaleString());
+  }
+  if(Array.isArray(v)){
+    if(!v.length) return "—";
+    return `<details><summary>${v.length} mục</summary><pre>${esc(JSON.stringify(v,null,2))}</pre></details>`;
+  }
+  if(typeof v==="object"){
+    return `<details><summary>xem</summary><pre>${esc(JSON.stringify(v,null,2))}</pre></details>`;
+  }
+  if(typeof v==="boolean") return v ? "✔ true" : "✘ false";
+  return esc(String(v));
+}
+
+async function openShop(codeEnc, list){
+  const code = decodeURIComponent(codeEnc);
+  const cur = list.find(s=> (s.shop_code||s.shop_id)===code) || {};
+  const L = life(cur);
+  $("#dTitle").textContent = cur.shop_name || code;
+  $("#dStatus").innerHTML =
+    `<span class="pill ${L.cls}" style="font-size:14px;padding:3px 12px"><span class="dot ${L.dot}"></span>${esc(L.label)}</span>`
+    + `  ${healthPill(cur)}  ${violPill(cur)}`
+    + `  <button class="recbtn" style="margin-left:8px;padding:4px 10px" onclick="openReport('${code}')">🔗 Báo cáo</button>`;
+
+  // show HẾT field (bỏ các field lịch sử nội bộ + đã render riêng)
+  const skip = new Set(["received_at","violation_records","out_assessments"]);
+  const keys = Object.keys(cur).filter(k=> !skip.has(k)).sort();
+  const td = cur.tax_detail || {};
+  const taxRows = [
+    ["📧 Email (thuế)", td.tax_email],
+    ["Legal name", td.legal_name],
+    ["Địa chỉ (thuế)", td.address_line],
+  ].filter(([,v])=>v).map(([k,v])=>`<div class="k">${k}</div><div class="v"><b>${esc(v)}</b></div>`).join("");
+  $("#dKv").innerHTML = taxRows + keys.map(k=>
+    `<div class="k">${esc(k)}</div><div class="v">${fmtVal(k, cur[k])}</div>`).join("")
+    + `<div class="k">received_at</div><div class="v">${esc(new Date(cur.received_at).toLocaleString())} (${ago(cur.received_at)} trước)</div>`;
+
+  // violation records đẹp
+  const vr = Array.isArray(cur.violation_records)?cur.violation_records:[];
+  $("#dViol").innerHTML = vr.length
+    ? `<div class="sec">Vi phạm (${vr.length})</div>` + vr.map(r=>
+        `<div class="vrec"><b>${esc(r.reason||r.type||r.record_id||"?")}</b>${r.detail?esc(r.detail):""}${r.suggestion?`<div class="fresh">→ ${esc(r.suggestion)}</div>`:""}</div>`).join("")
+    : "";
+
+  $("#dJson").textContent = "Đang tải…";
+  openDrawer(true);
+  loadRecommend(code);
+  loadListings(code);
+  loadMovement(code);
+  loadOrderStatus(code);
+  loadFinance(code);
+  loadPromotion(code);
+  try{
+    const r = await fetch("/admin/api/tikcrm/shop/"+encodeURIComponent(code)); const j = await r.json();
+    const hist = (j.history||[]);
+    $("#dHist").innerHTML = hist.slice().reverse().map(h=>{
+      const p=h.payload||{}; const l=life(p);
+      return `${new Date(h.received_at).toLocaleString()} · <span class="pill ${l.cls}" style="padding:0 6px">${esc(l.label)}</span> · viol ${p.violation_score??"?"} · net ${money(p.net_earnings)} · đơn ${p.daily_orders??"?"}`;
+    }).join("<br>") || "chưa có lịch sử";
+    $("#dJson").textContent = JSON.stringify(hist.length?hist[hist.length-1].payload:cur, null, 2);
+  }catch(e){ $("#dJson").textContent = "lỗi tải lịch sử"; }
+}
+async function loadMovement(code){
+  const box=$("#dMove"); box.textContent="Đang tải…";
+  try{
+    const r=await fetch("/admin/api/tikcrm/movement/"+encodeURIComponent(code)); const j=await r.json();
+    if(!j.ok){ box.textContent=j.reason||"chưa đủ dữ liệu"; return; }
+    const c=j.counts;
+    const chips=`<span class="pill p-ok">▲ Tăng: <b>${c.up}</b></span> <span class="pill p-mut" style="margin:0 4px">■ Giữ nguyên: <b>${c.same}</b></span> <span class="pill p-bad">▼ Giảm: <b>${c.down}</b></span>`+
+      (c.added?` <span class="pill p-ok">＋ Mới: ${c.added}</span>`:"")+(c.removed?` <span class="pill p-bad">－ Mất: ${c.removed}</span>`:"");
+    const tbl=(title,items,cls)=> (items&&items.length)?`<div class="sec2">${title}</div><div class="lbox"><table class="ltbl"><thead><tr><th>Sản phẩm</th><th>View</th><th>Δ</th><th>%</th></tr></thead><tbody>`+
+      items.slice(0,10).map(x=>`<tr><td>${esc(x.product_name)||esc(x.product_id)}</td><td>${n(x.pv_28d)}</td><td class="${cls}">${x.d_pv>0?'+':''}${n(x.d_pv)}</td><td class="${cls}">${x.pct>0?'+':''}${x.pct}%</td></tr>`).join("")+`</tbody></table></div>`:"";
+    box.innerHTML=`<div class="fresh" style="margin-bottom:4px">so <b>${esc(j.from_day)}</b> → <b>${esc(j.to_day)}</b> · ${j.snapshot_days} ngày snapshot</div>${chips}`+
+      tbl("▲ Tăng view mạnh nhất", j.up, "up")+tbl("▼ Giảm view mạnh nhất", j.down, "down");
+  }catch(e){ box.textContent="lỗi tải biến động"; }
+}
+async function loadListings(code){
+  const box=$("#dListings"); box.textContent="Đang tải…";
+  try{
+    const r=await fetch("/admin/api/tikcrm/listings/"+encodeURIComponent(code)); const j=await r.json();
+    const rows=j.listings||[];
+    if(!rows.length){ box.textContent="Chưa có data listing (extension cào ~1 lần/ngày khi seller mở tab)."; return; }
+    const dpv=(d)=> d==null?"–":(d>0?`<span class="up">▲${d}</span>`:d<0?`<span class="down">▼${-d}</span>`:"0");
+    const head=`cào ${new Date(j.received_at).toLocaleString()} · ${j.total_product_count||rows.length} SP`+(j.prev_at?` · Δ so ${new Date(j.prev_at).toLocaleDateString()}`:" · chưa có mốc so sánh");
+    box.innerHTML = `<div class="fresh" style="margin-bottom:2px">${head}</div>`+
+      `<div class="lbox"><table class="ltbl"><thead><tr><th>Sản phẩm</th><th>PV 28d</th><th>Δ PV</th><th>Đơn</th><th>GMV</th><th>Tồn</th></tr></thead><tbody>`+
+      rows.map(x=>`<tr><td>${esc(x.product_name)||esc(x.product_id)}</td><td>${n(x.pv_28d)}</td><td>${dpv(x.d_pv)}</td><td>${n(x.orders_28d)}</td><td>${esc(x.gmv_28d)||"—"}</td><td>${n(x.stock)}${x.out_of_stock_sku?' <span class="down" title="có SKU hết hàng">•</span>':''}</td></tr>`).join("")+
+      `</tbody></table></div>`;
+  }catch(e){ box.textContent="lỗi tải listings"; }
+}
+async function loadRaw(kind, boxId, arrKey, label, code){
+  const box=$("#"+boxId); box.textContent="Đang tải…";
+  try{
+    const r=await fetch("/admin/api/tikcrm/raw/"+kind+"/"+encodeURIComponent(code)); const j=await r.json();
+    if(j.empty){ box.textContent=`Chưa có ${label} (extension cào ~1 lần/ngày khi seller mở tab).`; return; }
+    const arr=j[arrKey]||[];
+    const extra = j.total_amount!=null ? ` · tổng ${esc(j.total_amount)}` : "";
+    box.innerHTML=`<div class="fresh" style="margin-bottom:2px">cào ${new Date(j.received_at).toLocaleString()} · <b>${j.count??arr.length}</b> ${label}${extra}</div>`+
+      `<details><summary>xem JSON mẫu (${arr.length})</summary><pre>${esc(JSON.stringify(arr.slice(0,3),null,2))}</pre></details>`;
+  }catch(e){ box.textContent="lỗi tải "+label; }
+}
+function recList(title, items){
+  if(!items||!items.length) return "";
+  return `<div class="sec2">${title} (${items.length})</div>`+items.map(x=>`<div class="vrec"><b>${esc(x.san_pham)}</b>${esc(x.ly_do)}</div>`).join("");
+}
+function renderRec(rec, code){
+  const btn=`<button class="recbtn" onclick="genRec('${code}')">${rec?'↻ Chạy lại AI':'🤖 Tạo đề xuất (AI)'}</button>`;
+  if(!rec) return `<div class="fresh">Chưa có đề xuất cho shop này (cần có listing).</div>${btn}`;
+  let h=`<div style="margin-bottom:6px;font-weight:600">${esc(rec.tom_tat)}</div>`;
+  if(rec.canh_bao&&rec.canh_bao.length) h+=`<div class="sec2" style="color:var(--bad)">⚠️ Cảnh báo</div>`+rec.canh_bao.map(x=>`<div class="vrec" style="border-color:var(--bad)">${esc(x)}</div>`).join("");
+  h+=recList("🗑️ Nên xóa", rec.xoa);
+  h+=recList("⚡ Nên đẩy Flash", rec.flash);
+  h+=recList("🎬 Nên làm video", rec.video);
+  if(rec.video&&rec.video.length) h+=`<button class="recbtn" style="margin-top:6px;background:#7c3aed;border-color:#7c3aed" onclick="genVideo('${code}')">🎬 Gen video từ đề xuất (${rec.video.length})</button> `;
+  if(rec.dinh_huong&&rec.dinh_huong.length) h+=`<div class="sec2">🧭 Định hướng</div><ul style="margin:2px 0 0 18px;padding:0;font-size:13px">`+rec.dinh_huong.map(x=>`<li>${esc(x)}</li>`).join("")+`</ul>`;
+  return h+`<div id="genvidMsg" class="fresh" style="margin-top:6px"></div>`+btn;
+}
+async function genVideo(code){
+  const m=$("#genvidMsg"); if(m) m.textContent="🎬 Đang enqueue video (lấy ảnh từ 4Seller)…";
+  try{
+    const r=await fetch("/admin/api/tikcrm/gen-video/"+encodeURIComponent(code),{method:"POST"}); const j=await r.json();
+    if(m) m.innerHTML = j.ok
+      ? `<span class="up">✓ Đã tạo ${j.queued} video cho "${esc(j.shop_4seller)}" — đang render (không auto đăng).</span>${j.skipped&&j.skipped.length?` Bỏ ${j.skipped.length} SP không map được.`:""}`
+      : `<span class="down">${esc(j.error||"lỗi")}</span>`;
+  }catch(e){ if(m) m.textContent="lỗi gọi gen video"; }
+}
+async function openReport(code){
+  try{
+    const r=await fetch("/admin/api/tikcrm/report-link/"+encodeURIComponent(code));
+    if(r.status===401){ alert("Phiên đăng nhập đã hết (server vừa restart). Tải lại trang (Ctrl+F5) và đăng nhập lại."); return; }
+    const j=await r.json();
+    if(j&&j.path){
+      const full=location.origin+j.path;
+      const w=window.open(full,"_blank");
+      if(!w) prompt("Trình duyệt chặn mở tab — copy link báo cáo:", full);
+    } else alert("Lỗi tạo link: "+(j&&j.error?j.error:("HTTP "+r.status)));
+  }catch(e){ alert("Lỗi tạo link báo cáo: "+(e&&e.message?e.message:e)); }
+}
+async function loadRecommend(code){
+  const box=$("#dRec"); box.innerHTML="Đang tải…";
+  try{
+    const today=new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Ho_Chi_Minh'});
+    const r=await fetch("/admin/api/tikcrm/daily/"+encodeURIComponent(code)+"?day="+today); const j=await r.json();
+    box.innerHTML=renderRec(j.snapshot&&j.snapshot.recommendations, code);
+  }catch(e){ box.innerHTML="lỗi tải đề xuất"; }
+}
+async function genRec(code){
+  const box=$("#dRec"); box.innerHTML="🤖 Đang chạy Gemini… (vài giây)";
+  try{
+    const r=await fetch("/admin/api/tikcrm/recommend/"+encodeURIComponent(code),{method:"POST"}); const j=await r.json();
+    box.innerHTML = j.ok ? renderRec(j.rec, code) : `<div class="fresh">${esc(j.error||"lỗi")}</div><button class="recbtn" onclick="genRec('${code}')">Thử lại</button>`;
+  }catch(e){ box.innerHTML="lỗi gọi AI"; }
+}
+async function loadPromotion(code){
+  const box=$("#dPromo"); box.textContent="Đang tải…";
+  let ext="", fs="";
+  // (a) Extension: số lượng theo trạng thái
+  try{
+    const r=await fetch("/admin/api/tikcrm/raw/promotion/"+encodeURIComponent(code)); const j=await r.json();
+    if(!j.empty){
+      const q=(j.summary&&j.summary.quantity_info)||[], lbl={1:"Nháp",2:"Đang chạy",3:"Sắp tới"};
+      ext = q.map(x=>`<span class="pill ${x.quantity>0?'p-ok':'p-mut'}" style="margin:2px 6px 2px 0;display:inline-block">${lbl[x.promotion_status]||('status '+x.promotion_status)}: <b>${n(x.quantity)}</b></span>`).join("");
+    }
+  }catch(e){}
+  // (b) 4Seller: Flash / Discount + danh sách chi tiết (từ kho ngày)
+  try{
+    const today=new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Ho_Chi_Minh'});
+    const r2=await fetch("/admin/api/tikcrm/daily/"+encodeURIComponent(code)+"?day="+today); const j2=await r2.json();
+    const snap=j2.snapshot&&j2.snapshot.fourseller;
+    if(snap){
+      const acts=snap.activities||[];
+      fs=`<div style="margin-top:8px"><span class="pill p-warn" style="margin-right:6px">⚡ Flash: <b>${n(snap.promo_flash)}</b></span><span class="pill p-ok">🏷️ Discount: <b>${n(snap.promo_discount)}</b></span> <span class="fresh">· nguồn 4Seller</span></div>`;
+      if(acts.length) fs+=`<div class="lbox" style="margin-top:6px"><table class="ltbl"><thead><tr><th>Promotion</th><th>Loại</th><th>SP</th><th>Trạng thái</th><th>Kết thúc</th></tr></thead><tbody>`+
+        acts.map(a=>`<tr><td>${esc(a.name)}</td><td>${/FLASH/i.test(a.type)?'⚡ Flash':'🏷️ Discount'}</td><td>${n(a.products)}</td><td>${/ONGOING/i.test(a.status)?'<span class="up">đang chạy</span>':esc(a.status)}</td><td>${a.end?new Date(a.end).toLocaleDateString():'—'}</td></tr>`).join("")+`</tbody></table></div>`;
+    }
+  }catch(e){}
+  const extBlock = ext ? `<div class="fresh" style="margin-bottom:2px">Extension (đang chạy/sắp tới):</div>${ext}` : "";
+  const fsNote = fs ? "" : `<div class="fresh" style="margin-top:8px">Chưa map 4Seller cho shop này (chỉ shop có trên 4Seller mới có Flash/Discount chi tiết).</div>`;
+  box.innerHTML = (extBlock || fs ? (extBlock + fs + fsNote) : "Chưa có data promotion.");
+}
+async function loadOrderStatus(code){
+  const box=$("#dOrders"); box.textContent="Đang tải…";
+  try{
+    const r=await fetch("/admin/api/tikcrm/raw/orderstatus/"+encodeURIComponent(code)); const j=await r.json();
+    if(j.empty){ box.textContent="Chưa có data (extension cào ~1 lần/ngày khi seller mở tab)."; return; }
+    const cols=j.columns||[];
+    if(!cols.length){ box.innerHTML=`<span class="fresh">cào ${new Date(j.received_at).toLocaleString()} · không có mục action-needed (đơn sạch)</span>`; return; }
+    const bad=/overdue|logistic|fail|cancel|unshipped|late|dispute|reject/i;
+    const pills=cols.map(c=>{
+      const cls = c.count>0 ? (bad.test(c.title)?"p-bad":"p-warn") : "p-ok";
+      return `<span class="pill ${cls}" style="margin:2px 4px 2px 0;display:inline-block">${esc(c.title)}: <b>${n(c.count)}</b></span>`;
+    }).join("");
+    box.innerHTML=`<div class="fresh" style="margin-bottom:4px">cào ${new Date(j.received_at).toLocaleString()}</div>${pills}`;
+  }catch(e){ box.textContent="lỗi tải trạng thái đơn"; }
+}
+const fmtMoney = (o)=> o ? (o.format_with_symbol ?? o.amount ?? "—") : "—";
+const fmtDate = (ms)=> ms ? new Date(Number(ms)).toLocaleDateString() : "—";
+async function loadFinance(code){
+  const box=$("#dFinance"); box.textContent="Đang tải…";
+  try{
+    const r=await fetch("/admin/api/tikcrm/raw/finance/"+encodeURIComponent(code)); const j=await r.json();
+    if(j.empty){ box.textContent="Chưa có sao kê (extension cào ~1 lần/ngày khi seller mở tab)."; return; }
+    const st=j.statements||[], s=j.sums||{};
+    const head=`cào ${new Date(j.received_at).toLocaleString()} · ${j.total_record??st.length} kỳ`;
+    const sums=`Earning <b>${fmtMoney(s.earning)}</b> · Phí <b>${fmtMoney(s.fees)}</b> · Settle <b>${fmtMoney(s.settlement)}</b> · Payable <b>${fmtMoney(s.payable)}</b> · Adjust <b>${fmtMoney(s.adjustment)}</b>`;
+    box.innerHTML=`<div class="fresh" style="margin-bottom:2px">${head}</div><div style="margin-bottom:4px;font-size:12px">${sums}</div>`+
+      `<div class="lbox"><table class="ltbl"><thead><tr><th>Kỳ (bill)</th><th>Earning</th><th>Phí</th><th>Payable</th><th>Settle</th><th>Adjust</th><th>TT</th></tr></thead><tbody>`+
+      st.map(x=>`<tr><td>${fmtDate(x.bill_period)}</td><td>${fmtMoney(x.earning_amount)}</td><td class="${(x.fee_amount?.amount||"").startsWith("-")?"down":""}">${fmtMoney(x.fee_amount)}</td><td>${fmtMoney(x.payable_amount)}</td><td>${fmtMoney(x.settle_amount)}</td><td>${fmtMoney(x.adjust_amount)}</td><td>${x.payment_status===1?'<span class="up">✔</span>':esc(x.payment_status)}</td></tr>`).join("")+
+      `</tbody></table></div>`;
+  }catch(e){ box.textContent="lỗi tải sao kê"; }
+}
+function openDrawer(o){ $("#drawer").classList.toggle("open",o); $("#backdrop").classList.toggle("open",o); }
+
+// Đổ danh sách trạng thái shop (distinct + đếm) vào dropdown, giữ lựa chọn hiện tại
+function populateStatus(){
+  const counts = {};
+  SHOPS.forEach(s=>{ const st=String(s.shop_status||"(trống)"); counts[st]=(counts[st]||0)+1; });
+  const opts = Object.entries(counts).sort((a,b)=> b[1]-a[1]);
+  const sel = $("#status"), cur = STATUS;
+  sel.innerHTML = "";
+  const add=(val,label)=>{ const o=document.createElement("option"); o.value=val; o.textContent=label; sel.appendChild(o); };
+  add("all", `Tất cả trạng thái (${SHOPS.length})`);
+  opts.forEach(([st,c])=> add(st, `${st} (${c})`));
+  if(cur!=="all" && !counts[cur]) STATUS="all";
+  sel.value = STATUS;
+}
+
+async function loadOverview(){
+  const box=$("#overview"); if(!box) return;
+  // Sức khỏe + tài chính tính từ SHOPS (đã load, phủ mọi shop có health)
+  const c={alive:0,risk:0,dead:0,unknown:0}; let netSum=0, violated=0;
+  SHOPS.forEach(s=>{ c[life(s).cat]++; const ne=Number(s.net_earnings&&(s.net_earnings.amount??s.net_earnings)); if(!isNaN(ne))netSum+=ne; if(Number(s.violation_score||0)>0)violated++; });
+  let ov={};
+  try{ ov=await (await fetch("/admin/api/tikcrm/overview")).json(); }catch(e){}
+  const rt=ov.rec_totals||{}, oi=ov.order_issues||{}, pt=ov.promo_totals||{};
+  box.className="ov";
+  box.innerHTML=`<div class="ovgrid">
+    <div class="ovcard"><div class="lbl">Coverage</div><div class="big">${n(ov.meta_total??SHOPS.length)}<span class="seg">shop</span></div>
+      <div class="fresh">4Seller ${n(ov.has_4seller)} · listing ${n(ov.with_listings)} · AI ${n(ov.with_rec)}</div></div>
+    <div class="ovcard"><div class="lbl">Sức khỏe</div><div class="big" style="font-size:16px">
+      <span class="seg ok">🟢 ${c.alive}</span><span class="seg warn">🟠 ${c.risk}</span><span class="seg bad">🔴 ${c.dead}</span></div>
+      <div class="fresh">${violated} shop có vi phạm</div></div>
+    <div class="ovcard"><div class="lbl">Net earnings (tổng)</div><div class="big num">$${netSum.toLocaleString(undefined,{maximumFractionDigits:0})}</div>
+      <div class="fresh">promo: flash ${n(pt.flash)} · discount ${n(pt.discount)}</div></div>
+    <div class="ovcard"><div class="lbl">AI đề xuất (tổng SP)</div><div class="big" style="font-size:16px">
+      <span class="seg">🗑️ ${n(rt.delist)}</span><span class="seg">⚡ ${n(rt.flash)}</span><span class="seg">🎬 ${n(rt.video)}</span></div>
+      <div class="fresh">đơn cần xử: overdue ${n(oi.overdue)} · logistics ${n(oi.logistics)}</div></div>
+  </div>`;
+  const attn=ov.attention||[];
+  if(attn.length){
+    const el=document.createElement("div"); el.className="attn";
+    el.innerHTML=`<div class="h">⚠️ Cần chú ý (${attn.length}) — đơn overdue / logistics</div><div class="row">`+
+      attn.map(a=>`<span class="a" data-code="${encodeURIComponent(a.code)}">${esc(a.name||a.code)} · ⏰${a.overdue} 🚚${a.logistics}</span>`).join("")+`</div>`;
+    box.appendChild(el);
+    el.querySelectorAll(".a").forEach(x=>x.onclick=()=>{ const code=decodeURIComponent(x.dataset.code); const s=SHOPS.find(y=>(y.shop_code||y.shop_id)===code); if(s) openShop(x.dataset.code,[s]); });
+  }
+}
+
+async function load(){
+  const r = await fetch("/admin/api/tikcrm/shops"); const j = await r.json();
+  SHOPS = j.shops||[]; KBT = j.kbt||{};
+  loadOverview();
+  populateStatus();
+  const kbtNote = KBT.configured ? (KBT.ok?` · apps.kbt ${KBT.count} shop`:` · apps.kbt lỗi: ${KBT.error||"?"}`) : "";
+  $("#updated").textContent = "Tải lúc "+new Date().toLocaleTimeString()+" · "+SHOPS.length+" shop"+kbtNote;
+  render();
+}
+$("#dClose").onclick=()=>openDrawer(false);
+$("#backdrop").onclick=()=>openDrawer(false);
+function updateChip(){
+  const chip=$("#emChip");
+  if(!EMAILFILTER){ chip.style.display="none"; return; }
+  const matched = SHOPS.filter(inEmailList).length;
+  chip.style.display="";
+  chip.innerHTML = `📧 ${EMAILFILTER.count} email · ${matched} khớp <span class="x" title="Xóa lọc">✕</span>`;
+  chip.querySelector(".x").onclick=(e)=>{ e.stopPropagation(); clearEmailFilter(); };
+}
+function updateHideBtn(){
+  const b=$("#hide9999");
+  b.classList.toggle("on", HIDE9999);
+  const cnt = SHOPS.filter(is9999).length;
+  b.textContent = HIDE9999 ? `🙈 Đang ẩn ${cnt} (9999)` : "🙈 Ẩn Health 9999";
+}
+$("#hide9999").onclick=()=>{ HIDE9999=!HIDE9999; localStorage.setItem("tikcrm_hide9999", HIDE9999?"1":"0"); render(); };
+function openEm(o){ $("#emModal").classList.toggle("open",o); $("#emBack").classList.toggle("open",o); }
+function clearEmailFilter(){ EMAILFILTER=null; localStorage.removeItem("tikcrm_email_filter"); render(); }
+
+$("#emOpen").onclick=()=>{ $("#emText").value = (EMAILFILTER&&EMAILFILTER.raw) || localStorage.getItem("tikcrm_email_filter") || ""; openEm(true); };
+$("#emApply").onclick=()=>{ const t=$("#emText").value; localStorage.setItem("tikcrm_email_filter",t); EMAILFILTER = t.trim()? parseEmailList(t) : null; openEm(false); render(); };
+$("#emClear").onclick=()=>{ $("#emText").value=""; clearEmailFilter(); openEm(false); };
+$("#emCancel").onclick=()=>openEm(false);
+$("#emBack").onclick=()=>openEm(false);
+
+$("#q").oninput=render;
+$("#status").onchange=(e)=>{ STATUS=e.target.value; render(); };
+$("#newf").onchange=(e)=>{ NEWF=Number(e.target.value)||0; localStorage.setItem("tikcrm_newf_h", String(NEWF)); render(); };
+$("#reload").onclick=load;
+{ const saved = localStorage.getItem("tikcrm_email_filter"); if(saved && saved.trim()) EMAILFILTER = parseEmailList(saved); }
+HIDE9999 = localStorage.getItem("tikcrm_hide9999")==="1";
+NEWF = Number(localStorage.getItem("tikcrm_newf_h"))||0; if(![0,2,8,12,24,72,168,720].includes(NEWF)) NEWF=0; $("#newf").value=String(NEWF);
+load();
+setInterval(load, 60000);
+</script>
+</body>
+</html>

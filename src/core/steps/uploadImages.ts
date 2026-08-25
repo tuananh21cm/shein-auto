@@ -90,7 +90,13 @@ export const uploadProductImages = async (
       })
     );
     // prependFiles = ảnh LOCAL đã render sẵn (vd color showcase) → đứng ĐẦU làm ảnh Main.
-    const localFilePaths = [...prependFiles.filter((f) => fs.existsSync(f)), ...downloaded];
+    // CAP tổng tại imageUploadMaxImages: showcase chiếm 1 slot thì bỏ ảnh CUỐI, không để tràn
+    // (TikTok/4Seller báo "exceed the limit image count" nếu quá 9).
+    const maxImgs = workerConfig().imageUploadMaxImages || 9;
+    const localFilePaths = [...prependFiles.filter((f) => fs.existsSync(f)), ...downloaded].slice(0, maxImgs);
+    if (prependFiles.length && downloaded.length + prependFiles.length > maxImgs) {
+      console.log(`🖼️ Cap ảnh: ${prependFiles.length} showcase + ${downloaded.length} sp → giữ ${localFilePaths.length}/${maxImgs}`);
+    }
     console.log(`⬇️ [${uniqueId}] Download ${imageUrls.length} ảnh song song mất ${Math.round((Date.now() - t0) / 1000)}s`);
 
     const productUploadContainer = page.locator(".file_upload__index").first();
@@ -146,13 +152,17 @@ export const uploadVariantImages = async (
 ): Promise<void> => {
   console.log("--- Bắt đầu Upload ảnh Variant (Bản Multi-Image US/DE/FR) ---");
 
-  // Mỗi màu CHỈ upload 1 ảnh chính (ảnh đầu) — nhanh hơn nhiều và tránh việc
-  // 4Seller render thumbnail chậm khi upload nhiều ảnh × nhiều màu (false-fail).
+  // Multi-image per variant (như main): tối đa 9 ảnh/màu — 4Seller giới hạn 9,
+  // SHEIN có màu 10-11 ảnh nên phải cap tránh "Exceeding the image count limit".
+  const MAX_VARIANT_IMAGES = 9;
   const imageMap: { [key: string]: string[] } = {};
   for (const item of variantImages) {
     for (const [key, value] of Object.entries(item)) {
       const arr = Array.isArray(value) ? value : [value];
-      imageMap[key] = arr.slice(0, 1); // chỉ ảnh chính
+      if (arr.length > MAX_VARIANT_IMAGES) {
+        console.log(`✂️ "${key}": ${arr.length} ảnh → cắt còn ${MAX_VARIANT_IMAGES} (giới hạn 4Seller)`);
+      }
+      imageMap[key] = arr.slice(0, MAX_VARIANT_IMAGES);
     }
   }
   const colorCount = Object.keys(imageMap).length;

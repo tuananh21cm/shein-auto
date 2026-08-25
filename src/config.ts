@@ -10,6 +10,17 @@ const envHub = process.env.HUB_DIR?.trim() ?? "";
 
 export const config = {
   geminiApiKey: process.env.GEMINI_API_KEY ?? "",
+  rapidApiKey: process.env.RAPIDAPI_KEY ?? "",
+  /** imgbb API key — host banner marketing để chèn vào mô tả (URL public). Lấy free tại imgbb.com/api. */
+  imgbbApiKey: process.env.IMGBB_API_KEY ?? "",
+  /** Nhiều key imgbb (xoay vòng né rate limit). Gộp IMGBB_API_KEYS (phẩy) + IMGBB_API_KEY, dedup. */
+  imgbbApiKeys: Array.from(
+    new Set(
+      [process.env.IMGBB_API_KEY ?? "", ...(process.env.IMGBB_API_KEYS ?? "").split(",")]
+        .map((k) => k.trim())
+        .filter(Boolean)
+    )
+  ),
   /** Default fallback cho user không cấu hình downloadDir riêng. Rỗng = user bắt buộc tự set. */
   downloadDir: envDownload ? path.normalize(envDownload) : "",
   /** Default fallback cho user không cấu hình baseSheinAutoDir riêng. Rỗng = user bắt buộc tự set. */

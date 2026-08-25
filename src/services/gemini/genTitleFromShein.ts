@@ -1,9 +1,5 @@
-import { GoogleGenerativeAI, SchemaType } from "@google/generative-ai";
-import { retryGemini } from "../../utils/retryGemini";
-import { config } from "../../config";
+import { callClaudeJSON } from "../anthropic/client";
 import { geminiCache } from "./geminiCache";
-
-const genAI = new GoogleGenerativeAI(config.geminiApiKey);
 
 // Số biến thể tiêu đề gen 1 lần (mỗi shop lấy random 1 cái → tránh trùng tiêu đề).
 const VARIANT_COUNT = 6;
@@ -46,15 +42,25 @@ export async function genTitleFromShein(title: string): Promise<string> {
           Do NOT paraphrase away or drop meaningful descriptors.
         - REMOVE only: brand names, supplier names (SHEIN, ROMWE, INAWLY, etc.), model/SKU codes,
           and pure filler. Never invent features the product does not have.
-        - LENGTH MUST BE 90-150 characters:
-            • If after cleanup it is SHORTER than 90 chars, EXTEND it by appending SEO keywords that
-              match the product's actual content — buyer search intent ("2 Piece Set", "Mini Skirt Set"),
-              style/fit/material cues ("Ruched", "Ruffle", "High Waist", "Stretchy", "Linen"), and
-              trending TikTok US occasion/vibe keywords ("Y2K", "Beach Vacation", "Summer Outfit",
-              "Date Night", "Going Out", "Streetwear"). Only add keywords TRUE to the product.
-            • If already within 90-150 chars, keep it essentially as-is after cleanup.
-            • If LONGER than 150 chars, trim to <=150, keeping the front-loaded keywords and core description.
-        - Front-load the strongest buyer search keyword near the start.
+        - LENGTH MUST BE 11-16 WORDS (~60-110 characters — TikTok Shop 2026 SEO sweet spot; policy max 200 chars).
+          Titles with 10 words or fewer are TOO SHORT — always reach at least 11 words:
+            • THE FIRST 5-6 WORDS MATTER MOST — mobile search results truncate there. The main buyer
+              search keyword (product type + strongest descriptor, e.g. "Ribbed Knit Halter Crop Top")
+              MUST appear complete within the first 5-6 words.
+            • After the core description, ALWAYS append 3-5 extra SEO keywords TRUE to the product:
+              buyer search intent ("2 Piece Set", "Mini Skirt Set"), style/fit/material cues ("Ruched",
+              "High Waist", "Stretchy", "Linen"), and trending TikTok US occasion/vibe keywords
+              ("Y2K", "Beach Vacation", "Summer Outfit", "Date Night", "Going Out", "Streetwear").
+            • If LONGER than 16 words, trim keeping the front-loaded keywords and core description.
+            • Example of correct length: "Ribbed Knit Halter Crop Top Slim Fit Stretchy Y2K Streetwear Going Out Summer Top" (15 words).
+        - Recommended order: [Main Keyword: type + key feature] → [material/fit/style] → [occasion/vibe].
+        - TITLE CASE (TikTok policy): Capitalize the First Letter of Each Word EXCEPT prepositions
+          (with, at, by, to, in, for, from, of), conjunctions (and, or), articles (the, a, an).
+          NEVER write whole words in ALL CAPS (except legit sizes like "XL" or "2XL").
+        - STRICTLY FORBIDDEN in titles (TikTok listing policy — auto-flag risk): promotional/marketing
+          claims ("Best Seller", "Hot Sale", "Free Shipping", "% Off", "New Release", "Low Stock",
+          "Viral", "TikTok Famous", "Trending", "Guaranteed", "Top Rated"), emojis, special characters
+          (#, @, *, !, ~, |), URLs, phone numbers, repeated/stuffed keywords.
         - NO punctuation between keyword segments (use single spaces).
         - If the original title is in German or French, return the title in that language.
         - SPORTS PRODUCT DISGUISE (critical — TikTok Shop requires certifications for sports items):
@@ -79,33 +85,19 @@ export async function genTitleFromShein(title: string): Promise<string> {
           ALL rules above, but each must DIFFER meaningfully from the others in wording, keyword order, and
           choice of SEO / occasion keywords — so the SAME product listed on multiple shops does NOT get
           identical titles. Do NOT produce trivial reorderings; genuinely vary the SEO/vibe keywords while
-          keeping the core product description intact. No explanation, array of strings only.
+          keeping the core product description intact. No explanation.
+
+        OUTPUT JSON SHAPE: {"titles": ["<variant 1>", "<variant 2>", ...]} — exactly ${VARIANT_COUNT} strings.
     `;
 
   const prompt = `Original Title: ${title}`;
 
   try {
-    const model = genAI.getGenerativeModel({
-      model: "gemini-2.5-flash",
-      systemInstruction,
-      generationConfig: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: SchemaType.OBJECT,
-          properties: {
-            titles: {
-              type: SchemaType.ARRAY,
-              items: { type: SchemaType.STRING },
-              description: `${VARIANT_COUNT} distinct optimized title variants`,
-            },
-          },
-          required: ["titles"],
-        },
-      },
+    const data = await callClaudeJSON<{ titles: string[] }>({
+      system: systemInstruction,
+      user: prompt,
+      maxTokens: 1500,
     });
-
-    const result = await retryGemini(() => model.generateContent(prompt));
-    const data = JSON.parse(result.response.text());
     const variants: string[] = Array.isArray(data.titles)
       ? data.titles.filter((x: any) => typeof x === "string" && x.trim())
       : [];

@@ -1,0 +1,15 @@
+{
+  "_comment": "Apify rank tracking (thay Kalodata + phần rank của Kiki). Token đặt ở env APIFY_TOKEN (khuyến nghị) hoặc field token. rankActorId = actor bestseller trend (jungle_synthesizer — billed per category page). rankInput truyền NGUYÊN VĂN vào actor run — chỉnh theo input schema thật của actor trên console.apify.com (sau khi subscribe, bấm thử 1 run trên UI rồi copy input JSON vào đây). categories trong rankInput nên là URL category us.shein.com sắp xếp best-sellers.",
+  "enabled": false,
+  "token": "",
+  "rankActorId": "jungle_synthesizer~shein-new-arrivals-bestsellers-trend-scraper",
+  "rankInput": {
+    "market": "us",
+    "feeds": ["best-sellers"],
+    "categoryUrls": [],
+    "maxItemsPerCategory": 100
+  },
+  "schedule": "30 7 * * *",
+  "timezone": "",
+  "runTimeoutMinutes": 20
+}

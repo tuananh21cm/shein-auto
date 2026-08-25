@@ -19,6 +19,7 @@ const main = async () => {
   const file = args.find((a) => !a.startsWith("--"));
   const dryRun = args.includes("--dry-run");
   const noNotify = args.includes("--no-notify");
+  const headed = args.includes("--headed"); // hiện browser để xem (override worker.json headless)
   const userArg = args.find((a) => a.startsWith("--user="));
   const cookieUser = userArg?.slice("--user=".length);
 
@@ -44,7 +45,7 @@ const main = async () => {
   const t0 = Date.now();
 
   try {
-    await listing4sellerShein(absFile, { dryRun, cookieUser });
+    await listing4sellerShein(absFile, { dryRun, cookieUser, ...(headed ? { headless: false } : {}) });
     const durationMs = Date.now() - t0;
     console.log(`✅ Done in ${Math.round(durationMs / 1000)}s`);
     // Không bắn Telegram khi success — chỉ notify fail

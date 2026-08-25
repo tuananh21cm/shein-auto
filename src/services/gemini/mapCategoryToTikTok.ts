@@ -1,8 +1,4 @@
-import { GoogleGenerativeAI, SchemaType } from "@google/generative-ai";
-import { retryGemini } from "../../utils/retryGemini";
-import { config } from "../../config";
-
-const genAI = new GoogleGenerativeAI(config.geminiApiKey);
+import { callClaudeJSON } from "../anthropic/client";
 
 export interface CategoryMap {
   tiktok_category_path: string;
@@ -27,6 +23,9 @@ export async function mapCategoryToTikTok(
         4. **Confidence Score:** - 1.0: Perfect match.
            - 0.5 - 0.9: Close match but requires some inference.
            - < 0.5: Highly uncertain.
+
+        **OUTPUT JSON SHAPE:**
+        {"tiktok_category_path": "<full path copied EXACTLY from the Master List>", "confidence_score": <number 0-1>, "reasoning": "<one short sentence>"}
     `;
 
   const prompt = `
@@ -40,59 +39,11 @@ export async function mapCategoryToTikTok(
     `;
 
   try {
-    const model = genAI.getGenerativeModel({
-      model: "gemini-2.5-flash",
-      systemInstruction,
-      generationConfig: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: SchemaType.OBJECT,
-          properties: {
-            tiktok_category_path: {
-              type: SchemaType.STRING,
-              description: "The full path from the provided Master List",
-            },
-            confidence_score: { type: SchemaType.NUMBER },
-            reasoning: { type: SchemaType.STRING },
-          },
-          required: ["tiktok_category_path", "confidence_score", "reasoning"],
-        },
-      },
-    });
-
-    // Parse nằm TRONG retry: response rỗng / non-JSON (do quá tải, bị cắt token,
-    // safety block) được coi là retryable thay vì fail luôn.
-    return await retryGemini(async () => {
-      const result = await model.generateContent(prompt);
-      const resp = result.response;
-      const finishReason = resp.candidates?.[0]?.finishReason;
-
-      let text = "";
-      try {
-        text = resp.text() ?? "";
-      } catch (e: any) {
-        const err: any = new Error(
-          `Gemini response.text() failed (finishReason=${finishReason}): ${e?.message}`
-        );
-        err.retryable = true;
-        throw err;
-      }
-
-      if (!text.trim()) {
-        const err: any = new Error(`Gemini empty response (finishReason=${finishReason})`);
-        err.retryable = true;
-        throw err;
-      }
-
-      try {
-        return JSON.parse(text) as CategoryMap;
-      } catch {
-        const err: any = new Error(
-          `Gemini returned non-JSON (finishReason=${finishReason}): ${text.slice(0, 150)}`
-        );
-        err.retryable = true;
-        throw err;
-      }
+    // LƯU Ý cache: shortlist nằm trong user message (biến thiên theo sp) — chỉ system được prompt-cache.
+    return await callClaudeJSON<CategoryMap>({
+      system: systemInstruction,
+      user: prompt,
+      maxTokens: 512,
     });
   } catch (error: any) {
     // KHÔNG nuốt lỗi: ném kèm nguyên nhân thật để log/screenshot fatal thấy được lý do.

@@ -1,0 +1,22 @@
+{
+  "_comment": "Agent bridge voi KBT CRM. url = goc public cua CRM (KHONG kem /agent) - prod: https://apps.kbt.global/api-proxy, local test: http://127.0.0.1:3002. secret khop env AGENT_BRIDGE_SECRET ben CRM - co the de rong o day va set env CRM_BRIDGE_SECRET thay the (khuyen nghi, tranh commit secret). Env override: CRM_BRIDGE_URL / CRM_BRIDGE_SECRET / CRM_BRIDGE_ENABLED=1. pullDays = cua so hieu nang (7-120). refreshHours = nhip pull cache. gate = chan re-list SKU refund cao (chi khi du mau minOrders VA effective refund vuot nguong; hoi phuc thi tu go). flash.minMarginPct = chi uu tien SP margin that >= nguong khi chon flash.",
+  "enabled": true,
+  "url": "https://apps.kbt.global/api-proxy",
+  "secret": "",
+  "pullDays": 30,
+  "refreshHours": 12,
+  "gate": {
+    "enabled": true,
+    "minOrders": 15,
+    "maxEffectiveRefundPct": 20
+  },
+  "flash": {
+    "enabled": true,
+    "minMarginPct": 30,
+    "excludeRisk": ["high"]
+  },
+  "registry": {
+    "enabled": true,
+    "snapshotHour": 4
+  }
+}

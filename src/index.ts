@@ -9,6 +9,9 @@ import { refreshQueueSnapshot } from "./state/queueState";
 import { geminiCache } from "./services/gemini/geminiCache";
 import { initDb, closeDb } from "./state/db";
 import { scheduleDripPublisher } from "./core/dripPublisher";
+import { scheduleCrmSync } from "./core/crmSync";
+import { scheduleRankTracking } from "./core/rankTracking";
+import { schedulePromotionCron } from "./core/promotionScan";
 
 // Pipe console.* lên eventBus để SSE stream xuống UI. Phải gọi sớm.
 installConsoleTap();
@@ -43,6 +46,10 @@ const bootstrap = async () => {
 
   // Drip-publish draft 4Seller nhỏ giọt (bật/tắt qua config/publish.json → enabled).
   scheduleDripPublisher();
+
+  scheduleCrmSync();       // agent bridge KBT CRM: pull hiệu năng + push registry
+  scheduleRankTracking();  // Apify bestseller rank
+  schedulePromotionCron(); // cào promotion 4Seller (Flash/Discount) mỗi 2 giờ
 };
 bootstrap().catch((err) => {
   console.error("❌ Bootstrap failed:", err?.message ?? err);

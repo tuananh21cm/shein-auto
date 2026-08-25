@@ -24,7 +24,21 @@ import { validatePath, detectDirConflicts, getUserDirsByName, getShopOwner } fro
 import { processFile } from "./queue/queueManager";
 import { eventBus } from "./state/eventBus";
 import { workerConfig, reloadAppConfig } from "./config/appConfig";
-import { configCookie, userCookiePath } from "./utils/configCookie";
+import { configCookie, configCookieForAccount, userCookiePath } from "./utils/configCookie";
+import {
+  listAccounts as fsAccounts,
+  saveAccountCookie,
+  refreshAccountShops,
+  setAccountLabel,
+  deleteAccount as fsDeleteAccount,
+  bootstrapLegacyCookies,
+} from "./state/fourSellerAccounts";
+import {
+  getShopList as fsGetShopList,
+  getStatusCount as fsGetStatusCount,
+  getListingPage as fsGetListingPage,
+  getSalesByShop as fsGetSalesByShop,
+} from "./services/fourseller/client";
 
 const adminSessionSecret = process.env.ADMIN_SESSION_SECRET || "shein-auto-secret";
 
@@ -81,6 +95,8 @@ export const startAdminServer = async () => {
     return res.redirect("/admin/login");
   };
   app.use(requireAuth);
+  // Ảnh preview tính năng listing (Settings → card shop) — sau requireAuth nên cần login
+  app.use("/admin/previews", express.static(path.join(__dirname, "public", "previews")));
 
   // ── Static HTML routes ─────────────────────────────────────
   app.get("/admin/login", (_req, res) => {
@@ -502,13 +518,165 @@ export const startAdminServer = async () => {
     }
   });
 
+  // ── 4Seller helpers (port từ main): shop list / live / đơn / ảnh — cache chống spam API ──
+  const shopListCache = new Map<string, { ts: number; shops: string[]; source: string }>();
+  const SHOP_CACHE_TTL = 5 * 60_000;
+
+  /**
+   * Danh sách principal để gọi 4Seller API: mỗi TÀI KHOẢN 4Seller đã upload là 1
+   * principal "acct:<uid>". Chưa setup tài khoản nào → fallback legacy cookie của
+   * user truyền vào (chuyển đổi mượt).
+   */
+  const fsPrincipals = async (legacyUser?: string): Promise<string[]> => {
+    const accounts = await fsAccounts();
+    if (accounts.length > 0) return accounts.map((a) => `acct:${a.uid}`);
+    return legacyUser ? [legacyUser] : [];
+  };
+
+  // Cache số listing LIVE (active) thật từ 4Seller — gộp MỌI tài khoản. Key cache cố định.
+  const liveCountCache = new Map<string, { ts: number; byShop: Record<string, number> }>();
+  /** Map shopName(lowercase) → activeCount thật trên TikTok (qua 4Seller). Best-effort, cache 5p. */
+  async function fetchLiveCounts(username: string): Promise<Record<string, number>> {
+    const cached = liveCountCache.get("__all__");
+    if (cached && Date.now() - cached.ts < SHOP_CACHE_TTL) return cached.byShop;
+    const byShop: Record<string, number> = {};
+    for (const principal of await fsPrincipals(username)) {
+      try {
+        const list = await fsGetShopList(principal);
+        const records = (list?.records ?? []).filter((s) => !s.platform || /tiktok/i.test(String(s.platform)));
+        await Promise.all(
+          records.map(async (s) => {
+            try {
+              const sc = await fsGetStatusCount(principal, { shopId: s.id });
+              byShop[String(s.shopName).toLowerCase()] = sc?.activeCount ?? 0;
+            } catch { /* 1 shop lỗi → bỏ qua */ }
+          })
+        );
+      } catch { /* 1 tài khoản lỗi cookie → bỏ qua, tài khoản khác vẫn lấy được */ }
+    }
+    liveCountCache.set("__all__", { ts: Date.now(), byShop });
+    return byShop;
+  }
+
+  // Ảnh ĐẠI DIỆN theo shop = ảnh 1 listing active (mainImage[0]). Cache DÀI 30p (ảnh ít đổi).
+  const SHOP_IMG_TTL = 30 * 60_000;
+  const shopImgCache = new Map<string, { ts: number; byShop: Record<string, string> }>();
+  async function fetchShopImages(username: string): Promise<Record<string, string>> {
+    const cached = shopImgCache.get("__all__");
+    if (cached && Date.now() - cached.ts < SHOP_IMG_TTL) return cached.byShop;
+    const byShop: Record<string, string> = {};
+    for (const principal of await fsPrincipals(username)) {
+      try {
+        const list = await fsGetShopList(principal);
+        const records = (list?.records ?? []).filter((s) => !s.platform || /tiktok/i.test(String(s.platform)));
+        await Promise.all(
+          records.map(async (s) => {
+            try {
+              const page = await fsGetListingPage(principal, { shopId: s.id, status: "active", pageSize: 1 });
+              const rec = (page?.records ?? [])[0] as any;
+              const img = rec?.mainImage ? String(rec.mainImage).split("|")[0].trim() : "";
+              if (img) byShop[String(s.shopName).toLowerCase()] = img;
+            } catch { /* 1 shop lỗi → bỏ qua */ }
+          })
+        );
+      } catch { /* 1 tài khoản lỗi → bỏ qua */ }
+    }
+    shopImgCache.set("__all__", { ts: Date.now(), byShop });
+    return byShop;
+  }
+
+  // Cache số ĐƠN theo shop (4Seller Report → Sales by shop), cửa sổ 7 ngày, gộp mọi tài khoản.
+  const ordersCache = new Map<string, { ts: number; byShop: Record<string, number> }>();
+  /** Map shopName(lowercase) → totalOrders 7 ngày gần nhất. Shop không có đơn → không có key (=0). */
+  async function fetchOrdersByShop(username: string): Promise<Record<string, number>> {
+    const cached = ordersCache.get("__all__");
+    if (cached && Date.now() - cached.ts < SHOP_CACHE_TTL) return cached.byShop;
+    const byShop: Record<string, number> = {};
+    for (const principal of await fsPrincipals(username)) {
+      try {
+        const list = await fsGetShopList(principal);
+        const ids = (list?.records ?? []).map((s) => s.id).filter((x) => x != null);
+        if (!ids.length) continue;
+        const vnDay = (off: number) =>
+          new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Ho_Chi_Minh" }).format(new Date(Date.now() - off * 864e5));
+        const rows = await fsGetSalesByShop(principal, { startTime: vnDay(6), endTime: vnDay(0), shopIds: ids });
+        for (const r of rows ?? []) {
+          if (r?.shopName) byShop[String(r.shopName).toLowerCase()] = r.totalOrders ?? 0;
+        }
+      } catch { /* 1 tài khoản lỗi → bỏ qua */ }
+    }
+    ordersCache.set("__all__", { ts: Date.now(), byShop });
+    return byShop;
+  }
+
+  /** Nguồn shop: ưu tiên SYNC TỪ 4SELLER (gộp mọi tài khoản) → profiles explicit → auto-scan folder. */
+  async function resolveUserShops(user: AdminUser): Promise<{ shops: string[]; source: string }> {
+    const cached = shopListCache.get(user.username);
+    if (cached && Date.now() - cached.ts < SHOP_CACHE_TTL) return cached;
+    try {
+      const merged = new Set<string>();
+      for (const principal of await fsPrincipals(user.username)) {
+        try {
+          const list = await fsGetShopList(principal);
+          const records = list?.records ?? [];
+          let shops = records
+            .filter((s) => !s.platform || /tiktok/i.test(String(s.platform)))
+            .map((s) => s.shopName)
+            .filter(Boolean);
+          if (shops.length === 0) shops = records.map((s) => s.shopName).filter(Boolean);
+          shops.forEach((s) => merged.add(s));
+        } catch { /* 1 tài khoản lỗi → vẫn lấy tài khoản khác */ }
+      }
+      if (merged.size > 0) {
+        const shops = Array.from(merged).sort();
+        const out = { ts: Date.now(), shops, source: "4seller" };
+        shopListCache.set(user.username, out);
+        return out;
+      }
+    } catch (e: any) {
+      console.warn(`[shops] 4Seller getShopList lỗi (fallback folder): ${e?.message ?? e}`);
+    }
+    if ((user.profiles ?? []).length > 0) {
+      return { ts: Date.now(), shops: user.profiles, source: "explicit" } as any;
+    }
+    try {
+      const dirs = await getUserDirsByName(user.username);
+      if (dirs?.baseSheinAutoDir && (await fs.pathExists(dirs.baseSheinAutoDir))) {
+        const entries = await fs.readdir(dirs.baseSheinAutoDir);
+        const shops: string[] = [];
+        for (const name of entries) {
+          if (name.startsWith(".") || name === "Success" || name === "Fail") continue;
+          const stats = await fs.stat(path.join(dirs.baseSheinAutoDir, name)).catch(() => null);
+          if (stats?.isDirectory()) shops.push(name);
+        }
+        shops.sort();
+        return { ts: Date.now(), shops, source: "auto-scan" } as any;
+      }
+    } catch { /* ignore */ }
+    return { ts: Date.now(), shops: [], source: "empty" } as any;
+  }
+
   // ── Dashboard ─────────────────────────────────────────────
-  app.get("/admin/api/dashboard", async (_req, res) => {
+  app.get("/admin/api/dashboard", async (req, res) => {
     try {
       const queue = await refreshQueueSnapshot();
+      // Allowlist shop (4Seller hiện tại) để UI tự ẩn folder "lạ" rỗng — KHÔNG xoá data.
+      let shops: { list: string[]; source: string } = { list: [], source: "empty" };
+      try {
+        const sessionUser = (req.session as any).user as SessionUser | undefined;
+        if (sessionUser) {
+          const cfg = await loadAdminConfig();
+          const u = cfg.users.find((x) => x.username === sessionUser.username);
+          if (u) {
+            const r = await resolveUserShops(u as any);
+            shops = { list: r.shops, source: r.source };
+          }
+        }
+      } catch { /* allowlist best-effort */ }
       res.json({
         worker: workerState.get(),
         queue,
+        shops,
         config: {
           concurrency: workerConfig().concurrency,
           fileRouterCron: config.cronFileRouter,
@@ -518,6 +686,293 @@ export const startAdminServer = async () => {
       });
     } catch (err: any) {
       res.status(500).json({ error: err?.message ?? "Lỗi lấy dashboard" });
+    }
+  });
+
+  // ── Dashboard OVERVIEW (port từ main): live/đơn/doanh thu + Δ hôm qua, promotion, sparkline ──
+  const dayOrdersCache = new Map<string, { ts: number; byShop: Record<string, { orders: number; revenue: number }> }>();
+  /** Đơn + doanh thu của 1 NGÀY (YYYY-MM-DD) per shop, gộp mọi tài khoản. Cache 5p. */
+  async function fetchDaySales(day: string, legacyUser: string): Promise<Record<string, { orders: number; revenue: number }>> {
+    const cached = dayOrdersCache.get(day);
+    if (cached && Date.now() - cached.ts < SHOP_CACHE_TTL) return cached.byShop;
+    const byShop: Record<string, { orders: number; revenue: number }> = {};
+    for (const principal of await fsPrincipals(legacyUser)) {
+      try {
+        const list = await fsGetShopList(principal);
+        const ids = (list?.records ?? []).map((s) => s.id).filter((x) => x != null);
+        if (!ids.length) continue;
+        const rows = await fsGetSalesByShop(principal, { startTime: day, endTime: day, shopIds: ids });
+        for (const r of rows ?? []) {
+          if (r?.shopName) {
+            byShop[String(r.shopName).toLowerCase()] = {
+              orders: r.totalOrders ?? 0,
+              revenue: r.totalSales ?? 0,
+            };
+          }
+        }
+      } catch { /* 1 tài khoản lỗi → bỏ qua */ }
+    }
+    dayOrdersCache.set(day, { ts: Date.now(), byShop });
+    return byShop;
+  }
+
+  app.get("/admin/api/dashboard/overview", async (req, res) => {
+    try {
+      const sessionUser = (req.session as any).user as SessionUser;
+      const { getDb } = await import("./state/db");
+      const db = getDb();
+      db.exec(
+        `CREATE TABLE IF NOT EXISTS dashboard_snapshot (
+           day TEXT NOT NULL, shop TEXT NOT NULL, live INTEGER, orders REAL, revenue REAL,
+           PRIMARY KEY (day, shop))`
+      );
+
+      // Mốc ngày theo GIỜ VN — 4Seller gom theo ngày US nên sáng VN "hôm nay" có thể ~0.
+      const vnDay = (offsetDays = 0) =>
+        new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Ho_Chi_Minh" }).format(
+          new Date(Date.now() - offsetDays * 864e5)
+        );
+      const today = vnDay(0);
+      const yesterday = vnDay(1);
+
+      const [diskShops, liveByShop, salesToday, salesYesterday, orders7d, imgByShop] = await Promise.all([
+        scanShopsSummary({ username: ownerScope(req) }),
+        fetchLiveCounts(sessionUser.username),
+        fetchDaySales(today, sessionUser.username),
+        fetchDaySales(yesterday, sessionUser.username),
+        fetchOrdersByShop(sessionUser.username),
+        fetchShopImages(sessionUser.username),
+      ]);
+
+      // Health (shop_analysis, tiktok.db) — best-effort
+      const healthByShop = new Map<string, any>();
+      try {
+        const { TiktokDb } = await import("./services/tiktok/db");
+        const tdb = new TiktokDb();
+        try {
+          for (const a of tdb.listShopAnalysis()) {
+            healthByShop.set(String(a.shop).toLowerCase(), {
+              overall: a.overall ?? null,
+              alerts: (() => { try { return JSON.parse(a.alerts_json).length; } catch { return 0; } })(),
+            });
+          }
+        } finally { tdb.close(); }
+      } catch { /* chưa có phân tích */ }
+
+      // Promotion (scan gần nhất — cron mỗi 2 giờ tự cào)
+      const { getLastPromoScan } = await import("./core/promotionScan");
+      const promo = await getLastPromoScan();
+      const promoByShop = new Map<string, { flashExpired: boolean; uncovered: number | null; noDiscount: boolean }>();
+      for (const r of promo?.rows ?? []) {
+        promoByShop.set(r.shop.toLowerCase(), {
+          flashExpired: r.flashExpired,
+          uncovered: r.uncoveredProducts,
+          noDiscount: r.discountOngoing === 0,
+        });
+      }
+
+      // Danh sách shop: ưu tiên shop 4Seller thật; folder đĩa để lấy pending/fail
+      const diskByName = new Map(diskShops.map((s) => [s.folder.toLowerCase(), s]));
+      const cfg = await loadAdminConfig();
+      const u = cfg.users.find((x) => x.username === sessionUser.username);
+      const shopSource = u ? await resolveUserShops(u as any) : { shops: [] as string[], source: "empty" };
+      const shopNames = shopSource.shops.length ? shopSource.shops : diskShops.map((s) => s.folder);
+
+      const upsert = db.prepare(
+        `INSERT INTO dashboard_snapshot (day, shop, live, orders, revenue) VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT(day, shop) DO UPDATE SET live=excluded.live, orders=excluded.orders, revenue=excluded.revenue`
+      );
+      const getSnap = db.prepare("SELECT live FROM dashboard_snapshot WHERE day=? AND shop=?");
+
+      // Series 7 ngày (orders/revenue) cho SPARKLINE mỗi shop — 1 query, map theo shop.
+      const days7 = [6, 5, 4, 3, 2, 1, 0].map((d) => vnDay(d)); // cũ → mới (hôm nay cuối)
+      const snap7 = db.prepare(
+        `SELECT shop, day, orders, revenue FROM dashboard_snapshot WHERE day >= ?`
+      ).all(days7[0]) as any[];
+      const seriesByShop = new Map<string, Map<string, { o: number; r: number }>>();
+      for (const s of snap7) {
+        const lc = String(s.shop).toLowerCase();
+        if (!seriesByShop.has(lc)) seriesByShop.set(lc, new Map());
+        seriesByShop.get(lc)!.set(s.day, { o: s.orders ?? 0, r: s.revenue ?? 0 });
+      }
+
+      const accounts = await fsAccounts().catch(() => []);
+      const normShop = (x: string) => (x || "").toLowerCase().replace(/[\s—–-]+/g, "");
+      const accountByShop = new Map<string, string>();
+      for (const a of accounts) for (const s of a.shops) accountByShop.set(normShop(s), a.label);
+
+      const rows = shopNames.map((name) => {
+        const lc = name.toLowerCase();
+        const disk = diskByName.get(lc);
+        const live = lc in liveByShop ? liveByShop[lc] : null;
+        const st = salesToday[lc] ?? { orders: 0, revenue: 0 };
+        const sy = salesYesterday[lc] ?? { orders: 0, revenue: 0 };
+        const liveYesterday = (getSnap.get(yesterday, name) as any)?.live ?? null;
+        if (live != null) upsert.run(today, name, live, st.orders, st.revenue);
+        const pr = promoByShop.get(lc);
+        const ser = seriesByShop.get(lc);
+        const sparkOrders = days7.map((d, i) => (i === days7.length - 1 ? st.orders : ser?.get(d)?.o ?? 0));
+        return {
+          shop: name,
+          account: accountByShop.get(normShop(name)) ?? null,
+          image: imgByShop[lc] ?? null,
+          live,
+          liveYesterday,
+          ordersToday: st.orders,
+          ordersYesterday: sy.orders,
+          revenueToday: st.revenue,
+          revenueYesterday: sy.revenue,
+          orders7d: orders7d[lc] ?? 0,
+          sparkOrders,
+          health: healthByShop.get(lc) ?? null,
+          flashExpired: pr?.flashExpired ?? null,
+          uncovered: pr?.uncovered ?? null,
+          noDiscount: pr?.noDiscount ?? null,
+          pending: disk?.pending ?? 0,
+          fail: disk?.fail ?? 0,
+        };
+      });
+
+      res.json({
+        ok: true,
+        today,
+        yesterday,
+        promoScannedAt: promo?.scannedAt ?? null,
+        worker: workerState.get(),
+        rows,
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? "Lỗi dashboard overview" });
+    }
+  });
+
+  // ── Promotion scan (Marketing → Product Discount / Flash Deal) — port từ main ──
+  app.get("/admin/api/promotions", async (_req, res) => {
+    const { getLastPromoScan, isPromoScanRunning } = await import("./core/promotionScan");
+    res.json({ ok: true, running: isPromoScanRunning(), result: await getLastPromoScan() });
+  });
+
+  app.post("/admin/api/promotions/scan", async (req, res) => {
+    try {
+      const sessionUser = (req.session as any).user as SessionUser;
+      if (sessionUser.role === "viewer") return res.status(403).json({ error: "Viewer không thể scan" });
+      const sync = req.body?.sync !== false; // mặc định CÓ sync (data mới mỗi lần cào)
+      const { runAndStorePromoScan } = await import("./core/promotionScan");
+      const result = await runAndStorePromoScan({ sync, onLog: (m) => console.log("[promo]", m) });
+      res.json({ ok: true, result });
+    } catch (err: any) {
+      const busy = /Đang scan/.test(err?.message ?? "");
+      res.status(busy ? 409 : 500).json({ error: err?.message ?? "Lỗi scan promotion" });
+    }
+  });
+
+  // ── Cấu hình listing THEO SHOP (config/shop-listing.json) ──
+  // { "<shopFolder>": { colorShowcase?, richDesc?, bannerCollage?, bannerFeature?, sizeGuide?: boolean } }
+  // Thiếu key / thiếu shop = BẬT (giữ hành vi cũ). Worker đọc file TƯƠI mỗi listing → sửa là ăn ngay.
+  const SHOP_LISTING_FILE = path.join(process.cwd(), "config", "shop-listing.json");
+  const readShopListing = (): Record<string, any> => {
+    try { return JSON.parse(fs.readFileSync(SHOP_LISTING_FILE, "utf-8")); } catch { return {}; }
+  };
+  app.get("/admin/api/shop-listing", (_req, res) => {
+    res.json({ prefs: readShopListing() });
+  });
+  app.post("/admin/api/shop-listing", async (req, res) => {
+    try {
+      const sessionUser = (req.session as any).user as SessionUser;
+      if (sessionUser.role === "viewer") return res.status(403).json({ error: "Viewer không thể sửa" });
+      const { shop, prefs } = req.body as { shop?: string; prefs?: Record<string, any> };
+      if (!shop) return res.status(400).json({ error: "Thiếu shop" });
+      const all = readShopListing();
+      // Chỉ giữ key false (tắt) — bật là mặc định, khỏi phình file
+      const clean: Record<string, boolean> = {};
+      for (const k of ["colorShowcase", "richDesc", "bannerCollage", "bannerFeature", "sizeGuide", "variantToMain"]) {
+        if (prefs?.[k] === false) clean[k] = false;
+      }
+      if (Object.keys(clean).length === 0) delete all[shop];
+      else all[shop] = clean;
+      await fs.writeFile(SHOP_LISTING_FILE, JSON.stringify(all, null, 2), "utf-8");
+      res.json({ ok: true, prefs: all });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? "Lỗi lưu shop-listing" });
+    }
+  });
+
+  // ── Pool imgbb: thống kê usage/rate-limit từng key + test sống ──
+  app.get("/admin/api/imgbb/status", async (_req, res) => {
+    try {
+      const { getImgbbStats } = await import("./utils/uploadToImgbb");
+      const s = getImgbbStats();
+      const hourNow = new Date().toISOString().slice(0, 13);
+      const keys = config.imgbbApiKeys.map((k, i) => {
+        const id = k.slice(-6);
+        const ks = s.keys[id];
+        const cur = ks?.hours?.[hourNow] ?? { ok: 0, limit: 0 };
+        // 24 bucket giờ gần nhất cho sparkline
+        const hours: { h: string; ok: number; limit: number }[] = [];
+        for (let off = 23; off >= 0; off--) {
+          const h = new Date(Date.now() - off * 3600e3).toISOString().slice(0, 13);
+          const b = ks?.hours?.[h] ?? { ok: 0, limit: 0 };
+          hours.push({ h: h.slice(11) + "h", ok: b.ok, limit: b.limit });
+        }
+        return {
+          index: i + 1,
+          keyMasked: "…" + id,
+          ok: ks?.ok ?? 0,
+          ratelimit: ks?.ratelimit ?? 0,
+          error: ks?.error ?? 0,
+          lastOkAt: ks?.lastOkAt ?? null,
+          lastLimitAt: ks?.lastLimitAt ?? null,
+          hourOk: cur.ok,
+          hourLimit: cur.limit,
+          hours,
+        };
+      });
+      res.json({
+        ok: true, keys,
+        gaveup: s.gaveup, lastGaveupAt: s.lastGaveupAt,
+        verifyFail: s.verifyFail, lastVerifyFailAt: s.lastVerifyFailAt,
+        // imgbb KHÔNG công bố quota — ngưỡng ước tính từ quan sát thực tế (06/08: nghẽn ~100 up/key/giờ)
+        estHourlyLimitPerKey: 100,
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? "Lỗi imgbb status" });
+    }
+  });
+
+  // Test sống từng key: upload 1 ảnh 1px thật (tốn 1 lượt quota/key)
+  app.post("/admin/api/imgbb/test", async (_req, res) => {
+    try {
+      const axios = (await import("axios")).default;
+      // PNG 1x1 trắng
+      const px = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+      const results = [];
+      for (let i = 0; i < config.imgbbApiKeys.length; i++) {
+        const key = config.imgbbApiKeys[i];
+        try {
+          const form = new URLSearchParams();
+          form.append("image", px);
+          const r = await axios.post(`https://api.imgbb.com/1/upload?key=${key}`, form, {
+            headers: { "Content-Type": "application/x-www-form-urlencoded" }, timeout: 15000,
+          });
+          results.push({ index: i + 1, keyMasked: "…" + key.slice(-6), ok: !!r.data?.data?.url });
+        } catch (e: any) {
+          const msg = e?.response?.data?.error?.message || e?.message || "";
+          results.push({ index: i + 1, keyMasked: "…" + key.slice(-6), ok: false, error: msg, ratelimited: /rate limit/i.test(msg) });
+        }
+      }
+      res.json({ ok: true, results });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? "Lỗi test imgbb" });
+    }
+  });
+
+  // Ảnh đại diện shop (1 listing active gần nhất, cache 30p) — cho card shop ở Settings
+  app.get("/admin/api/shop-images", async (req, res) => {
+    try {
+      const sessionUser = (req.session as any).user as SessionUser;
+      res.json({ byShop: await fetchShopImages(sessionUser.username) });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? "Lỗi lấy ảnh shop" });
     }
   });
 
@@ -1486,75 +1941,115 @@ export const startAdminServer = async () => {
     return { target: requested };
   };
 
-  // GET: cho UI biết user (mình hoặc — nếu admin — user được chọn) đã upload cookie chưa
-  app.get("/admin/api/cookie/status", async (req, res) => {
+  // ── Cookie 4Seller (ĐA TÀI KHOẢN — auto-detect qua cookie `uid`) — port từ main ──
+  // GET: danh sách tài khoản đã upload + shop của từng tài khoản
+  app.get("/admin/api/cookie/status", async (_req, res) => {
     try {
-      const sessionUser = (req.session as any).user as SessionUser;
-      const { target, error, status } = await resolveCookieTarget(
-        sessionUser,
-        (req.query.username as string | undefined)?.trim() || undefined
-      );
-      if (!target) return res.status(status ?? 400).json({ error });
-      const file = userCookiePath(target);
-      const exists = await fs.pathExists(file);
-      let count = 0;
-      let mtime: number | null = null;
-      if (exists) {
-        try {
-          const stat = await fs.stat(file);
-          mtime = stat.mtimeMs;
-          const raw = await fs.readFile(file, "utf-8");
-          const parsed = JSON.parse(raw);
-          const arr = Array.isArray(parsed) ? parsed : parsed?.cookies ?? [];
-          count = arr.length;
-        } catch {
-          // ignore parse fail
-        }
-      }
+      const accounts = await fsAccounts();
       res.json({
-        username: target,
-        userCookie: { exists, count, mtime, path: file },
+        accounts: accounts.map((a) => ({
+          uid: a.uid,
+          label: a.label,
+          shops: a.shops,
+          shopCount: a.shops.length,
+          cookieCount: a.cookieCount,
+          cookieUpdatedAt: a.cookieUpdatedAt,
+          shopsUpdatedAt: a.shopsUpdatedAt,
+        })),
       });
     } catch (err: any) {
       res.status(500).json({ error: err?.message ?? "Lỗi đọc status cookie" });
     }
   });
 
+  // POST: nhận 1 file cookie export (paste hoặc kéo-thả). Tự detect tài khoản qua cookie `uid`.
   app.post("/admin/api/cookie", async (req, res) => {
     try {
       const sessionUser = (req.session as any).user as SessionUser;
       if (sessionUser.role === "viewer") return res.status(403).json({ error: "Viewer không thể upload cookie" });
 
-      const body = req.body as { cookie: any[]; username?: string };
-      if (!Array.isArray(body.cookie)) {
-        return res.status(400).json({ error: "Body phải có field 'cookie' là array" });
-      }
-      const { target, error, status } = await resolveCookieTarget(
-        sessionUser,
-        body.username?.trim() || undefined
-      );
-      if (!target) return res.status(status ?? 400).json({ error });
-      // Mỗi user lưu vào file riêng — không ghi đè user khác
-      const targetFile = userCookiePath(target);
-      await fs.ensureDir(path.dirname(targetFile));
-      await fs.writeFile(targetFile, JSON.stringify(body.cookie, null, 2), "utf-8");
-      res.json({ ok: true, count: body.cookie.length, username: target, savedTo: targetFile });
+      const body = req.body as { cookie: any };
+      const { account, shopSyncError } = await saveAccountCookie(body.cookie);
+      // Đổi cookie / thêm shop → xoá cache để UI phản ánh ngay
+      shopListCache.clear();
+      liveCountCache.clear();
+      ordersCache.clear();
+      res.json({
+        ok: true,
+        uid: account.uid,
+        label: account.label,
+        cookieCount: account.cookieCount,
+        shopCount: account.shops.length,
+        shopSyncError: shopSyncError ?? null,
+      });
     } catch (err: any) {
-      res.status(500).json({ error: err?.message ?? "Lỗi lưu cookie" });
+      res.status(400).json({ error: err?.message ?? "Lỗi lưu cookie" });
     }
   });
 
+  // Đổi nhãn tài khoản ("Tài khoản 1" → tên dễ nhớ)
+  app.post("/admin/api/cookie/label", async (req, res) => {
+    try {
+      const sessionUser = (req.session as any).user as SessionUser;
+      if (sessionUser.role === "viewer") return res.status(403).json({ error: "Viewer không thể sửa" });
+      const { uid, label } = req.body as { uid: string; label: string };
+      await setAccountLabel(uid, label);
+      res.json({ ok: true });
+    } catch (err: any) {
+      res.status(400).json({ error: err?.message ?? "Lỗi đổi nhãn" });
+    }
+  });
+
+  // Sync lại shop list của 1 tài khoản từ 4Seller
+  app.post("/admin/api/cookie/refresh-shops", async (req, res) => {
+    try {
+      const { uid } = req.body as { uid: string };
+      const shops = await refreshAccountShops(uid);
+      shopListCache.clear();
+      res.json({ ok: true, shopCount: shops.length, shops });
+    } catch (err: any) {
+      res.status(400).json({ error: err?.message ?? "Lỗi sync shop" });
+    }
+  });
+
+  // Xoá 1 tài khoản (cookie + registry)
+  app.delete("/admin/api/cookie", async (req, res) => {
+    try {
+      const sessionUser = (req.session as any).user as SessionUser;
+      if (sessionUser.role !== "admin") return res.status(403).json({ error: "Chỉ admin xoá được tài khoản" });
+      const { uid } = req.body as { uid: string };
+      await fsDeleteAccount(uid);
+      shopListCache.clear();
+      liveCountCache.clear();
+      ordersCache.clear();
+      res.json({ ok: true });
+    } catch (err: any) {
+      res.status(400).json({ error: err?.message ?? "Lỗi xoá tài khoản" });
+    }
+  });
+
+  // Test cookie 1 tài khoản (mở page 4Seller headless xem có bị đá về login không)
   app.post("/admin/api/cookie/test", async (req, res) => {
     let browser: any = null;
     try {
-      const sessionUser = (req.session as any).user as SessionUser;
-      const { target, error, status } = await resolveCookieTarget(
-        sessionUser,
-        (req.body?.username as string | undefined)?.trim() || undefined
-      );
-      if (!target) return res.status(status ?? 400).json({ ok: false, error });
-      // Test cookie của user đích (admin có thể test hộ user khác)
-      const cookie = await configCookie(target);
+      const { uid } = req.body as { uid?: string };
+      let cookie: any[];
+      let source: string;
+      if (uid) {
+        cookie = await configCookieForAccount(uid);
+        source = `acct:${uid}`;
+      } else {
+        // Không truyền uid: test tài khoản đầu tiên (hoặc legacy user nếu chưa có tài khoản)
+        const accounts = await fsAccounts();
+        if (accounts.length > 0) {
+          cookie = await configCookieForAccount(accounts[0].uid);
+          source = `acct:${accounts[0].uid}`;
+        } else {
+          const sessionUser = (req.session as any).user as SessionUser;
+          cookie = await configCookie(sessionUser.username);
+          source = sessionUser.username;
+        }
+      }
       browser = await chromium.launch({ headless: true });
       const ctx = await browser.newContext();
       await ctx.addCookies(cookie);
@@ -1566,7 +2061,7 @@ export const startAdminServer = async () => {
       const finalUrl = page.url();
       const ok = !!resp && resp.status() < 400 && !finalUrl.includes("login");
       await ctx.close();
-      res.json({ ok, finalUrl, status: resp?.status() ?? null, source: target });
+      res.json({ ok, finalUrl, status: resp?.status() ?? null, source });
     } catch (err: any) {
       res.status(500).json({ ok: false, error: err?.message ?? "Lỗi test cookie" });
     } finally {
@@ -1594,6 +2089,10 @@ export const startAdminServer = async () => {
       res.status(500).json({ error: err?.message ?? "Lỗi tạo token" });
     }
   });
+
+  // Chuyển đổi mượt: import cookie legacy (data/cookies/<user>.json) vào registry
+  // tài khoản 1 lần khi start (file có uid/userToken mới import được).
+  bootstrapLegacyCookies().catch(() => {});
 
   const port = Number(process.env.ADMIN_PORT ?? 3000);
   // Bind port là "single-instance guard": nếu instance khác đã chiếm port →

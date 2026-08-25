@@ -167,10 +167,21 @@ export const handleSizeChartUpload = async (page: any, jsonData: any): Promise<v
   const tempPath = path.join(__dirname, `temp_size_chart_${uniqueId}.png`);
 
   try {
-    if (jsonData.size_chart && jsonData.size_chart.data?.length > 0) {
+    // 2 format data: cũ {data:[...]} / mới (crawler v27+) {sections:[{name,headers,data}]} — lấy section đầu (đồ chính)
+    const sc = jsonData.size_chart;
+    let chartRows: any[] | null = null;
+    let chartHeaders: string[] | null = null;
+    if (sc?.data?.length > 0) {
+      chartRows = sc.data;
+      chartHeaders = Object.keys(sc.data[0]);
+    } else if (sc?.sections?.length > 0) {
+      const s = sc.sections.find((x: any) => x?.data?.length) ?? null;
+      if (s) { chartRows = s.data; chartHeaders = s.headers?.length ? s.headers : Object.keys(s.data[0]); }
+    }
+
+    if (chartRows && chartHeaders) {
       console.log(`🎨 Tạo ảnh từ JSON (ID: ${uniqueId})`);
-      const headers = Object.keys(jsonData.size_chart.data[0]);
-      const html = generateSizeChartHtml(jsonData.size_chart.data, headers);
+      const html = generateSizeChartHtml(chartRows, chartHeaders);
       await renderHtmlToPng(page, html, tempPath);
     } else if (jsonData.size_chart_img) {
       console.log("📸 Sử dụng ảnh base64 có sẵn...");
@@ -179,19 +190,39 @@ export const handleSizeChartUpload = async (page: any, jsonData: any): Promise<v
       await fsPromises.writeFile(tempPath, new Uint8Array(buffer));
     }
 
+    // Không render/ghi được file → đừng setInputFiles (trước đây ném ENOENT gây log lỗi ảo)
+    if (!fs.existsSync(tempPath)) {
+      console.log("ℹ️ Không có data size chart dạng render được — bỏ qua upload Size Chart.");
+      return;
+    }
+
     const sizeChartInput = page.locator(
       'xpath=(//*[contains(text(), "Size Chart")]/following::div[contains(@class, "file_upload__index")]//input[@type="file"])[1]'
     );
 
     try {
       await sizeChartInput.waitFor({ state: "attached", timeout: 10000 });
-      await sizeChartInput.setInputFiles(tempPath);
-      console.log(`✅ Đã upload Size Chart thành công (ID: ${uniqueId})`);
+
+      // Upload + retry 1 lần nếu 4Seller báo "Upload Failure!" (server glitch thoáng qua).
+      // Size chart là ảnh PHỤ — thất bại thì bỏ qua, nhưng phải CHỜ toast lỗi tắt hẳn
+      // để assertNoErrors ở ngoài không tưởng nhầm là lỗi nghiêm trọng rồi giết listing.
+      const failToast = page.locator(".el-message--error", { hasText: /upload fail/i });
+      for (let attempt = 1; attempt <= 2; attempt++) {
+        await sizeChartInput.setInputFiles(tempPath);
+        await page.waitForTimeout(3500); // chờ upload + toast (nếu lỗi) xuất hiện
+        if (!(await failToast.first().isVisible().catch(() => false))) {
+          console.log(`✅ Đã upload Size Chart thành công (ID: ${uniqueId}, lần ${attempt})`);
+          break;
+        }
+        console.warn(`⚠️ 4Seller báo Upload Failure cho Size Chart (lần ${attempt}/2)${attempt < 2 ? " → thử lại…" : " → bỏ qua (ảnh phụ)."}`);
+        // Chờ toast tự tắt trước khi thử lại / đi tiếp (el-message tự dismiss ~3s)
+        await failToast.first().waitFor({ state: "hidden", timeout: 8000 }).catch(() => {});
+      }
     } catch (e) {
       console.error(`❌ Không tìm thấy ô upload cho Size Chart (ID: ${uniqueId})`, e);
     }
 
-    await page.waitForTimeout(2000);
+    await page.waitForTimeout(1000);
 
     if (await fsPromises.stat(tempPath).catch(() => null)) {
       await fsPromises.unlink(tempPath).catch(() => {});

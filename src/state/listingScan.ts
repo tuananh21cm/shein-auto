@@ -25,6 +25,8 @@ export interface ListingCard {
   errorMessage?: string;
   /** URL relative để load screenshot debug (vd "/admin/data/screenshots/xxx.png") */
   screenshotUrl?: string;
+  /** Ngách suy từ category breadcrumb + tên sp (deriveNiche). null nếu không khớp. */
+  niche?: string | null;
 }
 
 export interface ShopSummary {
@@ -149,6 +151,7 @@ const parseListingFile = async (
       mtimeMs: stat.mtimeMs,
       errorMessage,
       screenshotUrl,
+      niche: deriveNiche(`${data?.category || ""} ${typeof data.product_name === "string" ? data.product_name : ""}`),
     };
   } catch {
     return null;
@@ -427,6 +430,7 @@ export interface HubItem {
   file: string;
   title: string;
   image: string | null;
+  url: string | null;
   priceRange: { min: number; max: number; currency: string } | null;
   variantCount: number;
   colorCount: number;
@@ -491,21 +495,21 @@ export const scanHub = async (): Promise<HubItem[]> => {
       const card = await parseListingFile(path.join(dir, f), "hub", "hub", "success");
       if (!card) return null;
       const m = await readOneMeta(f);
-      // Suy ngách từ category (breadcrumb) + tên sp; addedBy = người cào (share đội).
+      // niche đã suy trong parseListingFile (card.niche); raw chỉ để lấy addedBy/url.
       const raw = await fs.readJson(path.join(dir, f)).catch(() => ({} as any));
-      const niche = deriveNiche(`${raw?.category || ""} ${card.title || ""}`);
       return {
         id: f,
         file: f,
         title: card.title,
         image: card.image,
+        url: typeof raw?.url === "string" ? raw.url : null,
         priceRange: card.priceRange,
         variantCount: card.variantCount,
         colorCount: card.colorCount,
         sizeCount: card.sizeCount,
         scrapedAt: card.scrapedAt,
         mtimeMs: card.mtimeMs,
-        niche,
+        niche: card.niche ?? null,
         addedBy: raw?._addedBy ?? null,
         addedAt: raw?._addedAt ?? null,
         listedCount: m ? m.shops.length : 0,

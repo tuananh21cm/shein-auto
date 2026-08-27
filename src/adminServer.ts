@@ -1175,54 +1175,53 @@ export const startAdminServer = async () => {
   });
 
   // ── Thống kê theo NGÁCH: ngách nào có shop nào chơi + sp crawl + điểm cơ hội ──
-  // Bảng ngách (shop_allocation/shop_niche) do crawler ngách (nhánh main) tạo. Máy chưa
-  // chạy crawler → chưa có bảng → query ném "no such table". Guard: thiếu bảng → coi như rỗng.
-  const nicheTablesReady = (db: any): boolean =>
-    ["shop_allocation", "shop_niche"].every(
-      (t) => !!db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name=?").get(t)
-    );
+  // === NGÁCH: suy thẳng từ JSON (mỗi file có `category` breadcrumb → deriveNiche) ===
+  // KHÔNG phụ thuộc crawler/SQLite — chạy trên mọi máy chỉ với data Hub + folder shop.
+  //   • by-niche  : gom sp Hub (pool cả đội) theo ngách.
+  //   • by-shop   : gom sp ĐÃ list vào folder shop (máy mình) theo ngách.
 
-  app.get("/admin/api/niche/overview", async (_req, res) => {
+  app.get("/admin/api/niche/overview", async (req, res) => {
     try {
-      const { getDb } = await import("./state/db");
-      const db = getDb();
-      if (!nicheTablesReady(db))
-        return res.json({ niches: [], totals: { niches: 0, shops: 0, products: 0 } });
-      // Gom allocation theo ngách (sp unique + đã list + điểm TB)
-      const alloc = db.prepare(
-        `SELECT niche_key AS niche, COUNT(DISTINCT goods_id) products, COUNT(*) rows,
-                SUM(CASE WHEN status='listed' THEN 1 ELSE 0 END) listed,
-                ROUND(AVG(opportunity_score),1) avgOpp, ROUND(AVG(win_score),1) avgWin
-         FROM shop_allocation WHERE niche_key IS NOT NULL AND niche_key<>'' GROUP BY niche_key`
-      ).all() as any[];
-      // Shop chơi từng ngách (+ status)
-      const byNiche = new Map<string, { shop: string; status: string }[]>();
-      for (const r of db.prepare(`SELECT shop, niche_key AS niche, status FROM shop_niche WHERE niche_key IS NOT NULL`).all() as any[]) {
-        if (!byNiche.has(r.niche)) byNiche.set(r.niche, []);
-        byNiche.get(r.niche)!.push({ shop: r.shop, status: r.status });
+      const [hub, listings] = await Promise.all([
+        scanHub(),
+        scanListings({ username: ownerScope(req) }),
+      ]);
+      // pool Hub theo ngách: số sp + 3 ảnh preview
+      const pool = new Map<string, { products: number; previews: string[] }>();
+      for (const it of hub) {
+        if (!it.niche) continue;
+        let e = pool.get(it.niche);
+        if (!e) { e = { products: 0, previews: [] }; pool.set(it.niche, e); }
+        e.products++;
+        if (it.image && e.previews.length < 3) e.previews.push(it.image);
       }
-      // 3 ảnh preview mỗi ngách (điểm cơ hội cao nhất)
-      const preview = db.prepare(
-        `SELECT image FROM shop_allocation WHERE niche_key=? AND image IS NOT NULL AND image<>''
-         GROUP BY goods_id ORDER BY MAX(opportunity_score) DESC LIMIT 3`
-      );
-      const nicheSet = new Set<string>([...alloc.map((a) => a.niche), ...byNiche.keys()]);
+      // đã list (folder shop máy mình) theo ngách: shop nào + số listing
+      const listed = new Map<string, { listed: number; shops: Set<string> }>();
+      for (const c of listings) {
+        if (!c.niche) continue;
+        let e = listed.get(c.niche);
+        if (!e) { e = { listed: 0, shops: new Set() }; listed.set(c.niche, e); }
+        if (c.status === "success") e.listed++;
+        e.shops.add(c.folder);
+      }
+      const nicheSet = new Set<string>([...pool.keys(), ...listed.keys()]);
       const niches = [...nicheSet].map((niche) => {
-        const a = alloc.find((x) => x.niche === niche) || { products: 0, rows: 0, listed: 0, avgOpp: null, avgWin: null };
+        const p = pool.get(niche) || { products: 0, previews: [] };
+        const l = listed.get(niche) || { listed: 0, shops: new Set<string>() };
         return {
           niche,
-          shops: byNiche.get(niche) || [],
-          products: a.products, rows: a.rows, listed: a.listed,
-          avgOpp: a.avgOpp, avgWin: a.avgWin,
-          previews: (preview.all(niche) as any[]).map((x) => x.image),
+          shops: [...l.shops].map((shop) => ({ shop, status: null })),
+          products: p.products, listed: l.listed,
+          avgOpp: null, avgWin: null,
+          previews: p.previews,
         };
-      }).sort((x, y) => y.products - x.products);
+      }).sort((a, b) => b.products - a.products);
       res.json({
         niches,
         totals: {
           niches: niches.length,
-          shops: new Set([...byNiche.values()].flat().map((s) => s.shop)).size,
-          products: alloc.reduce((s, a) => s + a.products, 0),
+          shops: new Set(listings.filter((c) => c.niche).map((c) => c.folder)).size,
+          products: hub.filter((h) => h.niche).length,
         },
       });
     } catch (err: any) {
@@ -1230,60 +1229,58 @@ export const startAdminServer = async () => {
     }
   });
 
-  // Top sản phẩm crawl 1 ngách — dedup theo goods_id, xếp theo điểm cơ hội.
+  // Top sản phẩm 1 ngách — từ pool Hub, ưu tiên sp đã list rồi tới nhiều shop.
   app.get("/admin/api/niche/products", async (req, res) => {
     try {
       const niche = String(req.query.niche || "");
       if (!niche) return res.status(400).json({ error: "Thiếu niche" });
       const limit = Math.min(200, Math.max(1, Number(req.query.limit) || 60));
-      const { getDb } = await import("./state/db");
-      const db = getDb();
-      if (!nicheTablesReady(db)) return res.json({ niche, products: [] });
-      const rows = db.prepare(
-        `SELECT goods_id, MAX(name) name, MAX(image) image, MAX(price) price, MAX(url) url,
-                MAX(win_score) win, MAX(opportunity_score) opp, COUNT(DISTINCT shop) shopCount,
-                MAX(CASE WHEN status='listed' THEN 1 ELSE 0 END) listed
-         FROM shop_allocation WHERE niche_key=? GROUP BY goods_id
-         ORDER BY opp DESC, win DESC, shopCount DESC LIMIT ?`
-      ).all(niche, limit) as any[];
-      res.json({ niche, products: rows });
+      const hub = await scanHub();
+      const products = hub
+        .filter((h) => h.niche === niche)
+        .map((h) => ({
+          goods_id: h.id,
+          name: h.title,
+          image: h.image,
+          price: h.priceRange?.min ?? null,
+          url: h.url ?? null,
+          win: null, opp: null,
+          shopCount: h.listedCount || 0,
+          listed: (h.listedCount || 0) > 0 ? 1 : 0,
+        }))
+        .sort((a, b) => (b.listed - a.listed) || (b.shopCount - a.shopCount))
+        .slice(0, limit);
+      res.json({ niche, products });
     } catch (err: any) {
       res.status(500).json({ error: err?.message ?? "Lỗi niche products" });
     }
   });
 
-  // View THEO SHOP: mỗi shop chơi ngách nào (1 shop có thể nhiều ngách — theo category sp crawl).
-  app.get("/admin/api/niche/by-shop", async (_req, res) => {
+  // View THEO SHOP: mỗi shop (folder) đang list ngách nào — từ sp đã list trên máy mình.
+  app.get("/admin/api/niche/by-shop", async (req, res) => {
     try {
-      const { getDb } = await import("./state/db");
-      const db = getDb();
-      if (!nicheTablesReady(db)) return res.json({ shops: [], totalShops: 0 });
-      // Ngách gán chính thức (shop_niche) — để đánh dấu primary + status
-      const assigned = new Map<string, { niche: string; status: string }>();
-      for (const r of db.prepare(`SELECT shop, niche_key AS niche, status FROM shop_niche WHERE niche_key IS NOT NULL`).all() as any[])
-        assigned.set(r.shop, { niche: r.niche, status: r.status });
-      // Ngách THỰC từ sp crawl: group (shop, niche_key)
-      const rows = db.prepare(
-        `SELECT shop, niche_key AS niche, COUNT(DISTINCT goods_id) products,
-                SUM(CASE WHEN status='listed' THEN 1 ELSE 0 END) listed
-         FROM shop_allocation WHERE niche_key IS NOT NULL AND niche_key<>''
-         GROUP BY shop, niche_key`
-      ).all() as any[];
-      const byShop = new Map<string, any>();
-      for (const r of rows) {
-        if (!byShop.has(r.shop)) byShop.set(r.shop, { shop: r.shop, total: 0, niches: [] });
-        const s = byShop.get(r.shop);
-        s.niches.push({ niche: r.niche, products: r.products, listed: r.listed });
-        s.total += r.products;
+      const listings = await scanListings({ username: ownerScope(req) });
+      const byShop = new Map<string, Map<string, { products: number; listed: number }>>();
+      for (const c of listings) {
+        if (!c.niche) continue;
+        let m = byShop.get(c.folder);
+        if (!m) { m = new Map(); byShop.set(c.folder, m); }
+        let e = m.get(c.niche);
+        if (!e) { e = { products: 0, listed: 0 }; m.set(c.niche, e); }
+        e.products++;
+        if (c.status === "success") e.listed++;
       }
-      // Shop có gán ngách nhưng chưa crawl sp nào → vẫn hiện (niches rỗng)
-      for (const [shop, a] of assigned) {
-        if (!byShop.has(shop)) byShop.set(shop, { shop, total: 0, niches: [] });
-      }
-      const shops = [...byShop.values()].map((s) => {
-        s.niches.sort((a: any, b: any) => b.products - a.products);
-        const a = assigned.get(s.shop);
-        return { ...s, primary: a?.niche ?? null, status: a?.status ?? null };
+      const shops = [...byShop.entries()].map(([shop, m]) => {
+        const niches = [...m.entries()]
+          .map(([niche, e]) => ({ niche, products: e.products, listed: e.listed }))
+          .sort((a, b) => b.products - a.products);
+        return {
+          shop,
+          total: niches.reduce((s, n) => s + n.products, 0),
+          niches,
+          primary: niches[0]?.niche ?? null, // ngách nhiều sp nhất = chủ đạo
+          status: null,
+        };
       }).sort((a, b) => b.total - a.total);
       res.json({ shops, totalShops: shops.length });
     } catch (err: any) {

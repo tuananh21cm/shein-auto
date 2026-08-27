@@ -14,6 +14,24 @@
     { "niche": "oversized-tee", "keywords": ["oversized tee", "oversized t-shirt", "oversized shirt", "oversized top", "oversize tee"] },
     { "niche": "plus-size-crop-top", "keywords": ["plus size crop", "plus-size crop", "curve crop", "plus size top"] },
     { "niche": "y2k-crop-top", "keywords": ["y2k", "crop top", "cropped", "tube top", "bandeau"] },
-    { "niche": "cami-top", "keywords": ["cami", "camisole", "tank top", "spaghetti strap"] }
+    { "niche": "cami-top", "keywords": ["cami", "camisole", "tank top", "spaghetti strap"] },
+    { "niche": "t-shirt", "keywords": ["t-shirt", "t shirt", "graphic tee", "graphic tees"] },
+    { "niche": "blouse", "keywords": ["blouse", "blouses"] },
+    { "niche": "sports-bra", "keywords": ["sports bra", "sport bra"] },
+    { "niche": "activewear", "keywords": ["activewear", "active dress", "sports tee", "sports tank", "sports set", "sports sets", "yoga", "legging", "workout", "athletic", "gym wear", "tracksuit"] },
+    { "niche": "bodysuit", "keywords": ["bodysuit"] },
+    { "niche": "jumpsuit", "keywords": ["jumpsuit", "unitard", "romper", "playsuit"] },
+    { "niche": "co-ord-set", "keywords": ["two-piece", "two piece", "co-ord", "coord", "matching set", "2 piece outfit"] },
+    { "niche": "cardigan-sweater", "keywords": ["cardigan", "sweater", "knit top", "pullover"] },
+    { "niche": "hoodie-sweatshirt", "keywords": ["hoodie", "sweatshirt"] },
+    { "niche": "jacket-coat", "keywords": ["jacket", "coat", "blazer", "outerwear", "puffer"] },
+    { "niche": "skirt", "keywords": ["skirt"] },
+    { "niche": "pants", "keywords": ["pants", "trousers", "sweatpants", "joggers", "cargo"] },
+    { "niche": "shorts", "keywords": ["shorts"] },
+    { "niche": "mini-dress", "keywords": ["mini dress", "short dress"] },
+    { "niche": "midi-dress", "keywords": ["midi dress"] },
+    { "niche": "maxi-dress", "keywords": ["maxi dress", "long dress"] },
+    { "niche": "dress", "keywords": ["dress"] },
+    { "niche": "tops", "keywords": ["top"] }
   ]
 }

@@ -1178,15 +1178,40 @@ export const startAdminServer = async () => {
   // === NGÁCH: suy thẳng từ JSON (mỗi file có `category` breadcrumb → deriveNiche) ===
   // KHÔNG phụ thuộc crawler/SQLite — chạy trên mọi máy chỉ với data Hub + folder shop.
   //   • by-niche  : gom sp Hub (pool cả đội) theo ngách.
-  //   • by-shop   : gom sp ĐÃ list vào folder shop (máy mình) theo ngách.
+  //   • by-shop   : shop nào chơi ngách nào — TEAM-WIDE (xem helper).
+
+  // Gom (shop → ngách) TEAM-WIDE: (a) folder shop máy mình từ scanListings (chi tiết
+  // pending/success), + (b) listedShops trong sidecar Hub (chia sẻ qua HUB_DIR → shop
+  // của cả đội, lớn dần mỗi lần ai list qua Hub). Shop đã có ở (a) thì bỏ ở (b) tránh đếm đúp.
+  const collectShopNiche = async (
+    req: express.Request
+  ): Promise<{ byShop: Map<string, Map<string, { products: number; listed: number }>>; hub: Awaited<ReturnType<typeof scanHub>> }> => {
+    const [listings, hub] = await Promise.all([scanListings({ username: ownerScope(req) }), scanHub()]);
+    const byShop = new Map<string, Map<string, { products: number; listed: number }>>();
+    const bump = (shop: string, niche: string, listed: boolean) => {
+      let m = byShop.get(shop);
+      if (!m) { m = new Map(); byShop.set(shop, m); }
+      let e = m.get(niche);
+      if (!e) { e = { products: 0, listed: 0 }; m.set(niche, e); }
+      e.products++;
+      if (listed) e.listed++;
+    };
+    for (const c of listings) if (c.niche) bump(c.folder, c.niche, c.status === "success");
+    const localShops = new Set(byShop.keys());
+    for (const h of hub) {
+      if (!h.niche || !h.listedShops?.length) continue;
+      for (const shop of h.listedShops) {
+        if (localShops.has(shop)) continue; // shop máy mình → đã tính ở trên
+        bump(shop, h.niche, true); // sidecar = đã list
+      }
+    }
+    return { byShop, hub };
+  };
 
   app.get("/admin/api/niche/overview", async (req, res) => {
     try {
-      const [hub, listings] = await Promise.all([
-        scanHub(),
-        scanListings({ username: ownerScope(req) }),
-      ]);
-      // pool Hub theo ngách: số sp + 3 ảnh preview
+      const { byShop, hub } = await collectShopNiche(req);
+      // pool Hub theo ngách: số sp + 3 ảnh preview (team-wide, cả đội cào)
       const pool = new Map<string, { products: number; previews: string[] }>();
       for (const it of hub) {
         if (!it.niche) continue;
@@ -1195,19 +1220,19 @@ export const startAdminServer = async () => {
         e.products++;
         if (it.image && e.previews.length < 3) e.previews.push(it.image);
       }
-      // đã list (folder shop máy mình) theo ngách: shop nào + số listing
-      const listed = new Map<string, { listed: number; shops: Set<string> }>();
-      for (const c of listings) {
-        if (!c.niche) continue;
-        let e = listed.get(c.niche);
-        if (!e) { e = { listed: 0, shops: new Set() }; listed.set(c.niche, e); }
-        if (c.status === "success") e.listed++;
-        e.shops.add(c.folder);
+      // shop + số đã list theo ngách (team-wide, từ byShop)
+      const perNiche = new Map<string, { listed: number; shops: Set<string> }>();
+      for (const [shop, m] of byShop) {
+        for (const [niche, e] of m) {
+          let x = perNiche.get(niche);
+          if (!x) { x = { listed: 0, shops: new Set() }; perNiche.set(niche, x); }
+          x.listed += e.listed; x.shops.add(shop);
+        }
       }
-      const nicheSet = new Set<string>([...pool.keys(), ...listed.keys()]);
+      const nicheSet = new Set<string>([...pool.keys(), ...perNiche.keys()]);
       const niches = [...nicheSet].map((niche) => {
         const p = pool.get(niche) || { products: 0, previews: [] };
-        const l = listed.get(niche) || { listed: 0, shops: new Set<string>() };
+        const l = perNiche.get(niche) || { listed: 0, shops: new Set<string>() };
         return {
           niche,
           shops: [...l.shops].map((shop) => ({ shop, status: null })),
@@ -1220,7 +1245,7 @@ export const startAdminServer = async () => {
         niches,
         totals: {
           niches: niches.length,
-          shops: new Set(listings.filter((c) => c.niche).map((c) => c.folder)).size,
+          shops: byShop.size,
           products: hub.filter((h) => h.niche).length,
         },
       });
@@ -1256,20 +1281,10 @@ export const startAdminServer = async () => {
     }
   });
 
-  // View THEO SHOP: mỗi shop (folder) đang list ngách nào — từ sp đã list trên máy mình.
+  // View THEO SHOP: mỗi shop chơi ngách nào — TEAM-WIDE (shop máy mình + shop đội qua Hub).
   app.get("/admin/api/niche/by-shop", async (req, res) => {
     try {
-      const listings = await scanListings({ username: ownerScope(req) });
-      const byShop = new Map<string, Map<string, { products: number; listed: number }>>();
-      for (const c of listings) {
-        if (!c.niche) continue;
-        let m = byShop.get(c.folder);
-        if (!m) { m = new Map(); byShop.set(c.folder, m); }
-        let e = m.get(c.niche);
-        if (!e) { e = { products: 0, listed: 0 }; m.set(c.niche, e); }
-        e.products++;
-        if (c.status === "success") e.listed++;
-      }
+      const { byShop } = await collectShopNiche(req);
       const shops = [...byShop.entries()].map(([shop, m]) => {
         const niches = [...m.entries()]
           .map(([niche, e]) => ({ niche, products: e.products, listed: e.listed }))

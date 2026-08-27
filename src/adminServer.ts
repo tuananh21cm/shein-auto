@@ -1175,10 +1175,19 @@ export const startAdminServer = async () => {
   });
 
   // ── Thống kê theo NGÁCH: ngách nào có shop nào chơi + sp crawl + điểm cơ hội ──
+  // Bảng ngách (shop_allocation/shop_niche) do crawler ngách (nhánh main) tạo. Máy chưa
+  // chạy crawler → chưa có bảng → query ném "no such table". Guard: thiếu bảng → coi như rỗng.
+  const nicheTablesReady = (db: any): boolean =>
+    ["shop_allocation", "shop_niche"].every(
+      (t) => !!db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name=?").get(t)
+    );
+
   app.get("/admin/api/niche/overview", async (_req, res) => {
     try {
       const { getDb } = await import("./state/db");
       const db = getDb();
+      if (!nicheTablesReady(db))
+        return res.json({ niches: [], totals: { niches: 0, shops: 0, products: 0 } });
       // Gom allocation theo ngách (sp unique + đã list + điểm TB)
       const alloc = db.prepare(
         `SELECT niche_key AS niche, COUNT(DISTINCT goods_id) products, COUNT(*) rows,
@@ -1229,6 +1238,7 @@ export const startAdminServer = async () => {
       const limit = Math.min(200, Math.max(1, Number(req.query.limit) || 60));
       const { getDb } = await import("./state/db");
       const db = getDb();
+      if (!nicheTablesReady(db)) return res.json({ niche, products: [] });
       const rows = db.prepare(
         `SELECT goods_id, MAX(name) name, MAX(image) image, MAX(price) price, MAX(url) url,
                 MAX(win_score) win, MAX(opportunity_score) opp, COUNT(DISTINCT shop) shopCount,
@@ -1247,6 +1257,7 @@ export const startAdminServer = async () => {
     try {
       const { getDb } = await import("./state/db");
       const db = getDb();
+      if (!nicheTablesReady(db)) return res.json({ shops: [], totalShops: 0 });
       // Ngách gán chính thức (shop_niche) — để đánh dấu primary + status
       const assigned = new Map<string, { niche: string; status: string }>();
       for (const r of db.prepare(`SELECT shop, niche_key AS niche, status FROM shop_niche WHERE niche_key IS NOT NULL`).all() as any[])

@@ -71,15 +71,27 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
  * thành khoảng trống. Dùng ngay sau upload để loại URL chết.
  */
 export async function verifyImageUrl(url: string): Promise<boolean> {
-  try {
-    const res = await axios.head(url, { timeout: 8000 });
-    const ok = /^image\//i.test(String(res.headers["content-type"] || ""));
-    if (!ok) recordVerifyFail();
-    return ok;
-  } catch {
-    recordVerifyFail();
-    return false;
+  // imgbb (i.ibb.co) trả URL NGAY nhưng CDN cần vài giây propagate ảnh mới → verify
+  // chạy sát upload hay gặp 404/edge-miss → drop slot oan (banner/size-guide thiếu).
+  // → retry với giãn nhịp; GET Range bytes=0-0 (edge phục vụ GET trước HEAD) + UA browser.
+  const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36";
+  const waits = [0, 1500, 3000, 5000];
+  for (let i = 0; i < waits.length; i++) {
+    if (waits[i]) await sleep(waits[i]);
+    try {
+      const res = await axios.get(url, {
+        headers: { "User-Agent": UA, Range: "bytes=0-0" },
+        timeout: 8000,
+        responseType: "arraybuffer",
+        validateStatus: (s) => s === 200 || s === 206,
+      });
+      if (/^image\//i.test(String(res.headers["content-type"] || ""))) return true;
+    } catch {
+      /* chưa propagate / edge-miss → thử lại */
+    }
   }
+  recordVerifyFail();
+  return false;
 }
 
 export async function uploadToImgbb(filePath: string): Promise<string | null> {

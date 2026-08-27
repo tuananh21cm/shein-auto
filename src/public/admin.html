@@ -135,7 +135,7 @@
 
     /* Shop summary cards (landing view of Listings) */
     .shops-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; }
-    .shop-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; cursor: pointer; transition: transform .15s, border-color .15s; display: flex; flex-direction: column; }
+    .shop-card { background: var(--bg-card); content-visibility: auto; contain-intrinsic-size: auto 360px; border: 1px solid var(--border); border-radius: 14px; overflow: hidden; cursor: pointer; transition: transform .15s, border-color .15s; display: flex; flex-direction: column; }
     .shop-card:hover { transform: translateY(-2px); border-color: var(--accent); }
     .shop-card .cover { aspect-ratio: 16/9; background: var(--bg-elev); position: relative; overflow: hidden; }
     .shop-card .cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
@@ -156,7 +156,7 @@
 
     /* Listings cards */
     .listings-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; }
-    .listing-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; display: flex; flex-direction: column; transition: transform .15s, border-color .15s; position: relative; }
+    .listing-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; display: flex; flex-direction: column; transition: transform .15s, border-color .15s; position: relative; content-visibility: auto; contain-intrinsic-size: auto 400px; }
     .listing-card:hover { transform: translateY(-2px); border-color: var(--accent); }
     .listing-card .img-wrap { aspect-ratio: 3/4; background: var(--bg-elev); position: relative; overflow: hidden; }
     .listing-card .img-wrap img { width: 100%; height: 100%; object-fit: cover; display: block; }
@@ -223,7 +223,7 @@
     .bar-seg { height: 100%; transition: width .3s; }
     .bar-row .bt { text-align: right; color: var(--text-mute); font-variant-numeric: tabular-nums; }
     .sov-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px; }
-    .sov-card { position: relative; background: linear-gradient(180deg, var(--bg-card), color-mix(in srgb, var(--bg-card) 92%, #000)); border: 1px solid var(--border); border-radius: 16px; padding: 16px 17px 14px 19px; cursor: pointer; overflow: hidden; transition: border-color .18s, transform .18s, box-shadow .18s; }
+    .sov-card { position: relative; content-visibility: auto; contain-intrinsic-size: auto 200px; background: linear-gradient(180deg, var(--bg-card), color-mix(in srgb, var(--bg-card) 92%, #000)); border: 1px solid var(--border); border-radius: 16px; padding: 16px 17px 14px 19px; cursor: pointer; overflow: hidden; transition: border-color .18s, transform .18s, box-shadow .18s; }
     .sov-card:hover { border-color: var(--accent); transform: translateY(-3px); box-shadow: var(--shadow); }
     .sov-card::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: var(--text-mute); }
     .sov-card.h-ok::before { background: linear-gradient(var(--success), color-mix(in srgb, var(--success) 60%, #000)); }
@@ -310,7 +310,7 @@
     .shop-card.lp-done:hover { opacity: 1; }
     /* Niche stats */
     .niche-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 14px; }
-    .niche-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; cursor: pointer; transition: transform .15s, border-color .15s; }
+    .niche-card { background: var(--bg-card); content-visibility: auto; contain-intrinsic-size: auto 210px; border: 1px solid var(--border); border-radius: 14px; overflow: hidden; cursor: pointer; transition: transform .15s, border-color .15s; }
     .niche-card:hover { transform: translateY(-2px); border-color: var(--accent); }
     .niche-prev { display: flex; height: 112px; background: var(--bg-elev); }
     .niche-prev > div { flex: 1; background-size: cover; background-position: center; border-right: 2px solid var(--bg-card); }
@@ -323,7 +323,7 @@
     .nstat.testing { background: rgba(59,130,246,.15); color: #3b82f6; }
     .nstat.paused { background: var(--bg-elev); color: var(--text-mute); }
     .prod-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; }
-    .prod-card { background: var(--bg-elev); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; cursor: pointer; transition: border-color .15s; }
+    .prod-card { background: var(--bg-elev); content-visibility: auto; contain-intrinsic-size: auto 260px; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; cursor: pointer; transition: border-color .15s; }
     .prod-card:hover { border-color: var(--accent); }
     .prod-card .pimg { aspect-ratio: 3/4; background: var(--bg-card) center/cover no-repeat; position: relative; }
     .prod-card .pbody { padding: 8px 10px; }
@@ -362,6 +362,20 @@
     .snc-chip:hover { border-color: var(--accent); }
     .snc-chip.primary { background: rgba(94,124,238,.18); border-color: var(--accent); color: var(--accent); }
     .snc-chip b { font-weight: 800; }
+    /* Loading overlay (mọi load/chuyển màn) */
+    #loadingOverlay { position: fixed; inset: 0; z-index: 100000; display: none; align-items: center; justify-content: center; flex-direction: column; gap: 14px; background: rgba(8,10,16,.42); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); }
+    #loadingOverlay.show { display: flex; }
+    #loadingOverlay .spin { width: 46px; height: 46px; border: 4px solid rgba(255,255,255,.15); border-top-color: var(--accent); border-radius: 50%; animation: ldspin .7s linear infinite; }
+    #loadingOverlay .txt { color: #e9ebf1; font-size: .85rem; font-weight: 600; letter-spacing: .02em; }
+    @keyframes ldspin { to { transform: rotate(360deg); } }
+    /* Hub pagination */
+    .hub-pager { display: flex; align-items: center; justify-content: center; gap: 5px; flex-wrap: wrap; margin-top: 20px; }
+    .hub-pg { min-width: 34px; height: 34px; padding: 0 9px; border: 1px solid var(--border); background: var(--bg-card); color: var(--text); border-radius: 8px; cursor: pointer; font-size: 0.85rem; font-weight: 600; }
+    .hub-pg:hover:not(:disabled) { border-color: var(--accent); }
+    .hub-pg.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .hub-pg:disabled { opacity: 0.4; cursor: default; }
+    .hub-pg-el { padding: 0 4px; color: var(--text-mute); }
+    .hub-pg-info { margin-left: 10px; color: var(--text-mute); font-size: 0.8rem; }
     .mf.bad { color: var(--danger); } .mf.warn { color: var(--warn); }
     /* toggle switch (modal cấu hình shop) */
     .sw { position: relative; width: 42px; height: 23px; flex: none; display: inline-block; }
@@ -377,6 +391,7 @@
   </style>
 </head>
 <body>
+<div id="loadingOverlay"><div class="spin"></div><div class="txt">Đang tải…</div></div>
 <div class="app">
   <aside class="sidebar">
     <div class="brand"><span class="dot"></span>Homie</div>
@@ -501,24 +516,25 @@
       <div id="hubNicheDash"></div>
       <div class="card">
         <div style="display:flex; gap:10px; align-items:center; margin-bottom:12px;">
-          <select id="hubFilter" onchange="renderHub()" style="width:auto; min-width:160px;">
+          <select id="hubFilter" onchange="renderHub(true)" style="width:auto; min-width:160px;">
             <option value="">Tất cả</option>
             <option value="listed">📤 Đã đẩy</option>
             <option value="unlisted">⏳ Chưa đẩy</option>
           </select>
-          <select id="hubBy" onchange="renderHub()" style="width:auto; min-width:150px;" title="Lọc theo người cào">
+          <select id="hubBy" onchange="state.hubBy=this.value; renderHub(true)" style="width:auto; min-width:150px;" title="Lọc theo người cào">
             <option value="">👥 Cả đội</option>
           </select>
-          <select id="hubSort" onchange="renderHub()" style="width:auto; min-width:190px;">
+          <select id="hubSort" onchange="renderHub(true)" style="width:auto; min-width:190px;">
             <option value="">Mới nhất</option>
             <option value="listed_desc">📤 Đã đẩy: nhiều → ít</option>
             <option value="listed_asc">📤 Đã đẩy: ít → nhiều</option>
           </select>
-          <input id="hubSearch" placeholder="🔍 Tìm sản phẩm..." oninput="renderHub()" style="width:240px;" />
+          <input id="hubSearch" placeholder="🔍 Tìm sản phẩm..." oninput="renderHub(true)" style="width:240px;" />
           <div style="flex:1;"></div>
           <button class="btn btn-primary" id="hubImportBtn" onclick="document.getElementById('hubImportInput').click()">📥 Import file</button>
           <input type="file" id="hubImportInput" accept=".json,application/json" multiple hidden onchange="hubImportFiles(this.files)" />
         </div>
+        <div id="hubStaff" style="margin-bottom:12px;"></div>
         <div id="hubNicheStrip" style="margin-bottom:12px;"></div>
         <div id="hubGrid"><div class="empty">Đang tải…</div></div>
       </div>
@@ -758,6 +774,26 @@
 <div class="toast" id="toast"></div>
 
 <script>
+/* Loading overlay toàn cục — phủ spinner khi có request đang chạy (chuyển màn + load data).
+   Loại các request NỀN dài/enrichment để không kẹt overlay: sales-trend (backfill lâu),
+   shop-images, cookie/ping. Hiện sau 160ms (né nháy với request nhanh), ẩn khi hết. */
+(function () {
+  var pending = 0, showTimer = null;
+  var EXCLUDE = [/\/dashboard\/sales-trend/, /\/shop-images/, /\/cookie\/ping/];
+  function overlay(show) { var el = document.getElementById('loadingOverlay'); if (el) el.classList.toggle('show', show); }
+  function inc() { pending++; if (pending === 1) showTimer = setTimeout(function () { overlay(true); }, 160); }
+  function dec() { pending = Math.max(0, pending - 1); if (pending === 0) { clearTimeout(showTimer); overlay(false); } }
+  var _fetch = window.fetch.bind(window);
+  window.fetch = function (input, init) {
+    var url = (typeof input === 'string' ? input : (input && input.url)) || '';
+    if (EXCLUDE.some(function (re) { return re.test(url); })) return _fetch(input, init);
+    inc();
+    return _fetch(input, init).then(function (r) { dec(); return r; }, function (e) { dec(); throw e; });
+  };
+  // Chốt an toàn: nếu vì lý do gì overlay kẹt > 60s → tự ẩn.
+  setInterval(function () { if (pending > 0) return; overlay(false); }, 60000);
+})();
+
 // ─── State ────────────────────────────────────────────
 const state = {
   user: { username: "", role: "viewer" },
@@ -1349,7 +1385,7 @@ function renderListingProgress() {
     const rem = Math.max(0, LP_TARGET - s.cnt);
     return `<div class="shop-card ${s.cnt >= LP_TARGET ? "lp-done" : ""}" onclick="enterShopDetail('${escapeHtml(s.folder)}','${escapeHtml(s.owner || "")}')">
       <div class="cover">${s.image
-        ? `<img src="${escapeHtml(s.image)}" alt="" loading="lazy" onerror="this.parentElement.innerHTML='<div class=&quot;placeholder&quot;>(no image)</div>'"/>`
+        ? `<img src="${escapeHtml(s.image)}" alt="" loading="lazy" decoding="async" onerror="this.parentElement.innerHTML='<div class=&quot;placeholder&quot;>(no image)</div>'"/>`
         : '<div class="placeholder">(no image)</div>'}</div>
       <div class="body" style="gap:9px;">
         <div class="name" style="font-size:0.9rem;">${escapeHtml(s.folder)} <span style="font-size:0.68rem; color:var(--text-mute); font-weight:400;">@${escapeHtml((s.owner || "").split(",")[0])}</span></div>
@@ -1388,7 +1424,7 @@ function renderShops() {
       <div class="shop-card" onclick="enterShopDetail('${escapeHtml(s.folder)}', '${escapeHtml(s.owner)}')">
         <div class="cover">
           ${s.cover
-            ? `<img src="${escapeHtml(s.cover)}" alt="" loading="lazy" onerror="this.parentElement.innerHTML='<div class=&quot;placeholder&quot;>(no image)</div>'" />`
+            ? `<img src="${escapeHtml(s.cover)}" alt="" loading="lazy" decoding="async" onerror="this.parentElement.innerHTML='<div class=&quot;placeholder&quot;>(no image)</div>'" />`
             : `<div class="placeholder">(no image)</div>`}
         </div>
         <div class="body">
@@ -1504,7 +1540,7 @@ function renderListings() {
             : ''}
           <div class="img-wrap">
             ${it.image
-              ? `<img src="${escapeHtml(it.image)}" alt="" loading="lazy" onerror="this.parentElement.innerHTML='<div class=&quot;placeholder&quot;>(no image)</div>'" />`
+              ? `<img src="${escapeHtml(it.image)}" alt="" loading="lazy" decoding="async" onerror="this.parentElement.innerHTML='<div class=&quot;placeholder&quot;>(no image)</div>'" />`
               : `<div class="placeholder">(no image)</div>`}
             ${statusBadge[it.status]}
             <div class="folder-badge">${escapeHtml(it.folder)}</div>
@@ -2025,26 +2061,84 @@ function populateHubBy() {
   const sel = $("#hubBy"); if (!sel) return;
   const me = state.user?.username;
   const people = [...new Set((state.hub.items || []).map((it) => it.addedBy).filter(Boolean))].sort();
-  const cur = sel.value;
+  const cur = state.hubBy || "";
   sel.innerHTML = `<option value="">👥 Cả đội</option>` +
     (me ? `<option value="__me">🙋 Của tôi (${escapeHtml(me)})</option>` : "") +
     people.filter((p) => p !== me).map((p) => `<option value="${escapeHtml(p)}">🧑 ${escapeHtml(p)}</option>`).join("");
-  if ([...sel.options].some((o) => o.value === cur)) sel.value = cur;
+  sel.value = [...sel.options].some((o) => o.value === cur) ? cur : "";
 }
 
-function renderHub() {
+// Thống kê listing theo nhân viên (số sp cào) — chip đếm + click để lọc.
+function renderHubStaff() {
+  const el = $("#hubStaff"); if (!el) return;
+  const items = state.hub.items || [];
+  const by = {}; let noBy = 0;
+  for (const it of items) { if (it.addedBy) by[it.addedBy] = (by[it.addedBy] || 0) + 1; else noBy++; }
+  const people = Object.entries(by).sort((a, b) => b[1] - a[1]);
+  if (!people.length && !noBy) { el.innerHTML = ""; return; }
+  const active = state.hubBy || "";
+  const me = state.user?.username;
+  const chip = (val, label, count, kind) => {
+    const on = active === val;
+    const col = on ? "#fff" : (kind === "me" ? "var(--success)" : kind === "team" ? "var(--text)" : (kind === "none" ? "var(--text-mute)" : "var(--text)"));
+    const ico = kind === "team" ? "👥 " : kind === "me" ? "🙋 " : kind === "none" ? "" : "🧑 ";
+    return `<span onclick="setHubBy('${val}')" style="cursor:pointer; user-select:none; font-size:0.8rem; font-weight:600; padding:5px 12px; border-radius:20px; border:1px solid ${on ? "var(--accent)" : "var(--border)"}; background:${on ? "var(--accent)" : "var(--bg-elev)"}; color:${col};">${ico}${escapeHtml(label)} <b>${count}</b></span>`;
+  };
+  el.innerHTML = `<div style="display:flex; gap:7px; flex-wrap:wrap; align-items:center;">
+    <span style="font-size:0.82rem; color:var(--text-mute); margin-right:2px;">📊 Nhân viên:</span>
+    ${chip("", "Cả đội", items.length, "team")}
+    ${people.map(([p, c]) => chip(p, p, c, p === me ? "me" : "person")).join("")}
+    ${noBy ? chip("__nobody", "(chưa rõ)", noBy, "none") : ""}
+  </div>`;
+}
+function setHubBy(val) {
+  state.hubBy = (state.hubBy === val && val !== "") ? "" : val; // click lại chip đang chọn = bỏ lọc
+  const sel = $("#hubBy"); if (sel) sel.value = [...sel.options].some((o) => o.value === state.hubBy) ? state.hubBy : "";
+  renderHub(true);
+}
+
+const HUB_PAGE = 48;
+function gotoHubPage(p) {
+  state.hubPage = p;
+  renderHub();
+  const g = document.getElementById('hubGrid');
+  if (g) g.scrollIntoView({ block: 'start', behavior: 'smooth' });
+}
+function hubPager(totalPages, total) {
+  if (totalPages <= 1) return `<div style="text-align:center; margin-top:14px; color:var(--text-mute); font-size:0.82rem;">${total} sản phẩm</div>`;
+  const p = state.hubPage;
+  const btn = (label, page, o = {}) => `<button class="hub-pg${o.active ? ' active' : ''}" ${o.disabled ? 'disabled' : ''} onclick="gotoHubPage(${page})">${label}</button>`;
+  const win = new Set([1, 2, totalPages, totalPages - 1, p - 1, p, p + 1]);
+  let out = '', last = 0;
+  for (let i = 1; i <= totalPages; i++) {
+    if (!win.has(i)) continue;
+    if (i - last > 1) out += `<span class="hub-pg-el">…</span>`;
+    out += btn(i, i, { active: i === p });
+    last = i;
+  }
+  return `<div class="hub-pager">
+    ${btn('‹', p - 1, { disabled: p <= 1 })}
+    ${out}
+    ${btn('›', p + 1, { disabled: p >= totalPages })}
+    <span class="hub-pg-info">Trang ${p}/${totalPages} · ${total} sp</span>
+  </div>`;
+}
+function renderHub(resetPage) {
   ensureHubState();
+  if (resetPage || state.hubPage == null) state.hubPage = 1;
+  renderHubStaff();
   renderHubNicheDashboard();
   renderHubNicheStrip();
   populateHubBy();
   const search = ($("#hubSearch").value || "").toLowerCase().trim();
   const filter = $("#hubFilter")?.value || "";
-  const byF = $("#hubBy")?.value || "";
+  const byF = state.hubBy || "";
   const nicheF = state.hubNiche || "";
   let items = state.hub.items;
   if (nicheF === "__none") items = items.filter((it) => !it.niche);
   else if (nicheF) items = items.filter((it) => it.niche === nicheF);
   if (byF === "__me") items = items.filter((it) => it.addedBy === state.user?.username);
+  else if (byF === "__nobody") items = items.filter((it) => !it.addedBy);
   else if (byF) items = items.filter((it) => it.addedBy === byF);
   if (filter === "listed") items = items.filter((it) => (it.listedCount || 0) > 0);
   else if (filter === "unlisted") items = items.filter((it) => (it.listedCount || 0) === 0);
@@ -2077,14 +2171,18 @@ function renderHub() {
       <span style="color:var(--text-mute);">Click card để chọn → “📤 List lên shop”</span>
     </div>` : '';
 
-  $("#hubGrid").innerHTML = toolbar + '<div class="listings-grid">' + items.map((it) => {
+  const totalPages = Math.max(1, Math.ceil(items.length / HUB_PAGE));
+  if (state.hubPage > totalPages) state.hubPage = totalPages;
+  const startIdx = (state.hubPage - 1) * HUB_PAGE;
+  const shown = items.slice(startIdx, startIdx + HUB_PAGE);
+  $("#hubGrid").innerHTML = toolbar + '<div class="listings-grid">' + shown.map((it) => {
     const idEnc = encodeURIComponent(it.id);
     const isSel = state.hub.selected.has(it.id);
     return `
       <div class="listing-card${isSel ? ' selected' : ''}${canEdit ? ' selectable' : ''}" ${canEdit ? `onclick="onHubCardClick(event, '${idEnc}')"` : ''}>
         ${canEdit ? `<input type="checkbox" class="select-cb hub-select-cb" data-id="${escapeHtml(it.id)}" ${isSel ? 'checked' : ''} onclick="toggleHubSelect('${idEnc}', this.checked); event.stopPropagation();" />` : ''}
         <div class="img-wrap">
-          ${it.image ? `<img src="${escapeHtml(it.image)}" alt="" loading="lazy" onerror="this.parentElement.innerHTML='<div class=&quot;placeholder&quot;>(no image)</div>'" />` : `<div class="placeholder">(no image)</div>`}
+          ${it.image ? `<img src="${escapeHtml(it.image)}" alt="" loading="lazy" decoding="async" onerror="this.parentElement.innerHTML='<div class=&quot;placeholder&quot;>(no image)</div>'" />` : `<div class="placeholder">(no image)</div>`}
         </div>
         <div class="body">
           <div class="title" title="${escapeHtml(it.title)}">${escapeHtml(it.title)}</div>
@@ -2104,7 +2202,7 @@ function renderHub() {
           ${canEdit ? `<button class="delete" onclick="deleteHubOne('${idEnc}')">🗑</button>` : ''}
         </div>
       </div>`;
-  }).join('') + '</div>';
+  }).join('') + '</div>' + hubPager(totalPages, items.length);
   renderHubBulkBar();
 }
 
@@ -2132,7 +2230,13 @@ function selectAllHub() {
   ensureHubState();
   const search = ($("#hubSearch").value || "").toLowerCase().trim();
   const filter = $("#hubFilter")?.value || "";
+  const byF = state.hubBy || "", nicheF = state.hubNiche || "";
   let items = state.hub.items;
+  if (nicheF === "__none") items = items.filter((it) => !it.niche);
+  else if (nicheF) items = items.filter((it) => it.niche === nicheF);
+  if (byF === "__me") items = items.filter((it) => it.addedBy === state.user?.username);
+  else if (byF === "__nobody") items = items.filter((it) => !it.addedBy);
+  else if (byF) items = items.filter((it) => it.addedBy === byF);
   if (filter === "listed") items = items.filter((it) => (it.listedCount || 0) > 0);
   else if (filter === "unlisted") items = items.filter((it) => (it.listedCount || 0) === 0);
   if (search) items = items.filter((it) => (it.title || "").toLowerCase().includes(search));

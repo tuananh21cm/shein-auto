@@ -39,3 +39,12 @@ config/proxies.txt
 config/trend.json
 config/tiktok-categories.backup-*.json
 _gv3.ts
+
+# Config PERSONAL (mỗi máy 1 bản — không share qua git)
+config/brand-profiles.json
+config/pricing.json
+config/publish.json
+config/shop-listing.json
+config/worker.json
+config/apify.json
+config/crm.json

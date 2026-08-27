@@ -3,17 +3,20 @@
  * Quét mọi *.json giống sản phẩm trong nguồn → dedup theo productId → ghi vào Hub đích
  * kèm _addedBy (ai cào). Mỗi thành viên chạy 1 lần với tên mình.
  *
- * Dùng:
+ * Dùng (Windows PowerShell — BỎ dấu `--`, npm.ps1 nuốt nó):
+ *   npm run hub:import-local --by=duyduc
+ *   npm run hub:import-local --by=duc --from='C:/old hub,D:/backup'   (nháy đơn cả cụm nếu có dấu phẩy/cách)
+ * Hoặc chạy thẳng bằng tsx (giữ `--`):
  *   npx tsx src/scripts/hubImportLocal.ts --by=tuananh
- *   npx tsx src/scripts/hubImportLocal.ts --by=duc --from="C:/old/hub,C:/Downloads/SheinAuto"
  * Mặc định nguồn = data/hub + BASE_SHEINAUTO_DIR. Đích = HUB_DIR (hub chung) — set trước khi chạy.
  */
 import "dotenv/config";
 import fs from "fs-extra";
 import path from "path";
 import { config } from "../config";
+import { cliArg } from "../utils/cliArgs";
 
-const arg = (k: string) => process.argv.find((a) => a.startsWith(`--${k}=`))?.slice(k.length + 3);
+const arg = cliArg;
 
 const extractProductId = (data: any): string | null => {
   const url = typeof data?.url === "string" ? data.url : "";

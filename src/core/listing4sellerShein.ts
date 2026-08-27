@@ -96,11 +96,12 @@ export const listing4sellerShein = async (
     const data = JSON.parse(jsonContent);
     const targetProfile = getProfileNameFromFolder(jsonFile);
     // Cấu hình listing THEO SHOP (config/shop-listing.json — sửa qua Settings UI).
-    // Thiếu file/thiếu shop = mọi tính năng BẬT. Đọc tươi mỗi listing → đổi là ăn ngay.
+    // Shop chưa cấu hình riêng → ăn theo thẻ "__default" (mặc định chung). Thiếu cả 2 =
+    // mọi tính năng BẬT. Đọc tươi mỗi listing → đổi là ăn ngay.
     const shopPrefs: Record<string, boolean> = (() => {
       try {
         const all = JSON.parse(fs.readFileSync(path.join(process.cwd(), "config", "shop-listing.json"), "utf-8"));
-        return all[targetProfile] ?? {};
+        return all[targetProfile] ?? all["__default"] ?? {};
       } catch { return {}; }
     })();
     const prefOn = (k: string) => shopPrefs[k] !== false;

@@ -3076,17 +3076,33 @@ function renderShopCards() {
     return;
   }
   const initial = (s) => escapeHtml(((s.replace(/^T[AN]\s*Scan\s*/i, "").match(/[A-Za-z]/) || ["#"])[0]).toUpperCase());
+  // Thẻ MẶC ĐỊNH CHUNG: shop chưa cấu hình riêng sẽ ăn theo thẻ này.
+  const defOffs = SHOP_FEATURES.filter((f) => state.shopPrefs["__default"]?.[f.key] === false);
+  const defCard = `
+    <div class="sov-mini def-card" onclick="openShopPrefs('__default')" title="Cấu hình mặc định — shop mới tự ăn theo">
+      <div class="sov-mav" style="background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;">⭐</div>
+      <div class="sov-mbody">
+        <div class="sov-mname">Mặc định chung</div>
+        <div class="sov-msub">shop mới ăn theo · ${defOffs.length ? `<span class="mf warn">tắt: ${defOffs.map((f) => f.short).join(", ")}</span>` : '<span style="color:var(--success);">✓ đủ tính năng</span>'}</div>
+      </div>
+    </div>`;
   $("#shopCardsWrap").innerHTML = `
     <div class="sov-minigrid">
+      ${defCard}
       ${list.map(({ shop, account }) => {
         const img = state.shopImages[shop.toLowerCase()];
         const brand = (state.brands.profiles || {})[shop] || "";
-        const offs = SHOP_FEATURES.filter((f) => state.shopPrefs[shop]?.[f.key] === false);
+        const own = state.shopPrefs[shop];                 // cấu hình riêng của shop (nếu có)
+        const eff = own ?? state.shopPrefs["__default"] ?? {}; // hiệu lực thực = riêng > mặc định
+        const offs = SHOP_FEATURES.filter((f) => eff[f.key] === false);
+        const inherit = !own;                              // chưa cấu hình riêng → ăn theo mặc định
         const sub = [
           brand ? `<b>${escapeHtml(brand)}</b>` : `<span style="color:var(--text-mute);">brand mặc định</span>`,
-          offs.length
-            ? `<span class="mf warn" title="Tính năng đã tắt cho shop này">tắt: ${offs.map((f) => f.short).join(", ")}</span>`
-            : `<span style="color:var(--success);">✓ đủ tính năng</span>`,
+          inherit
+            ? `<span style="color:var(--accent);" title="Ăn theo Mặc định chung">↪ mặc định</span>`
+            : (offs.length
+                ? `<span class="mf warn" title="Tính năng đã tắt cho shop này">tắt: ${offs.map((f) => f.short).join(", ")}</span>`
+                : `<span style="color:var(--success);">✓ đủ tính năng</span>`),
         ].join(" · ");
         return `
         <div class="sov-mini" onclick="openShopPrefs('${escapeHtml(shop)}')" title="${escapeHtml(shop)} · ${escapeHtml(account)}">
@@ -3100,28 +3116,61 @@ function renderShopCards() {
     </div>`;
 }
 
-// Modal chỉnh 1 shop: brand + 5 toggle tính năng
+// Modal chỉnh 1 shop (hoặc thẻ "__default" = mặc định chung): brand + toggle tính năng
 function openShopPrefs(shop) {
-  const prefs = state.shopPrefs[shop] || {};
+  const isDefault = shop === "__default";
+  const own = state.shopPrefs[shop];
+  const inherit = !isDefault && !own;                        // shop chưa cấu hình riêng
+  const prefs = own ?? (isDefault ? {} : state.shopPrefs["__default"]) ?? {}; // preload theo hiệu lực
   const brand = (state.brands.profiles || {})[shop] || "";
-  $("#modalTitle").textContent = `⚙️ ${shop}`;
-  $("#modalBody").innerHTML = `
-    <label class="field" style="margin-bottom:14px;">
+  $("#modalTitle").textContent = isDefault ? "⭐ Mặc định chung" : `⚙️ ${shop}`;
+  const brandField = isDefault
+    ? `<div class="field" style="margin-bottom:14px; color:var(--text-mute); font-size:0.85rem;">Thẻ này chỉ set <b>tính năng listing</b> mặc định. Brand mặc định chỉnh ở ô "Brand mặc định" phía trên.</div>`
+    : `<label class="field" style="margin-bottom:14px;">
       <span>🏷️ Brand name <span style="color:var(--text-mute);">(để trống = dùng brand mặc định${state.brands.default ? ` "${escapeHtml(state.brands.default)}"` : ""})</span></span>
       <input id="spBrand" value="${escapeHtml(brand)}" placeholder="${escapeHtml(state.brands.default || "LUSHLACE")}" />
-    </label>
-    <div style="font-weight:600; margin-bottom:8px;">Tính năng listing cho shop này: <span style="color:var(--text-mute); font-weight:400; font-size:0.82rem;">(click ảnh để xem to)</span></div>
+    </label>`;
+  const note = isDefault
+    ? `<div style="background:var(--bg-soft,rgba(99,102,241,.1)); border-radius:8px; padding:8px 12px; margin-bottom:12px; font-size:0.83rem; color:var(--text-mute);">Mọi shop <b>chưa cấu hình riêng</b> sẽ ăn theo đúng cấu hình này. Sửa ở đây = áp cho tất cả shop mới.</div>`
+    : (inherit
+        ? `<div style="background:rgba(99,102,241,.1); border-radius:8px; padding:8px 12px; margin-bottom:12px; font-size:0.83rem; color:var(--accent);">↪ Đang <b>ăn theo Mặc định chung</b>. Lưu để cấu hình riêng cho shop này.</div>`
+        : "");
+  $("#modalBody").innerHTML = `
+    ${brandField}
+    ${note}
+    <div style="font-weight:600; margin-bottom:8px;">Tính năng listing ${isDefault ? "mặc định" : "cho shop này"}: <span style="color:var(--text-mute); font-weight:400; font-size:0.82rem;">(click ảnh để xem to)</span></div>
     ${SHOP_FEATURES.map((f) => `
       <div class="sp-row">
         <label class="sw"><input type="checkbox" id="sp_${f.key}" ${prefs[f.key] === false ? "" : "checked"} /><i></i></label>
         <span class="sp-lab" onclick="const c=$('#sp_${f.key}'); c.checked=!c.checked;">${f.icon} ${f.label}</span>
         ${f.img ? `<img src="/admin/previews/${f.img}" alt="${f.short}" loading="lazy" onclick="window.open('/admin/previews/${f.img}', '_blank')" onerror="this.style.display='none'" />` : ""}
       </div>`).join("")}
-    <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:16px;">
-      <button class="btn btn-ghost" onclick="closeModal()">Hủy</button>
-      <button class="btn btn-primary" onclick="saveShopPrefs('${escapeHtml(shop)}')">Lưu shop này</button>
+    <div style="display:flex; justify-content:${!isDefault && own ? "space-between" : "flex-end"}; gap:8px; margin-top:16px; align-items:center;">
+      ${!isDefault && own ? `<button class="btn btn-ghost" style="color:var(--accent);" onclick="resetShopToDefault('${escapeHtml(shop)}')" title="Xoá cấu hình riêng, quay lại ăn theo Mặc định chung">↺ Theo mặc định</button>` : ""}
+      <div style="display:flex; gap:8px;">
+        <button class="btn btn-ghost" onclick="closeModal()">Hủy</button>
+        <button class="btn btn-primary" onclick="saveShopPrefs('${escapeHtml(shop)}')">${isDefault ? "Lưu mặc định" : "Lưu shop này"}</button>
+      </div>
     </div>`;
   $("#modalBg").classList.add("show");
+}
+
+// Xoá cấu hình riêng của shop → quay lại ăn theo Mặc định chung
+async function resetShopToDefault(shop) {
+  if (state.user.role === "viewer") return toast("Viewer không thể sửa", "error");
+  try {
+    const r = await fetch("/admin/api/shop-listing", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ shop, prefs: { __inherit: true } }),
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error);
+    state.shopPrefs = d.prefs || {};
+    closeModal();
+    renderShopCards();
+    toast(`✓ ${shop} đã quay lại ăn theo Mặc định chung`);
+  } catch (err) { toast(err.message, "error"); }
 }
 
 async function saveShopPrefs(shop) {
@@ -3139,21 +3188,23 @@ async function saveShopPrefs(shop) {
     if (!r1.ok) throw new Error(d1.error);
     state.shopPrefs = d1.prefs || {};
 
-    // 2. Brand → brand mapping (rỗng = xoá mapping, dùng default)
-    const brand = $("#spBrand").value.trim();
-    if (brand) state.brands.profiles[shop] = brand;
-    else delete state.brands.profiles[shop];
-    state.brands.default = $("#brandDefault").value.trim();
-    const r2 = await fetch("/admin/api/brands", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(state.brands),
-    });
-    if (!r2.ok) throw new Error((await r2.json()).error);
+    // 2. Brand → brand mapping (chỉ shop thật; thẻ __default không có ô brand)
+    if (shop !== "__default") {
+      const brand = $("#spBrand").value.trim();
+      if (brand) state.brands.profiles[shop] = brand;
+      else delete state.brands.profiles[shop];
+      state.brands.default = $("#brandDefault").value.trim();
+      const r2 = await fetch("/admin/api/brands", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(state.brands),
+      });
+      if (!r2.ok) throw new Error((await r2.json()).error);
+    }
 
     closeModal();
     renderShopCards();
-    toast(`✓ Đã lưu cấu hình ${shop} — listing sau sẽ áp dụng ngay`);
+    toast(shop === "__default" ? "✓ Đã lưu Mặc định chung — shop mới sẽ ăn theo" : `✓ Đã lưu cấu hình ${shop} — listing sau sẽ áp dụng ngay`);
   } catch (err) {
     toast(err.message, "error");
   }

@@ -926,14 +926,28 @@ export const startAdminServer = async () => {
       if (sessionUser.role === "viewer") return res.status(403).json({ error: "Viewer không thể sửa" });
       const { shop, prefs } = req.body as { shop?: string; prefs?: Record<string, any> };
       if (!shop) return res.status(400).json({ error: "Thiếu shop" });
+      const KEYS = ["colorShowcase", "richDesc", "bannerCollage", "bannerFeature", "sizeGuide", "variantToMain"];
       const all = readShopListing();
-      // Chỉ giữ key false (tắt) — bật là mặc định, khỏi phình file
-      const clean: Record<string, boolean> = {};
-      for (const k of ["colorShowcase", "richDesc", "bannerCollage", "bannerFeature", "sizeGuide", "variantToMain"]) {
-        if (prefs?.[k] === false) clean[k] = false;
+      const onlyFalse = () => { const c: Record<string, boolean> = {}; for (const k of KEYS) if (prefs?.[k] === false) c[k] = false; return c; };
+      if (prefs?.__inherit === true) {
+        // Shop quay lại "ăn theo mặc định chung" → xoá entry riêng
+        delete all[shop];
+      } else if (shop === "__default") {
+        // Thẻ MẶC ĐỊNH CHUNG: chỉ giữ key tắt (thiếu = bật). Rỗng = xoá default.
+        const clean = onlyFalse();
+        if (Object.keys(clean).length === 0) delete all["__default"];
+        else all["__default"] = clean;
+      } else if (all["__default"] && Object.keys(all["__default"]).length) {
+        // Có default → shop thật lưu ĐẦY ĐỦ 6 flag (true+false) để override trọn vẹn,
+        // tránh "all bật" bị thu về rỗng rồi vô tình ăn theo default tắt.
+        const full: Record<string, boolean> = {}; for (const k of KEYS) full[k] = prefs?.[k] !== false;
+        all[shop] = full;
+      } else {
+        // Không có default → giữ tối ưu cũ: chỉ lưu key tắt, rỗng thì xoá entry.
+        const clean = onlyFalse();
+        if (Object.keys(clean).length === 0) delete all[shop];
+        else all[shop] = clean;
       }
-      if (Object.keys(clean).length === 0) delete all[shop];
-      else all[shop] = clean;
       await fs.writeFile(SHOP_LISTING_FILE, JSON.stringify(all, null, 2), "utf-8");
       res.json({ ok: true, prefs: all });
     } catch (err: any) {

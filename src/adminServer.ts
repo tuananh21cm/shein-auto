@@ -2149,6 +2149,21 @@ export const startAdminServer = async () => {
     }
   });
 
+  // Gợi ý tên Brand bằng AI từ ngách/phong cách user chọn (không tự áp — trả list để chọn).
+  app.post("/admin/api/brand/suggest", async (req, res) => {
+    try {
+      const sessionUser = (req.session as any).user as SessionUser;
+      if (sessionUser.role === "viewer") return res.status(403).json({ error: "Viewer không thể dùng" });
+      const { niches, count } = req.body as { niches?: string[]; count?: number };
+      const list = Array.isArray(niches) ? niches.map((n) => String(n).slice(0, 40)).filter(Boolean).slice(0, 8) : [];
+      const { genBrandNames } = await import("./services/gemini/genBrandNames");
+      const names = await genBrandNames(list, Math.min(8, Math.max(3, Number(count) || 6)));
+      res.json({ names });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? "Lỗi gợi ý brand" });
+    }
+  });
+
   // ── Cookie 4Seller (per-user) ─────────────────────────
   // Resolve user đích cho thao tác cookie. Admin có thể nhắm user bất kỳ (phải
   // tồn tại — chống path traversal); non-admin bị ép về chính mình.

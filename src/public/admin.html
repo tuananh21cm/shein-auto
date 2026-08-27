@@ -376,6 +376,12 @@
     .hub-pg:disabled { opacity: 0.4; cursor: default; }
     .hub-pg-el { padding: 0 4px; color: var(--text-mute); }
     .hub-pg-info { margin-left: 10px; color: var(--text-mute); font-size: 0.8rem; }
+    /* Brand name generator (modal cấu hình shop) */
+    .bg-chip { font-size: 0.8rem; padding: 4px 11px; border-radius: 20px; border: 1px solid var(--border); background: var(--bg-card); color: var(--text); cursor: pointer; user-select: none; transition: all .12s; }
+    .bg-chip:hover { border-color: #8b5cf6; }
+    .bg-chip.on { background: #8b5cf6; color: #fff; border-color: #8b5cf6; }
+    .bg-name { font-size: 0.92rem; font-weight: 700; letter-spacing: 0.5px; padding: 7px 14px; border-radius: 8px; border: 1px solid rgba(139,92,246,.4); background: var(--bg-card); color: var(--text); cursor: pointer; transition: all .12s; }
+    .bg-name:hover { background: #8b5cf6; color: #fff; border-color: #8b5cf6; }
     .mf.bad { color: var(--danger); } .mf.warn { color: var(--warn); }
     /* toggle switch (modal cấu hình shop) */
     .sw { position: relative; width: 42px; height: 23px; flex: none; display: inline-block; }
@@ -3042,6 +3048,8 @@ const SHOP_FEATURES = [
   { key: "sizeGuide",     icon: "📏", label: "Ảnh Size Guide + gợi ý size (Size Recommend)", short: "size guide", img: "sizeGuide.jpg" },
   { key: "variantToMain", icon: "🧩", label: "Bù ảnh variant RỜI vào gallery main cho đủ 9 ảnh (khi ảnh gốc không đủ)", short: "bù ảnh variant", img: null },
 ];
+// Chip gợi ý vibe cho AI đặt tên brand (blend ngách + phong cách thời trang)
+const BRAND_VIBES = ["y2k", "streetwear", "lingerie", "activewear", "swimwear", "boho", "minimalist", "luxury", "coquette", "elegant", "edgy", "cottagecore"];
 state.shopPrefs = {};   // { shop: { key: false } } — chỉ lưu cái TẮT
 state.shopList = [];    // [{ shop, account }]
 state.shopImages = {};  // { shopLower: url }
@@ -3126,10 +3134,24 @@ function openShopPrefs(shop) {
   $("#modalTitle").textContent = isDefault ? "⭐ Mặc định chung" : `⚙️ ${shop}`;
   const brandField = isDefault
     ? `<div class="field" style="margin-bottom:14px; color:var(--text-mute); font-size:0.85rem;">Thẻ này chỉ set <b>tính năng listing</b> mặc định. Brand mặc định chỉnh ở ô "Brand mặc định" phía trên.</div>`
-    : `<label class="field" style="margin-bottom:14px;">
+    : `<label class="field" style="margin-bottom:8px;">
       <span>🏷️ Brand name <span style="color:var(--text-mute);">(để trống = dùng brand mặc định${state.brands.default ? ` "${escapeHtml(state.brands.default)}"` : ""})</span></span>
-      <input id="spBrand" value="${escapeHtml(brand)}" placeholder="${escapeHtml(state.brands.default || "LUSHLACE")}" />
-    </label>`;
+      <div style="display:flex; gap:8px;">
+        <input id="spBrand" value="${escapeHtml(brand)}" placeholder="${escapeHtml(state.brands.default || "LUSHLACE")}" style="flex:1;" />
+        <button type="button" class="btn btn-ghost" style="white-space:nowrap;" onclick="toggleBrandGen()">✨ Gợi ý tên</button>
+      </div>
+    </label>
+    <div id="brandGen" style="display:none; background:rgba(139,92,246,.08); border:1px solid rgba(139,92,246,.25); border-radius:10px; padding:12px; margin-bottom:14px;">
+      <div style="font-size:0.83rem; color:var(--text-mute); margin-bottom:8px;">Chọn ngách/phong cách (hoặc tự gõ) → AI đặt tên brand ngắn gọn, chuyên nghiệp:</div>
+      <div id="brandGenChips" style="display:flex; flex-wrap:wrap; gap:6px; margin-bottom:8px;">
+        ${BRAND_VIBES.map((v) => `<span class="bg-chip" data-v="${escapeHtml(v)}" onclick="this.classList.toggle('on')">${escapeHtml(v)}</span>`).join("")}
+      </div>
+      <div style="display:flex; gap:8px; margin-bottom:6px;">
+        <input id="brandGenFree" placeholder="tự gõ vibe khác, vd: luxury minimal" style="flex:1;" onkeydown="if(event.key==='Enter'){event.preventDefault();runBrandGen();}" />
+        <button type="button" class="btn btn-primary" id="brandGenBtn" onclick="runBrandGen()" style="white-space:nowrap;">Tạo tên</button>
+      </div>
+      <div id="brandGenOut"></div>
+    </div>`;
   const note = isDefault
     ? `<div style="background:var(--bg-soft,rgba(99,102,241,.1)); border-radius:8px; padding:8px 12px; margin-bottom:12px; font-size:0.83rem; color:var(--text-mute);">Mọi shop <b>chưa cấu hình riêng</b> sẽ ăn theo đúng cấu hình này. Sửa ở đây = áp cho tất cả shop mới.</div>`
     : (inherit
@@ -3171,6 +3193,44 @@ async function resetShopToDefault(shop) {
     renderShopCards();
     toast(`✓ ${shop} đã quay lại ăn theo Mặc định chung`);
   } catch (err) { toast(err.message, "error"); }
+}
+
+function toggleBrandGen() {
+  const el = $("#brandGen");
+  if (el) el.style.display = el.style.display === "none" ? "" : "none";
+}
+
+async function runBrandGen() {
+  const chips = [...document.querySelectorAll("#brandGenChips .bg-chip.on")].map((c) => c.dataset.v);
+  const free = $("#brandGenFree").value.trim();
+  const niches = [...chips, ...free.split(/[,\s]+/).filter(Boolean)];
+  const btn = $("#brandGenBtn"), out = $("#brandGenOut");
+  btn.disabled = true; btn.textContent = "Đang tạo…";
+  out.innerHTML = '<div style="color:var(--text-mute); font-size:0.82rem; padding:6px 0;">AI đang nghĩ tên…</div>';
+  try {
+    const r = await fetch("/admin/api/brand/suggest", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ niches, count: 6 }),
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error);
+    const names = d.names || [];
+    out.innerHTML = names.length
+      ? '<div style="display:flex; flex-wrap:wrap; gap:8px;">' + names.map((n) =>
+          `<button type="button" class="bg-name" title="${escapeHtml(n.tagline || "")}" onclick="pickBrand('${escapeHtml(n.name).replace(/'/g, "\\'")}')">${escapeHtml(n.name)}</button>`
+        ).join("") + '</div><div style="color:var(--text-mute); font-size:0.76rem; margin-top:6px;">Bấm 1 tên để điền vào ô Brand.</div>'
+      : '<div style="color:var(--text-mute); font-size:0.82rem;">Không tạo được tên — thử lại.</div>';
+  } catch (err) {
+    out.innerHTML = `<div style="color:var(--danger,#ef4444); font-size:0.82rem;">Lỗi: ${escapeHtml(err.message)}</div>`;
+  } finally {
+    btn.disabled = false; btn.textContent = "Tạo tên";
+  }
+}
+
+function pickBrand(name) {
+  const inp = $("#spBrand");
+  if (inp) { inp.value = name; inp.focus(); }
+  toast(`✓ Chọn brand "${name}" — nhớ bấm Lưu shop này`);
 }
 
 async function saveShopPrefs(shop) {

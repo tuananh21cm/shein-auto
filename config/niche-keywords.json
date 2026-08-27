@@ -1,0 +1,19 @@
+{
+  "_comment": "Suy ngách cho sản phẩm Hub từ category (breadcrumb SHEIN) + tên sp. Khớp keyword (lowercase, không dấu) theo THỨ TỰ trong list — ngách đứng trước match trước (đặt ngách đặc thù lên đầu để giảm nhận nhầm). Thêm/sửa keyword tuỳ ý.",
+  "rules": [
+    { "niche": "shapewear", "keywords": ["shapewear", "waist trainer", "tummy control", "body shaper", "shaping bodysuit"] },
+    { "niche": "soccer-jersey", "keywords": ["soccer", "jersey", "football"] },
+    { "niche": "bikini", "keywords": ["bikini", "swimsuit", "swimwear", "swim ", "beachwear", "bathing suit"] },
+    { "niche": "underwear-sets", "keywords": ["underwear set", "lingerie set", "bra and panty", "bra & panty", "bra set", "2 piece underwear"] },
+    { "niche": "lingerie", "keywords": ["lingerie", "teddy", "babydoll", "chemise", "garter"] },
+    { "niche": "panties", "keywords": ["panties", "panty", "thong", "g-string", "briefs", "underpant"] },
+    { "niche": "bralettes", "keywords": ["bralette", "bralet"] },
+    { "niche": "pajamas-loungewear", "keywords": ["pajama", "pyjama", "loungewear", "sleepwear", "nightwear", "nightgown", "robe"] },
+    { "niche": "bodycon-dress", "keywords": ["bodycon"] },
+    { "niche": "y2k-halter-strap-dress", "keywords": ["halter dress", "strap dress", "slip dress", "y2k dress"] },
+    { "niche": "oversized-tee", "keywords": ["oversized tee", "oversized t-shirt", "oversized shirt", "oversized top", "oversize tee"] },
+    { "niche": "plus-size-crop-top", "keywords": ["plus size crop", "plus-size crop", "curve crop", "plus size top"] },
+    { "niche": "y2k-crop-top", "keywords": ["y2k", "crop top", "cropped", "tube top", "bandeau"] },
+    { "niche": "cami-top", "keywords": ["cami", "camisole", "tank top", "spaghetti strap"] }
+  ]
+}

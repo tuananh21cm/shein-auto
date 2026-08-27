@@ -3,6 +3,7 @@ import path from "path";
 import { getAllUserDirs, UserDirs } from "./userDirs";
 import { historyStore } from "./historyStore";
 import { config } from "../config";
+import { deriveNiche } from "../utils/deriveNiche";
 
 export type ListingStatus = "pending" | "success" | "fail";
 
@@ -419,6 +420,9 @@ export const resolveListingPath = async (
 
 // ── HUB sản phẩm (kho chung, ngoài baseDir user) ───────────────────
 export interface HubItem {
+  niche?: string | null;
+  addedBy?: string | null;
+  addedAt?: number | null;
   id: string; // = filename (unique trong hubDir)
   file: string;
   title: string;
@@ -435,60 +439,61 @@ export interface HubItem {
   lastListedMs: number;
 }
 
-// Metadata Hub: theo dõi mỗi hub file đã list lên những shop nào (distinct).
-const HUB_META_FILE = "__hub_meta.json";
-const hubMetaPath = () => path.join(config.hubDir, HUB_META_FILE);
+// Meta Hub PER-PRODUCT (sidecar <hubfile>.hubmeta.json) thay cho __hub_meta.json global.
+// Lý do: Hub dùng CHUNG qua LAN (4 máy) → 1 file global bị 4 máy ghi đè lẫn nhau. Sidecar
+// mỗi sp 1 file → mỗi lượt list chỉ chạm file của sp đó → gần như không bao giờ đụng.
+const HUB_META_SUFFIX = ".hubmeta.json";
+const OLD_HUB_META = "__hub_meta.json";
+export const isHubMetaFile = (f: string) => f.endsWith(HUB_META_SUFFIX) || f === OLD_HUB_META;
+const metaPathOf = (file: string) => path.join(config.hubDir, file + HUB_META_SUFFIX);
 interface HubMetaEntry { shops: string[]; lastAt: number; }
-type HubMeta = Record<string, HubMetaEntry>;
 
-const readHubMeta = async (): Promise<HubMeta> => {
+const readOneMeta = async (file: string): Promise<HubMetaEntry | null> => {
   try {
-    const p = hubMetaPath();
-    if (!(await fs.pathExists(p))) return {};
-    return (JSON.parse(await fs.readFile(p, "utf-8")) as HubMeta) || {};
-  } catch {
-    return {};
-  }
+    const p = metaPathOf(file);
+    if (!(await fs.pathExists(p))) return null;
+    return JSON.parse(await fs.readFile(p, "utf-8")) as HubMetaEntry;
+  } catch { return null; }
 };
-const writeHubMeta = async (meta: HubMeta): Promise<void> => {
+// Ghi ATOMIC: temp + rename → máy khác không đọc trúng file ghi dở.
+const writeOneMeta = async (file: string, entry: HubMetaEntry): Promise<void> => {
   await fs.ensureDir(config.hubDir);
-  await fs.writeFile(hubMetaPath(), JSON.stringify(meta, null, 2), "utf-8");
+  const p = metaPathOf(file);
+  const tmp = `${p}.${Date.now()}.${Math.floor(Math.random() * 1e9)}.tmp`;
+  await fs.writeFile(tmp, JSON.stringify(entry), "utf-8");
+  await fs.move(tmp, p, { overwrite: true });
 };
 
-/** Ghi nhận các hub file đã được list sang shop (gộp distinct theo tên shop). */
+/** Ghi nhận hub file đã list sang shop (gộp distinct). Mỗi sp ghi sidecar riêng → an toàn đa máy. */
 export const recordHubListings = async (fileToShops: Record<string, string[]>, nowMs: number): Promise<void> => {
-  const meta = await readHubMeta();
   for (const [file, shops] of Object.entries(fileToShops)) {
-    const cur = meta[file] || { shops: [], lastAt: 0 };
+    const cur = (await readOneMeta(file)) || { shops: [], lastAt: 0 };
     const set = new Set(cur.shops);
     for (const s of shops) set.add(s);
-    meta[file] = { shops: [...set], lastAt: nowMs };
+    await writeOneMeta(file, { shops: [...set], lastAt: nowMs });
   }
-  await writeHubMeta(meta);
 };
 
-/** Xoá metadata của các hub file đã bị xoá. */
+/** Xoá sidecar meta của các hub file đã bị xoá. */
 export const removeHubMeta = async (files: string[]): Promise<void> => {
-  if (!files.length) return;
-  const meta = await readHubMeta();
-  let changed = false;
-  for (const f of files) if (meta[f]) { delete meta[f]; changed = true; }
-  if (changed) await writeHubMeta(meta);
+  for (const f of files) await fs.remove(metaPathOf(f)).catch(() => {});
 };
 
 /** Quét toàn bộ sản phẩm trong Hub (config.hubDir). Tái dùng parseListingFile. */
 export const scanHub = async (): Promise<HubItem[]> => {
   const dir = config.hubDir;
   if (!(await fs.pathExists(dir))) return [];
-  const meta = await readHubMeta();
   const files = (await fs.readdir(dir)).filter(
-    (f) => f.toLowerCase().endsWith(".json") && f !== HUB_META_FILE
+    (f) => f.toLowerCase().endsWith(".json") && !isHubMetaFile(f)
   );
   const items = await Promise.all(
     files.map(async (f) => {
       const card = await parseListingFile(path.join(dir, f), "hub", "hub", "success");
       if (!card) return null;
-      const m = meta[f];
+      const m = await readOneMeta(f);
+      // Suy ngách từ category (breadcrumb) + tên sp; addedBy = người cào (share đội).
+      const raw = await fs.readJson(path.join(dir, f)).catch(() => ({} as any));
+      const niche = deriveNiche(`${raw?.category || ""} ${card.title || ""}`);
       return {
         id: f,
         file: f,
@@ -500,6 +505,9 @@ export const scanHub = async (): Promise<HubItem[]> => {
         sizeCount: card.sizeCount,
         scrapedAt: card.scrapedAt,
         mtimeMs: card.mtimeMs,
+        niche,
+        addedBy: raw?._addedBy ?? null,
+        addedAt: raw?._addedAt ?? null,
         listedCount: m ? m.shops.length : 0,
         listedShops: m ? m.shops : [],
         lastListedMs: m ? m.lastAt : 0,
@@ -511,6 +519,6 @@ export const scanHub = async (): Promise<HubItem[]> => {
 
 /** Đường dẫn tuyệt đối 1 file hub (guard traversal). null nếu tên không hợp lệ. */
 export const resolveHubFile = (file: string): string | null => {
-  if (!file || /[\/\\]|\.\./.test(file) || !file.toLowerCase().endsWith(".json")) return null;
+  if (!file || /[\/\\]|\.\./.test(file) || !file.toLowerCase().endsWith(".json") || isHubMetaFile(file)) return null;
   return path.join(config.hubDir, file);
 };

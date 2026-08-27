@@ -96,7 +96,15 @@ export const publishConfig = (): PublishFile =>
 /** Resolve brand cho 1 profile shop. Fallback về default nếu chưa định nghĩa. */
 export const resolveBrand = (profile: string): string => {
   const cfg = brandProfiles();
-  return cfg.profiles[profile] ?? cfg.default;
+  if (cfg.profiles[profile]) return cfg.profiles[profile]; // exact
+  // Match chuẩn hoá (bỏ space + mọi gạch, lowercase) — folder name "TA Scan 227-..."
+  // khớp key "TA Scan 227 — ..." dù khác dấu gạch/space.
+  const norm = (s: string) => (s || "").toLowerCase().replace(/[\s—–-]+/g, "");
+  const np = norm(profile);
+  for (const [k, v] of Object.entries(cfg.profiles)) {
+    if (v && norm(k) === np) return v;
+  }
+  return cfg.default;
 };
 
 /**

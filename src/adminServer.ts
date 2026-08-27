@@ -19,7 +19,7 @@ import { config } from "./config";
 import { workerState } from "./state/workerState";
 import { refreshQueueSnapshot } from "./state/queueState";
 import { historyStore } from "./state/historyStore";
-import { scanListings, scanShopsSummary, resolveListingPath, scanHub, resolveHubFile, recordHubListings, removeHubMeta, ListingStatus } from "./state/listingScan";
+import { scanListings, scanShopsSummary, resolveListingPath, scanHub, resolveHubFile, recordHubListings, removeHubMeta, isHubMetaFile, ListingStatus } from "./state/listingScan";
 import { validatePath, detectDirConflicts, getUserDirsByName, getShopOwner } from "./state/userDirs";
 import { processFile } from "./queue/queueManager";
 import { eventBus } from "./state/eventBus";
@@ -716,6 +716,50 @@ export const startAdminServer = async () => {
     return byShop;
   }
 
+  // ── Sales trend 30 ngày (clone chart 4Seller): daily revenue+orders GỘP mọi shop/account ──
+  // Nguồn = 4Seller getSalesByShop per-day (dashboard_snapshot cũ thưa/không đủ). Persist vào
+  // sales_daily: ngày quá khứ bất biến → fetch 1 lần; chỉ 3 ngày gần refetch (đơn còn settle).
+  app.get("/admin/api/dashboard/sales-trend", async (req, res) => {
+    try {
+      const sessionUser = (req.session as any).user as SessionUser;
+      const { getDb } = await import("./state/db");
+      const db = getDb();
+      db.exec(`CREATE TABLE IF NOT EXISTS sales_daily (day TEXT PRIMARY KEY, orders INTEGER, revenue REAL, updated_at INTEGER)`);
+      const vnDay = (o = 0) =>
+        new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Ho_Chi_Minh" }).format(new Date(Date.now() - o * 864e5));
+      const N = Math.min(60, Math.max(7, Number(req.query.days) || 30));
+      const days = Array.from({ length: N }, (_, i) => vnDay(N - 1 - i)); // cũ → mới
+      const recent = new Set([vnDay(0), vnDay(1), vnDay(2)]); // refetch: đơn còn settle
+      const stored = new Map<string, { orders: number; revenue: number }>();
+      for (const r of db.prepare(`SELECT day, orders, revenue FROM sales_daily WHERE day >= ?`).all(days[0]) as any[])
+        stored.set(r.day, { orders: r.orders, revenue: r.revenue });
+      const upsert = db.prepare(
+        `INSERT INTO sales_daily(day, orders, revenue, updated_at) VALUES(?,?,?,?)
+         ON CONFLICT(day) DO UPDATE SET orders=excluded.orders, revenue=excluded.revenue, updated_at=excluded.updated_at`
+      );
+      const out: { date: string; revenue: number; orders: number }[] = [];
+      for (const day of days) {
+        let rec = stored.get(day);
+        if (!rec || recent.has(day)) {
+          const byShop = await fetchDaySales(day, sessionUser.username);
+          let orders = 0, revenue = 0;
+          for (const v of Object.values(byShop)) { orders += v.orders || 0; revenue += v.revenue || 0; }
+          rec = { orders, revenue: Math.round(revenue * 100) / 100 };
+          upsert.run(day, rec.orders, rec.revenue, Date.now());
+        }
+        out.push({ date: day, revenue: rec.revenue, orders: rec.orders });
+      }
+      res.json({
+        ok: true,
+        days: out,
+        totalRevenue: Math.round(out.reduce((s, x) => s + x.revenue, 0) * 100) / 100,
+        totalOrders: out.reduce((s, x) => s + x.orders, 0),
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? "Lỗi sales-trend" });
+    }
+  });
+
   app.get("/admin/api/dashboard/overview", async (req, res) => {
     try {
       const sessionUser = (req.session as any).user as SessionUser;
@@ -1091,6 +1135,151 @@ export const startAdminServer = async () => {
     }
   });
 
+  // Tiến độ đăng listing — TẤT CẢ shop 4Seller (target 100/shop). Live count từ 4Seller
+  // (cache 5p) + merge pending/fail/today từ folder local (shop đã có hoạt động).
+  app.get("/admin/api/listings/progress", async (req, res) => {
+    try {
+      const sessionUser = (req.session as any).user as SessionUser;
+      const [accounts, liveByShop, imgByShop] = await Promise.all([
+        fsAccounts().catch(() => [] as any[]),
+        fetchLiveCounts(sessionUser.username).catch(() => ({} as Record<string, number>)),
+        fetchShopImages(sessionUser.username).catch(() => ({} as Record<string, string>)),
+      ]);
+      const localByShop = new Map<string, any>();
+      try { for (const s of await scanShopsSummary({ username: ownerScope(req) })) localByShop.set(s.folder.toLowerCase(), s); } catch { /* ignore */ }
+      const seen = new Set<string>();
+      const shops: any[] = [];
+      for (const acc of accounts) {
+        for (const name of (acc.shops || [])) {
+          const lc = String(name).toLowerCase();
+          if (seen.has(lc)) continue;
+          seen.add(lc);
+          const loc = localByShop.get(lc) || {};
+          shops.push({
+            folder: name,
+            owner: loc.owner || sessionUser.username,
+            account: acc.label,
+            live: lc in liveByShop ? liveByShop[lc] : null,
+            image: loc.cover || imgByShop[lc] || null,
+            pending: loc.pending || 0,
+            fail: loc.fail || 0,
+            success: loc.success || 0,
+            todayCount: loc.todayCount || 0,
+          });
+        }
+      }
+      res.json({ shops, target: 100 });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? "Lỗi progress" });
+    }
+  });
+
+  // ── Thống kê theo NGÁCH: ngách nào có shop nào chơi + sp crawl + điểm cơ hội ──
+  app.get("/admin/api/niche/overview", async (_req, res) => {
+    try {
+      const { getDb } = await import("./state/db");
+      const db = getDb();
+      // Gom allocation theo ngách (sp unique + đã list + điểm TB)
+      const alloc = db.prepare(
+        `SELECT niche_key AS niche, COUNT(DISTINCT goods_id) products, COUNT(*) rows,
+                SUM(CASE WHEN status='listed' THEN 1 ELSE 0 END) listed,
+                ROUND(AVG(opportunity_score),1) avgOpp, ROUND(AVG(win_score),1) avgWin
+         FROM shop_allocation WHERE niche_key IS NOT NULL AND niche_key<>'' GROUP BY niche_key`
+      ).all() as any[];
+      // Shop chơi từng ngách (+ status)
+      const byNiche = new Map<string, { shop: string; status: string }[]>();
+      for (const r of db.prepare(`SELECT shop, niche_key AS niche, status FROM shop_niche WHERE niche_key IS NOT NULL`).all() as any[]) {
+        if (!byNiche.has(r.niche)) byNiche.set(r.niche, []);
+        byNiche.get(r.niche)!.push({ shop: r.shop, status: r.status });
+      }
+      // 3 ảnh preview mỗi ngách (điểm cơ hội cao nhất)
+      const preview = db.prepare(
+        `SELECT image FROM shop_allocation WHERE niche_key=? AND image IS NOT NULL AND image<>''
+         GROUP BY goods_id ORDER BY MAX(opportunity_score) DESC LIMIT 3`
+      );
+      const nicheSet = new Set<string>([...alloc.map((a) => a.niche), ...byNiche.keys()]);
+      const niches = [...nicheSet].map((niche) => {
+        const a = alloc.find((x) => x.niche === niche) || { products: 0, rows: 0, listed: 0, avgOpp: null, avgWin: null };
+        return {
+          niche,
+          shops: byNiche.get(niche) || [],
+          products: a.products, rows: a.rows, listed: a.listed,
+          avgOpp: a.avgOpp, avgWin: a.avgWin,
+          previews: (preview.all(niche) as any[]).map((x) => x.image),
+        };
+      }).sort((x, y) => y.products - x.products);
+      res.json({
+        niches,
+        totals: {
+          niches: niches.length,
+          shops: new Set([...byNiche.values()].flat().map((s) => s.shop)).size,
+          products: alloc.reduce((s, a) => s + a.products, 0),
+        },
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? "Lỗi niche overview" });
+    }
+  });
+
+  // Top sản phẩm crawl 1 ngách — dedup theo goods_id, xếp theo điểm cơ hội.
+  app.get("/admin/api/niche/products", async (req, res) => {
+    try {
+      const niche = String(req.query.niche || "");
+      if (!niche) return res.status(400).json({ error: "Thiếu niche" });
+      const limit = Math.min(200, Math.max(1, Number(req.query.limit) || 60));
+      const { getDb } = await import("./state/db");
+      const db = getDb();
+      const rows = db.prepare(
+        `SELECT goods_id, MAX(name) name, MAX(image) image, MAX(price) price, MAX(url) url,
+                MAX(win_score) win, MAX(opportunity_score) opp, COUNT(DISTINCT shop) shopCount,
+                MAX(CASE WHEN status='listed' THEN 1 ELSE 0 END) listed
+         FROM shop_allocation WHERE niche_key=? GROUP BY goods_id
+         ORDER BY opp DESC, win DESC, shopCount DESC LIMIT ?`
+      ).all(niche, limit) as any[];
+      res.json({ niche, products: rows });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? "Lỗi niche products" });
+    }
+  });
+
+  // View THEO SHOP: mỗi shop chơi ngách nào (1 shop có thể nhiều ngách — theo category sp crawl).
+  app.get("/admin/api/niche/by-shop", async (_req, res) => {
+    try {
+      const { getDb } = await import("./state/db");
+      const db = getDb();
+      // Ngách gán chính thức (shop_niche) — để đánh dấu primary + status
+      const assigned = new Map<string, { niche: string; status: string }>();
+      for (const r of db.prepare(`SELECT shop, niche_key AS niche, status FROM shop_niche WHERE niche_key IS NOT NULL`).all() as any[])
+        assigned.set(r.shop, { niche: r.niche, status: r.status });
+      // Ngách THỰC từ sp crawl: group (shop, niche_key)
+      const rows = db.prepare(
+        `SELECT shop, niche_key AS niche, COUNT(DISTINCT goods_id) products,
+                SUM(CASE WHEN status='listed' THEN 1 ELSE 0 END) listed
+         FROM shop_allocation WHERE niche_key IS NOT NULL AND niche_key<>''
+         GROUP BY shop, niche_key`
+      ).all() as any[];
+      const byShop = new Map<string, any>();
+      for (const r of rows) {
+        if (!byShop.has(r.shop)) byShop.set(r.shop, { shop: r.shop, total: 0, niches: [] });
+        const s = byShop.get(r.shop);
+        s.niches.push({ niche: r.niche, products: r.products, listed: r.listed });
+        s.total += r.products;
+      }
+      // Shop có gán ngách nhưng chưa crawl sp nào → vẫn hiện (niches rỗng)
+      for (const [shop, a] of assigned) {
+        if (!byShop.has(shop)) byShop.set(shop, { shop, total: 0, niches: [] });
+      }
+      const shops = [...byShop.values()].map((s) => {
+        s.niches.sort((a: any, b: any) => b.products - a.products);
+        const a = assigned.get(s.shop);
+        return { ...s, primary: a?.niche ?? null, status: a?.status ?? null };
+      }).sort((a, b) => b.total - a.total);
+      res.json({ shops, totalShops: shops.length });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? "Lỗi niche by-shop" });
+    }
+  });
+
   app.get("/admin/api/listings", async (req, res) => {
     try {
       const status = req.query.status as ListingStatus | undefined;
@@ -1449,7 +1638,7 @@ export const startAdminServer = async () => {
     const set = new Set<string>();
     if (!(await fs.pathExists(config.hubDir))) return set;
     const files = (await fs.readdir(config.hubDir)).filter(
-      (f) => f.toLowerCase().endsWith(".json") && f !== "__hub_meta.json"
+      (f) => f.toLowerCase().endsWith(".json") && !isHubMetaFile(f)
     );
     for (const f of files) {
       try {
@@ -1461,10 +1650,12 @@ export const startAdminServer = async () => {
   };
 
   // Ghi 1 file JSON vào hub. Dùng chung cho userscript (Bearer) + kéo từ shop.
-  const writeHubFile = async (data: any): Promise<string> => {
+  // addedBy = người cào (share đội): stamp vào file để hiện "ai cào" + lọc.
+  const writeHubFile = async (data: any, addedBy?: string): Promise<string> => {
     await fs.ensureDir(config.hubDir);
     const fileName = `hub_${Date.now()}_${Math.floor(Math.random() * 1e6)}.json`;
-    await fs.writeFile(path.join(config.hubDir, fileName), JSON.stringify(data, null, 2), "utf-8");
+    const withMeta = { ...data, _addedBy: addedBy || data?._addedBy || null, _addedAt: data?._addedAt || Date.now() };
+    await fs.writeFile(path.join(config.hubDir, fileName), JSON.stringify(withMeta, null, 2), "utf-8");
     return fileName;
   };
 
@@ -1478,7 +1669,8 @@ export const startAdminServer = async () => {
       if (pid && (await buildHubProductIds()).has(pid)) {
         return res.json({ ok: true, duplicate: true });
       }
-      const file = await writeHubFile(data);
+      const addedBy = (req as any).tokenUser?.username;
+      const file = await writeHubFile(data, addedBy);
       res.json({ ok: true, file, duplicate: false });
     } catch (err: any) {
       res.status(500).json({ error: err?.message ?? "Lỗi ingest hub" });
@@ -1548,7 +1740,7 @@ export const startAdminServer = async () => {
           duplicates++;
           continue;
         }
-        const file = await writeHubFile(data);
+        const file = await writeHubFile(data, sessionUser.username);
         if (pid) hubIds.add(pid); // tránh trùng trong cùng lượt add
         added.push({ id, file });
       }
@@ -1576,7 +1768,7 @@ export const startAdminServer = async () => {
         if (!looksLikeProduct) { invalid++; continue; }
         const pid = extractProductId(data);
         if (pid && hubIds.has(pid)) { duplicates++; continue; }
-        await writeHubFile(data);
+        await writeHubFile(data, sessionUser.username);
         if (pid) hubIds.add(pid);
         imported++;
       }
@@ -2066,6 +2258,20 @@ export const startAdminServer = async () => {
       res.status(500).json({ ok: false, error: err?.message ?? "Lỗi test cookie" });
     } finally {
       if (browser) await browser.close().catch(() => {});
+    }
+  });
+
+  // Ping NHẸ 1 tài khoản (1 HTTP getShopList, ~1s) — auto-check cookie sống/chết, KHÔNG mở browser.
+  app.get("/admin/api/cookie/ping", async (req, res) => {
+    try {
+      const uid = String(req.query.uid || "");
+      if (!uid) return res.status(400).json({ error: "Thiếu uid" });
+      const list = await fsGetShopList(`acct:${uid}`);
+      res.json({ alive: true, shops: (list?.records ?? []).length });
+    } catch (err: any) {
+      const msg = String(err?.message ?? err);
+      const expired = /login|validation|unauthor|401|403|expire/i.test(msg);
+      res.json({ alive: false, expired, error: msg.slice(0, 140) });
     }
   });
 

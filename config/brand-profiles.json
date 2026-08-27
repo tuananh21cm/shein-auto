@@ -1,4 +1,13 @@
 {
   "default": "VYNCE",
-  "profiles": {}
+  "profiles": {
+    "TA Scan150-MaeBLa_US": "MEAUS",
+    "TA Scan 227 — Energetic Flags_US": "AESS",
+    "TA Scan 172-FLASH88_US": "FLASH",
+    "TA Scan 171-RUTMAN_US": "RUTMAN",
+    "TA Scan 210-KellieJo.bluetapelife_US": "BLUELIFE",
+    "TA Scan 205-Urban Noble_US": "LACEX",
+    "TA Scan32-Priority Shop X_US": "PSX",
+    "TN Scan43-reverend patty G_US": "AESS"
+  }
 }

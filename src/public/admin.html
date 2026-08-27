@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Shein Auto · Admin</title>
+  <title>Homie · Admin</title>
   <style>
     :root[data-theme="dark"] {
       --bg: #0b1020;
@@ -275,7 +275,93 @@
     .sov-mname { font-weight: 700; font-size: 0.79rem; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .sov-msub { display: flex; align-items: center; gap: 6px; margin-top: 2px; font-size: 0.68rem; color: var(--text-mute); }
     .sov-msub b { color: var(--text-dim); font-weight: 700; }
+    /* Card cấu hình shop (Settings) TO hơn — scope riêng, không đụng minigrid dashboard */
+    #shopCardsWrap .sov-minigrid { grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px; }
+    #shopCardsWrap .sov-mini { padding: 14px 16px; gap: 14px; border-radius: 14px; }
+    #shopCardsWrap .sov-mini::before { width: 4px; }
+    #shopCardsWrap .sov-mav { width: 56px; height: 56px; border-radius: 13px; font-size: 1.15rem; }
+    #shopCardsWrap .sov-mname { font-size: 0.98rem; }
+    #shopCardsWrap .sov-msub { font-size: 0.8rem; gap: 8px; margin-top: 5px; flex-wrap: wrap; }
     .mf { font-weight: 700; }
+    /* Sales-trend chart (clone 4Seller) */
+    .st-kpi { background: var(--bg-elev); border: 1px solid var(--border); border-radius: 12px; padding: 11px 18px; min-width: 155px; }
+    .st-kpi-k { font-size: 0.76rem; color: var(--text-mute); }
+    .st-kpi-v { font-size: 1.5rem; font-weight: 800; color: var(--text); margin-top: 2px; line-height: 1.1; }
+    .st-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 5px; vertical-align: middle; }
+    #stChart svg { display: block; width: 100%; height: auto; }
+    .st-tip { position: absolute; pointer-events: none; background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 7px 10px; font-size: 0.76rem; line-height: 1.5; box-shadow: 0 4px 14px rgba(0,0,0,.32); white-space: nowrap; opacity: 0; transition: opacity .08s; z-index: 5; }
+    /* Listing progress dashboard (target 100/shop) */
+    .lp-kpis { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
+    .lp-kpi { background: var(--bg-elev); border: 1px solid var(--border); border-radius: 12px; padding: 10px 18px; min-width: 140px; }
+    .lp-kpi-k { font-size: 0.75rem; color: var(--text-mute); }
+    .lp-kpi-v { font-size: 1.4rem; font-weight: 800; margin-top: 2px; line-height: 1.1; }
+    .lp-obar { height: 10px; background: var(--bg-elev); border-radius: 6px; overflow: hidden; }
+    .lp-obar > i { display: block; height: 100%; background: linear-gradient(90deg, #3b82f6, #22c55e); transition: width .3s; }
+    .lp-row { display: grid; grid-template-columns: 220px 1fr 150px; align-items: center; gap: 12px; padding: 7px 6px; border-bottom: 1px solid var(--border); cursor: pointer; border-radius: 6px; }
+    .lp-row:hover { background: var(--bg-elev); }
+    .lp-row:last-child { border-bottom: none; }
+    .lp-row.done { opacity: 0.5; }
+    .lp-name { font-size: 0.85rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .lp-bar { height: 8px; background: var(--bg-elev); border-radius: 5px; overflow: hidden; }
+    .lp-bar > i { display: block; height: 100%; border-radius: 5px; transition: width .3s; }
+    .lp-meta { font-size: 0.78rem; text-align: right; white-space: nowrap; }
+    .lp-badge { display: inline-block; font-size: 0.66rem; font-weight: 700; padding: 1px 6px; border-radius: 6px; margin-left: 4px; }
+    .shop-card.lp-done { opacity: 0.55; }
+    .shop-card.lp-done:hover { opacity: 1; }
+    /* Niche stats */
+    .niche-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 14px; }
+    .niche-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; cursor: pointer; transition: transform .15s, border-color .15s; }
+    .niche-card:hover { transform: translateY(-2px); border-color: var(--accent); }
+    .niche-prev { display: flex; height: 112px; background: var(--bg-elev); }
+    .niche-prev > div { flex: 1; background-size: cover; background-position: center; border-right: 2px solid var(--bg-card); }
+    .niche-body { padding: 12px 14px; }
+    .niche-name { font-weight: 800; font-size: 1.05rem; text-transform: capitalize; }
+    .niche-stat { font-size: 0.82rem; color: var(--text-mute); margin-top: 4px; }
+    .niche-shops { margin-top: 9px; display: flex; gap: 5px; flex-wrap: wrap; }
+    .nstat { font-size: 0.7rem; font-weight: 700; padding: 2px 8px; border-radius: 20px; }
+    .nstat.scaling { background: rgba(34,197,94,.15); color: var(--success); }
+    .nstat.testing { background: rgba(59,130,246,.15); color: #3b82f6; }
+    .nstat.paused { background: var(--bg-elev); color: var(--text-mute); }
+    .prod-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; }
+    .prod-card { background: var(--bg-elev); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; cursor: pointer; transition: border-color .15s; }
+    .prod-card:hover { border-color: var(--accent); }
+    .prod-card .pimg { aspect-ratio: 3/4; background: var(--bg-card) center/cover no-repeat; position: relative; }
+    .prod-card .pbody { padding: 8px 10px; }
+    .prod-name { font-size: 0.8rem; line-height: 1.35; height: 2.7em; overflow: hidden; }
+    .prod-meta { margin-top: 6px; font-size: 0.78rem; display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+    .prank { position: absolute; top: 6px; left: 6px; background: rgba(0,0,0,.6); color: #fff; font-weight: 800; font-size: 0.72rem; padding: 2px 7px; border-radius: 20px; }
+    .pscore { background: rgba(245,158,11,.15); color: var(--warn); font-weight: 700; font-size: 0.72rem; padding: 1px 6px; border-radius: 6px; }
+    /* Niche dashboard (Hub) — donut chart + legend */
+    .nd-wrap { display: flex; gap: 26px; align-items: center; flex-wrap: wrap; }
+    .nd-donut { position: relative; width: 160px; height: 160px; flex: none; }
+    .nd-donut svg { width: 100%; height: 100%; display: block; }
+    .nd-center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; pointer-events: none; }
+    .nd-total { font-size: 2rem; font-weight: 800; line-height: 1; }
+    .nd-sub { font-size: 0.75rem; color: var(--text-mute); margin-top: 2px; }
+    .nd-legend { flex: 1; min-width: 220px; display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 2px; }
+    .ndl-row { display: flex; align-items: center; gap: 9px; padding: 5px 8px; border-radius: 7px; cursor: pointer; transition: background .12s; }
+    .ndl-row:hover, .ndl-row.on { background: var(--bg-elev); }
+    .ndl-dot { width: 11px; height: 11px; border-radius: 3px; flex: none; }
+    .ndl-name { flex: 1; font-size: 0.84rem; font-weight: 600; text-transform: capitalize; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .ndl-val { font-size: 0.82rem; white-space: nowrap; }
+    .nd-stats { display: flex; gap: 20px; flex: none; padding-left: 12px; border-left: 1px solid var(--border); }
+    .nd-stat { text-align: center; }
+    .nd-sv { font-size: 1.5rem; font-weight: 800; line-height: 1; }
+    .nd-sk { font-size: 0.72rem; color: var(--text-mute); margin-top: 3px; }
+    @media (max-width: 720px) { .nd-stats { border-left: none; padding-left: 0; } }
+    /* Segmented toggle + shop→niche cards */
+    .seg { display: inline-flex; background: var(--bg-elev); border: 1px solid var(--border); border-radius: 9px; padding: 2px; }
+    .seg-btn { background: none; border: none; color: var(--text-mute); font-size: 0.82rem; font-weight: 600; padding: 6px 13px; border-radius: 7px; cursor: pointer; }
+    .seg-btn.active { background: var(--accent); color: #fff; }
+    .snc-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(305px, 1fr)); gap: 14px; }
+    .snc-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 14px; padding: 14px 16px; }
+    .snc-head { font-weight: 700; font-size: 0.92rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .snc-sub { font-size: 0.78rem; color: var(--text-mute); margin-top: 3px; }
+    .snc-chips { margin-top: 11px; display: flex; gap: 6px; flex-wrap: wrap; }
+    .snc-chip { font-size: 0.76rem; font-weight: 600; padding: 4px 10px; border-radius: 16px; background: var(--bg-elev); border: 1px solid var(--border); cursor: pointer; text-transform: capitalize; }
+    .snc-chip:hover { border-color: var(--accent); }
+    .snc-chip.primary { background: rgba(94,124,238,.18); border-color: var(--accent); color: var(--accent); }
+    .snc-chip b { font-weight: 800; }
     .mf.bad { color: var(--danger); } .mf.warn { color: var(--warn); }
     /* toggle switch (modal cấu hình shop) */
     .sw { position: relative; width: 42px; height: 23px; flex: none; display: inline-block; }
@@ -293,7 +379,7 @@
 <body>
 <div class="app">
   <aside class="sidebar">
-    <div class="brand"><span class="dot"></span>Shein Auto</div>
+    <div class="brand"><span class="dot"></span>Homie</div>
     <div class="nav-item active" data-view="dashboard">
       <span class="ico">📊</span><span>Dashboard</span>
     </div>
@@ -303,11 +389,8 @@
     <div class="nav-item" data-view="hub">
       <span class="ico">🗂️</span><span>Hub sản phẩm</span>
     </div>
-    <div class="nav-item" data-view="history">
-      <span class="ico">📜</span><span>History</span>
-    </div>
-    <div class="nav-item" data-view="users">
-      <span class="ico">👥</span><span>Users</span>
+    <div class="nav-item" data-view="niche">
+      <span class="ico">🎯</span><span>Ngách</span>
     </div>
     <div class="nav-item" data-view="settings" data-admin-only="1">
       <span class="ico">⚙️</span><span>Settings</span>
@@ -341,6 +424,19 @@
       </div>
 
       <div id="dashWorkerStrip"></div>
+      <div class="card" id="dashSalesCard" style="margin-bottom:18px;">
+        <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:16px; flex-wrap:wrap;">
+          <div style="display:flex; gap:12px; flex-wrap:wrap;">
+            <div class="st-kpi"><div class="st-kpi-k">Doanh thu (30 ngày)</div><div class="st-kpi-v" id="stRevenue">—</div></div>
+            <div class="st-kpi"><div class="st-kpi-k">Tổng đơn (30 ngày)</div><div class="st-kpi-v" id="stOrders">—</div></div>
+          </div>
+          <div style="display:flex; align-items:center; gap:14px; font-size:0.78rem; color:var(--text-mute);">
+            <span><span class="st-dot" style="background:#3b82f6;"></span> Doanh thu ($)</span>
+            <span><span class="st-dot" style="background:#22c55e;"></span> Đơn</span>
+          </div>
+        </div>
+        <div id="stChart" style="margin-top:14px; position:relative;"><div class="empty">Đang tải doanh thu 30 ngày… (lần đầu hơi lâu — gọi 4Seller)</div></div>
+      </div>
       <div id="dashOverview"><div class="empty">Đang tải tổng quan shop…</div></div>
 
       <div class="card" style="margin-top: 18px;">
@@ -367,6 +463,7 @@
 
       <!-- View 1: Shop summary cards (mặc định) -->
       <div id="shopsView">
+        <div id="listProgress"></div>
         <div class="card">
           <div id="shopsGrid"><div class="empty">Đang tải…</div></div>
         </div>
@@ -401,12 +498,16 @@
         </div>
         <button class="btn btn-ghost" onclick="loadHub()">Refresh</button>
       </div>
+      <div id="hubNicheDash"></div>
       <div class="card">
         <div style="display:flex; gap:10px; align-items:center; margin-bottom:12px;">
           <select id="hubFilter" onchange="renderHub()" style="width:auto; min-width:160px;">
             <option value="">Tất cả</option>
             <option value="listed">📤 Đã đẩy</option>
             <option value="unlisted">⏳ Chưa đẩy</option>
+          </select>
+          <select id="hubBy" onchange="renderHub()" style="width:auto; min-width:150px;" title="Lọc theo người cào">
+            <option value="">👥 Cả đội</option>
           </select>
           <select id="hubSort" onchange="renderHub()" style="width:auto; min-width:190px;">
             <option value="">Mới nhất</option>
@@ -418,49 +519,37 @@
           <button class="btn btn-primary" id="hubImportBtn" onclick="document.getElementById('hubImportInput').click()">📥 Import file</button>
           <input type="file" id="hubImportInput" accept=".json,application/json" multiple hidden onchange="hubImportFiles(this.files)" />
         </div>
+        <div id="hubNicheStrip" style="margin-bottom:12px;"></div>
         <div id="hubGrid"><div class="empty">Đang tải…</div></div>
       </div>
     </section>
 
-    <!-- ───── HISTORY ───── -->
-    <section class="view" id="view-history">
-      <div class="page-head">
-        <div>
-          <h1>History</h1>
-          <div class="subtitle">Toàn bộ listing đã chạy</div>
-        </div>
-        <button class="btn btn-ghost" onclick="loadHistory()">Refresh</button>
-      </div>
-      <div class="card">
-        <div class="filter-bar">
-          <select id="histStatus" onchange="loadHistory()">
-            <option value="">Tất cả</option>
-            <option value="success">Success</option>
-            <option value="fail">Fail</option>
-          </select>
-          <input id="histFolder" placeholder="Lọc folder (vd: P5-008)" onchange="loadHistory()" />
-        </div>
-        <div id="histTableWrap"><div class="empty">Đang tải…</div></div>
-      </div>
-    </section>
 
-    <!-- ───── USERS ───── -->
-    <section class="view" id="view-users">
+    <!-- ───── NGÁCH ───── -->
+    <section class="view" id="view-niche">
       <div class="page-head">
         <div>
-          <h1>Users</h1>
-          <div class="subtitle">Quản lý quyền truy cập Admin UI</div>
+          <h1>🎯 Ngách</h1>
+          <div class="subtitle" id="nicheSubtitle">Shop chơi ngách nào · top sản phẩm crawl theo ngách</div>
         </div>
-        <div style="display:flex; gap:8px;">
-          <button class="btn btn-ghost" id="btnAddUser" onclick="addUser()">+ Thêm user</button>
-          <button class="btn btn-primary" id="btnSaveUsers" onclick="saveConfig()">Lưu</button>
+        <div style="display:flex; gap:10px; align-items:center;">
+          <div class="seg">
+            <button id="nvNiche" class="seg-btn active" onclick="setNicheView('niche')">🎯 Theo ngách</button>
+            <button id="nvShop" class="seg-btn" onclick="setNicheView('shop')">🏪 Theo shop</button>
+          </div>
+          <button class="btn btn-ghost" onclick="loadNiche()">Refresh</button>
         </div>
       </div>
-      <div class="card">
-        <div id="usersTableWrap"><div class="empty">Đang tải…</div></div>
-        <p style="color: var(--text-mute); font-size: 0.85rem; margin-top: 14px;">
-          Password để trống = giữ nguyên password cũ. Khi đổi password, hệ thống sẽ tự hash (bcrypt).
-        </p>
+      <div id="nicheOverview"><div class="empty">Đang tải…</div></div>
+      <div id="nicheDetail" style="display:none;">
+        <div class="back-bar">
+          <button class="btn btn-ghost btn-icon" onclick="exitNicheDetail()">← Back</button>
+          <div class="crumb">Ngách: <code id="nicheDetailName">—</code></div>
+          <div style="flex:1;"></div>
+          <span id="nicheDetailMeta" style="font-size:0.85rem; color:var(--text-mute);"></span>
+        </div>
+        <div id="nicheDetailShops" style="margin-bottom:12px;"></div>
+        <div class="card"><div id="nicheProductsGrid"><div class="empty">…</div></div></div>
       </div>
     </section>
 
@@ -473,7 +562,21 @@
         </div>
         <button class="btn btn-primary" onclick="saveSettings()">Lưu</button>
       </div>
-      <div class="card" style="background: linear-gradient(135deg, var(--bg-card), var(--bg-elev)); border-left: 4px solid var(--accent);">
+      <div class="card">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; gap:12px; flex-wrap:wrap;">
+          <h3 style="margin:0;">🏪 Cấu hình listing theo shop <span id="shopCardsCount" style="color:var(--text-mute); font-weight:400; font-size:0.85rem;"></span></h3>
+          <div style="display:flex; gap:8px; align-items:center;">
+            <input id="brandDefault" placeholder="Brand mặc định (VYNCE)" style="width:200px;" title="Brand dùng cho shop không set brand riêng" />
+            <button class="btn btn-primary" onclick="saveBrands()">Lưu brand mặc định</button>
+          </div>
+        </div>
+        <div id="shopCardsWrap"><div class="empty">Đang tải…</div></div>
+        <p style="color: var(--text-mute); font-size: 0.82rem; margin-top: 10px;">
+          💡 Click card shop để chỉnh brand + bật/tắt từng tính năng listing cho riêng shop đó. Shop không chỉnh gì = bật đủ mọi tính năng.
+        </p>
+      </div>
+
+      <div class="card" style="margin-top:18px; background: linear-gradient(135deg, var(--bg-card), var(--bg-elev)); border-left: 4px solid var(--accent);">
         <div style="display:flex; align-items:center; justify-content:space-between;">
           <div>
             <h3 style="margin:0 0 4px;">⏰ Tự động chạy (Cron)</h3>
@@ -562,20 +665,6 @@
       </div>
 
       <div class="card" style="margin-top:18px;">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; gap:12px; flex-wrap:wrap;">
-          <h3 style="margin:0;">🏪 Cấu hình listing theo shop <span id="shopCardsCount" style="color:var(--text-mute); font-weight:400; font-size:0.85rem;"></span></h3>
-          <div style="display:flex; gap:8px; align-items:center;">
-            <input id="brandDefault" placeholder="Brand mặc định (VYNCE)" style="width:200px;" title="Brand dùng cho shop không set brand riêng" />
-            <button class="btn btn-primary" onclick="saveBrands()">Lưu brand mặc định</button>
-          </div>
-        </div>
-        <div id="shopCardsWrap"><div class="empty">Đang tải…</div></div>
-        <p style="color: var(--text-mute); font-size: 0.82rem; margin-top: 10px;">
-          💡 Click card shop để chỉnh brand + bật/tắt từng tính năng listing cho riêng shop đó. Shop không chỉnh gì = bật đủ mọi tính năng.
-        </p>
-      </div>
-
-      <div class="card" style="margin-top:18px;">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
           <h3 style="margin:0;">🖼️ Pool imgbb <span style="color:var(--text-mute); font-weight:400; font-size:0.85rem;">— host ảnh banner/size-guide trong mô tả</span></h3>
           <div style="display:flex; gap:8px;">
@@ -639,6 +728,7 @@
         <div style="font-weight: 600;">Kéo 1 hoặc NHIỀU file cookie (.json) thả vào đây</div>
         <div style="color: var(--text-mute); font-size: 0.85rem; margin-top: 4px;">
           Mỗi file export từ Cookie-Editor của 1 tài khoản 4Seller — kéo 2 file của 2 tài khoản là tự tách 2 tài khoản.
+          <b>Cookie hết hạn?</b> Kéo file cookie MỚI của tài khoản đó vào — hệ thống tự nhận theo <code>uid</code> và <b>thay đè</b>, KHÔNG cần xoá cái cũ.
           Hoặc <label for="cookieFileInput" style="color: var(--accent); cursor: pointer; text-decoration: underline;">chọn file</label>.
         </div>
         <input type="file" id="cookieFileInput" accept=".json,application/json" multiple style="display:none" onchange="handleCookieFiles(this.files)" />
@@ -739,9 +829,9 @@ document.querySelectorAll(".nav-item").forEach((item) => {
     document.getElementById('hubBulkBar')?.remove();
     item.classList.add("active");
     $(`#view-${view}`).classList.add("active");
-    if (view === "history") loadHistory();
     if (view === "listings") loadShopsOrListings();
     if (view === "hub") loadHub();
+    if (view === "niche") loadNiche();
     if (view === "users") renderUsers();
     if (view === "settings") { loadSettings(); loadBrands(); loadPricing(); loadImgbbStatus(); }
     if (view === "promotions") loadPromotions();
@@ -758,10 +848,7 @@ async function bootstrap() {
     if (!me.ok) return location.href = "/admin/login";
     state.user = await me.json();
     $("#navUser").textContent = `${state.user.username} · ${state.user.role}`;
-    const canEdit = state.user.role !== "viewer";
     const isAdmin = state.user.role === "admin";
-    $("#btnAddUser").style.display = isAdmin ? "" : "none";
-    $("#btnSaveUsers").disabled = !canEdit;
     // Ẩn nav items có data-admin-only nếu không phải admin
     document.querySelectorAll('.nav-item[data-admin-only]').forEach((el) => {
       if (!isAdmin) el.style.display = 'none';
@@ -777,6 +864,7 @@ async function bootstrap() {
 // ─── Dashboard (overview — port từ main) ────────────────
 async function refreshDashboard() {
   try {
+    loadSalesTrend(); // chart doanh thu 30 ngày — tải riêng, không chặn phần còn lại
     // Worker strip (nhẹ, có ngay) + overview shop (nặng hơn, gọi 4Seller) chạy song song
     const basicP = fetch("/admin/api/dashboard").then((r) => r.json());
     const overviewP = fetch("/admin/api/dashboard/overview").then((r) => r.json());
@@ -792,6 +880,68 @@ async function refreshDashboard() {
   } catch (err) {
     toast("Không tải được dashboard: " + err.message, "error");
   }
+}
+
+// ── Chart doanh thu + đơn 30 ngày (clone 4Seller) ──
+function loadSalesTrend() {
+  fetch("/admin/api/dashboard/sales-trend?days=30")
+    .then((r) => r.json())
+    .then((d) => { if (d.error) throw new Error(d.error); renderSalesTrend(d); })
+    .catch((err) => { const el = $("#stChart"); if (el) el.innerHTML = `<div class="empty">Lỗi tải doanh thu: ${escapeHtml(err.message)}</div>`; });
+}
+
+function renderSalesTrend(d) {
+  const days = d.days || [];
+  const money = (v) => "$" + (v ?? 0).toLocaleString("en-US", { maximumFractionDigits: 0 });
+  const rEl = $("#stRevenue"), oEl = $("#stOrders"); if (rEl) rEl.textContent = money(d.totalRevenue); if (oEl) oEl.textContent = d.totalOrders ?? 0;
+  const el = $("#stChart"); if (!el) return;
+  if (days.length < 2) { el.innerHTML = '<div class="empty">Chưa đủ dữ liệu 30 ngày.</div>'; return; }
+
+  const W = 1000, H = 250, pL = 48, pR = 42, pT = 14, pB = 28;
+  const x0 = pL, x1 = W - pR, y0 = pT, y1 = H - pB, n = days.length;
+  const maxRev = Math.max(1, ...days.map((x) => x.revenue));
+  const maxOrd = Math.max(1, ...days.map((x) => x.orders));
+  const xOf = (i) => x0 + (i / (n - 1)) * (x1 - x0);
+  const yRev = (v) => y1 - (v / maxRev) * (y1 - y0);
+  const yOrd = (v) => y1 - (v / maxOrd) * (y1 - y0);
+
+  let grid = "", axisL = "", axisR = "", G = 4;
+  for (let g = 0; g <= G; g++) {
+    const yy = (y0 + (g / G) * (y1 - y0)).toFixed(1);
+    grid += `<line x1="${x0}" y1="${yy}" x2="${x1}" y2="${yy}" stroke="var(--border)" stroke-width="1" opacity="0.5"/>`;
+    axisL += `<text x="${x0 - 6}" y="${(+yy + 3).toFixed(1)}" text-anchor="end" font-size="10" fill="var(--text-mute)">${Math.round(maxRev * (1 - g / G))}</text>`;
+    axisR += `<text x="${x1 + 6}" y="${(+yy + 3).toFixed(1)}" text-anchor="start" font-size="10" fill="var(--text-mute)">${Math.round(maxOrd * (1 - g / G))}</text>`;
+  }
+  let xlab = "", step = Math.max(1, Math.ceil(n / 8));
+  for (let i = 0; i < n; i += step) xlab += `<text x="${xOf(i).toFixed(1)}" y="${H - 9}" text-anchor="middle" font-size="10" fill="var(--text-mute)">${days[i].date.slice(5)}</text>`;
+  const revPts = days.map((x, i) => `${xOf(i).toFixed(1)},${yRev(x.revenue).toFixed(1)}`).join(" ");
+  const ordPts = days.map((x, i) => `${xOf(i).toFixed(1)},${yOrd(x.orders).toFixed(1)}`).join(" ");
+
+  el.innerHTML = `
+    <svg viewBox="0 0 ${W} ${H}" id="stSvg" style="overflow:visible;">
+      ${grid}${axisL}${axisR}${xlab}
+      <polyline points="${ordPts}" fill="none" stroke="#22c55e" stroke-width="2" stroke-linejoin="round"/>
+      <polyline points="${revPts}" fill="none" stroke="#3b82f6" stroke-width="2" stroke-linejoin="round"/>
+      <line id="stGuide" x1="0" y1="${y0}" x2="0" y2="${y1}" stroke="var(--text-mute)" stroke-dasharray="4 4" opacity="0"/>
+      <circle id="stDotR" r="3.6" fill="#3b82f6" opacity="0"/><circle id="stDotO" r="3.6" fill="#22c55e" opacity="0"/>
+    </svg>
+    <div class="st-tip" id="stTip"></div>`;
+
+  const svg = $("#stSvg"), tip = $("#stTip"), guide = $("#stGuide"), dotR = $("#stDotR"), dotO = $("#stDotO");
+  el.onmousemove = (ev) => {
+    const rect = svg.getBoundingClientRect();
+    let i = Math.round(((ev.clientX - rect.left) / rect.width * W - x0) / (x1 - x0) * (n - 1));
+    i = Math.max(0, Math.min(n - 1, i));
+    const p = days[i], px = xOf(i);
+    guide.setAttribute("x1", px); guide.setAttribute("x2", px); guide.setAttribute("opacity", "1");
+    dotR.setAttribute("cx", px); dotR.setAttribute("cy", yRev(p.revenue)); dotR.setAttribute("opacity", "1");
+    dotO.setAttribute("cx", px); dotO.setAttribute("cy", yOrd(p.orders)); dotO.setAttribute("opacity", "1");
+    tip.innerHTML = `<b>${p.date}</b><br><span style="color:#3b82f6;">●</span> Doanh thu ${money(p.revenue)}<br><span style="color:#22c55e;">●</span> Đơn ${p.orders}`;
+    tip.style.opacity = "1";
+    tip.style.left = Math.min(rect.width - 140, Math.max(0, px / W * rect.width + 12)) + "px";
+    tip.style.top = "4px";
+  };
+  el.onmouseleave = () => { tip.style.opacity = "0"; [guide, dotR, dotO].forEach((n) => n.setAttribute("opacity", "0")); };
 }
 
 // Thanh trạng thái worker gọn 1 dòng
@@ -1024,9 +1174,6 @@ function connectSSE() {
     const snap = JSON.parse(e.data);
     renderQueue(snap);
   });
-  sse.addEventListener("history", () => {
-    if ($("#view-history").classList.contains("active")) loadHistory();
-  });
   sse.onerror = () => {
     setTimeout(connectSSE, 3000);
   };
@@ -1047,6 +1194,7 @@ const clearLogs = () => $("#logPanel").innerHTML = "";
 
 // ─── History ──────────────────────────────────────────
 async function loadHistory() {
+  if (!$("#histTableWrap")) return; // màn History đã gỡ
   try {
     const params = new URLSearchParams();
     if ($("#histStatus").value) params.set("status", $("#histStatus").value);
@@ -1140,11 +1288,79 @@ async function loadShops() {
     const data = await res.json();
     if (!res.ok) throw new Error(data.error);
     state.listings.shops = data.shops || [];
-    renderShops();
+    loadListingProgress(); // render KPI + card (kèm progress bar) cho TẤT CẢ shop
   } catch (err) {
     toast("Không tải được shops: " + err.message, "error");
     $("#shopsGrid").innerHTML = '<div class="empty">Lỗi tải dữ liệu</div>';
   }
+}
+
+// ── Dashboard tiến độ đăng — target 100 listing/shop (TẤT CẢ shop 4Seller, vai seller) ──
+const LP_TARGET = 100;
+let _lpShops = [];
+function loadListingProgress() {
+  const el = $("#listProgress");
+  if (el && !_lpShops.length) el.innerHTML = '<div class="card" style="margin-bottom:14px;"><div class="empty">Đang tính tiến độ đăng (lấy live 4Seller)…</div></div>';
+  fetch("/admin/api/listings/progress")
+    .then((r) => r.json())
+    .then((d) => { if (d.error) throw new Error(d.error); _lpShops = d.shops || []; renderListingProgress(); })
+    .catch((err) => { if (el) el.innerHTML = `<div class="card" style="margin-bottom:14px;"><div class="empty">Lỗi tiến độ: ${escapeHtml(err.message)}</div></div>`; });
+}
+function renderListingProgress() {
+  const el = $("#listProgress"), grid = $("#shopsGrid");
+  const shops = _lpShops || [];
+  if (!shops.length) { if (el) el.innerHTML = ""; return; }
+  const countOf = (s) => (s.live != null ? s.live : (s.success || 0)); // live 4Seller, fallback success local
+  const rows = shops.map((s) => ({ ...s, cnt: countOf(s) }));
+  const totalCnt = rows.reduce((a, s) => a + s.cnt, 0);
+  const totalTarget = rows.length * LP_TARGET;
+  const done = rows.filter((s) => s.cnt >= LP_TARGET).length;
+  const pendingSum = rows.reduce((a, s) => a + (s.pending || 0), 0);
+  const todaySum = rows.reduce((a, s) => a + (s.todayCount || 0), 0);
+  const overallPct = Math.min(100, Math.round(totalCnt / totalTarget * 100));
+  const barColor = (c) => c >= LP_TARGET ? "#22c55e" : c >= 50 ? "#3b82f6" : c >= 1 ? "#f59e0b" : "var(--text-mute)";
+  // Chưa đạt & tụt nhất lên đầu; shop đã đạt xuống cuối (mờ)
+  const sorted = rows.slice().sort((a, b) => (a.cnt >= LP_TARGET) - (b.cnt >= LP_TARGET) || a.cnt - b.cnt);
+  const view = state.lpHideDone ? sorted.filter((s) => s.cnt < LP_TARGET) : sorted;
+
+  const sub = $("#listingsSubtitle");
+  if (sub) sub.innerHTML = `${rows.length} shop &nbsp;·&nbsp; <b>${totalCnt}</b>/${totalTarget} listing (${overallPct}%) &nbsp;·&nbsp; <span style="color:var(--success);">✅ ${done} đạt target</span> &nbsp;·&nbsp; <span style="color:var(--warn);">⏳ ${pendingSum} chờ</span>`;
+
+  // KPI tổng (không còn list bar riêng — progress nằm trong từng card bên dưới)
+  if (el) el.innerHTML = `
+    <div class="card" style="margin-bottom:14px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; gap:12px; flex-wrap:wrap;">
+        <h3 style="margin:0;">📊 Tiến độ đăng — target ${LP_TARGET} listing/shop</h3>
+        <label style="font-size:0.8rem; display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" ${state.lpHideDone ? "checked" : ""} onchange="state.lpHideDone=this.checked; renderListingProgress()"> Ẩn shop đã đạt (${done})</label>
+      </div>
+      <div class="lp-kpis">
+        <div class="lp-kpi"><div class="lp-kpi-k">Tổng listing</div><div class="lp-kpi-v">${totalCnt}<span style="font-size:0.9rem; color:var(--text-mute); font-weight:600;">/${totalTarget}</span></div></div>
+        <div class="lp-kpi"><div class="lp-kpi-k">Hoàn thành</div><div class="lp-kpi-v" style="color:${overallPct >= 100 ? "var(--success)" : "var(--accent)"};">${overallPct}%</div></div>
+        <div class="lp-kpi"><div class="lp-kpi-k">Shop đạt target</div><div class="lp-kpi-v">${done}<span style="font-size:0.9rem; color:var(--text-mute); font-weight:600;">/${rows.length}</span></div></div>
+        <div class="lp-kpi"><div class="lp-kpi-k">Đang chờ đăng</div><div class="lp-kpi-v" style="color:var(--warn);">${pendingSum}</div></div>
+        <div class="lp-kpi"><div class="lp-kpi-k">Đăng hôm nay</div><div class="lp-kpi-v" style="color:var(--success);">+${todaySum}</div></div>
+      </div>
+      <div class="lp-obar"><i style="width:${overallPct}%;"></i></div>
+    </div>`;
+
+  // Card từng shop — progress bar /100 NẰM TRONG card (như yêu cầu)
+  if (grid) grid.innerHTML = '<div class="shops-grid">' + view.map((s) => {
+    const pct = Math.min(100, Math.round(s.cnt / LP_TARGET * 100));
+    const rem = Math.max(0, LP_TARGET - s.cnt);
+    return `<div class="shop-card ${s.cnt >= LP_TARGET ? "lp-done" : ""}" onclick="enterShopDetail('${escapeHtml(s.folder)}','${escapeHtml(s.owner || "")}')">
+      <div class="cover">${s.image
+        ? `<img src="${escapeHtml(s.image)}" alt="" loading="lazy" onerror="this.parentElement.innerHTML='<div class=&quot;placeholder&quot;>(no image)</div>'"/>`
+        : '<div class="placeholder">(no image)</div>'}</div>
+      <div class="body" style="gap:9px;">
+        <div class="name" style="font-size:0.9rem;">${escapeHtml(s.folder)} <span style="font-size:0.68rem; color:var(--text-mute); font-weight:400;">@${escapeHtml((s.owner || "").split(",")[0])}</span></div>
+        <div class="lp-bar" style="height:9px;"><i style="width:${pct}%; background:${barColor(s.cnt)};"></i></div>
+        <div style="display:flex; justify-content:space-between; align-items:center; font-size:0.82rem;">
+          <span><b style="font-size:1.05rem;">${s.cnt}</b><span style="color:var(--text-mute);">/${LP_TARGET}</span> ${s.cnt >= LP_TARGET ? '<span style="color:var(--success); font-weight:700;">✓ đạt</span>' : `<span style="color:var(--text-mute);">còn ${rem}</span>`}</span>
+          <span>${s.pending ? `<span class="lp-badge" style="background:rgba(245,158,11,.15); color:var(--warn);">⏳${s.pending}</span>` : ""}${s.fail ? `<span class="lp-badge" style="background:rgba(239,68,68,.15); color:var(--danger);">✕${s.fail}</span>` : ""}${s.todayCount ? `<span class="lp-badge" style="background:rgba(34,197,94,.15); color:var(--success);">+${s.todayCount}</span>` : ""}</span>
+        </div>
+      </div>
+    </div>`;
+  }).join("") + "</div>";
 }
 
 function renderShops() {
@@ -1677,6 +1893,90 @@ async function loadHub() {
   }
 }
 
+// Dashboard ngách ở đầu Hub — DONUT chart (top-6 + Khác) + legend click-lọc. Palette categorical đã validate (dataviz).
+const ND_COLORS = ["#3987e5", "#d95926", "#199e70", "#c98500", "#d55181", "#9085e9"];
+function renderHubNicheDashboard() {
+  const el = $("#hubNicheDash"); if (!el) return;
+  const items = state.hub.items || [];
+  if (!items.length) { el.innerHTML = ""; return; }
+  const counts = {}; let noNiche = 0, listedTotal = 0;
+  for (const it of items) {
+    if ((it.listedCount || 0) > 0) listedTotal++;
+    if (it.niche) counts[it.niche] = (counts[it.niche] || 0) + 1; else noNiche++;
+  }
+  const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+  const total = items.length;
+  const active = state.hubNiche || "";
+  const nicheCount = sorted.length;
+
+  // Fold: top 6 ngách giữ màu; phần còn lại + chưa rõ → "Khác" (xám)
+  const TOP = 6;
+  const slices = sorted.slice(0, TOP).map(([n, c], i) => ({ key: n, label: n.replace(/-/g, " "), c, color: ND_COLORS[i] }));
+  let otherC = sorted.slice(TOP).reduce((s, [, c]) => s + c, 0) + noNiche;
+  if (otherC > 0) slices.push({ key: "__other", label: "Khác", c: otherC, color: "var(--text-mute)" });
+
+  // Donut SVG (stroke-dasharray), khe 1.5px giữa lát
+  const R = 54, SW = 22, C2 = 2 * Math.PI * R, GAP = 1.5;
+  let off = 0;
+  const arcs = slices.map((s) => {
+    const len = s.c / total * C2;
+    const dim = active && active !== s.key;
+    const seg = `<circle cx="72" cy="72" r="${R}" fill="none" stroke="${s.color}" stroke-width="${SW}" opacity="${dim ? 0.32 : 1}" stroke-dasharray="${Math.max(0, len - GAP).toFixed(2)} ${(C2 - Math.max(0, len - GAP)).toFixed(2)}" stroke-dashoffset="${(-off).toFixed(2)}" transform="rotate(-90 72 72)" style="transition:opacity .2s;"><title>${escapeHtml(s.label)}: ${s.c} (${Math.round(s.c / total * 100)}%)</title></circle>`;
+    off += len;
+    return seg;
+  }).join("");
+
+  const legend = slices.map((s) => {
+    const clickable = s.key !== "__other";
+    const on = active === s.key;
+    const pct = Math.round(s.c / total * 100);
+    return `<div class="ndl-row${on ? " on" : ""}" ${clickable ? `onclick="setHubNiche('${s.key}')"` : 'style="cursor:default;"'} title="${escapeHtml(s.label)}: ${s.c} sản phẩm (${pct}%)">
+      <span class="ndl-dot" style="background:${s.color};"></span>
+      <span class="ndl-name"${s.key === "__other" ? ' style="color:var(--text-mute);"' : ""}>${escapeHtml(s.label)}</span>
+      <span class="ndl-val"><b>${s.c}</b> <span style="color:var(--text-mute);">${pct}%</span></span>
+    </div>`;
+  }).join("");
+
+  el.innerHTML = `
+    <div class="card" style="margin-bottom:14px;">
+      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; gap:12px; flex-wrap:wrap;">
+        <h3 style="margin:0;">🎯 Dashboard ngách</h3>
+        ${active ? `<span style="font-size:0.82rem;">Lọc <b style="color:var(--accent); text-transform:capitalize;">${escapeHtml(active === "__none" ? "chưa rõ" : active.replace(/-/g, " "))}</b> · <span onclick="setHubNiche('${active}')" style="cursor:pointer; color:var(--text-mute); text-decoration:underline;">bỏ lọc</span></span>` : `<span style="font-size:0.8rem; color:var(--text-mute);">Bấm 1 ngách để lọc sản phẩm</span>`}
+      </div>
+      <div class="nd-wrap">
+        <div class="nd-donut">
+          <svg viewBox="0 0 144 144">${arcs}</svg>
+          <div class="nd-center"><div class="nd-total">${total}</div><div class="nd-sub">sản phẩm</div></div>
+        </div>
+        <div class="nd-legend">${legend}</div>
+        <div class="nd-stats">
+          <div class="nd-stat"><div class="nd-sv">${nicheCount}</div><div class="nd-sk">ngách</div></div>
+          <div class="nd-stat"><div class="nd-sv" style="color:var(--success);">${listedTotal}</div><div class="nd-sk">đã đẩy</div></div>
+          <div class="nd-stat"><div class="nd-sv" style="color:var(--text-mute);">${noNiche}</div><div class="nd-sk">chưa rõ</div></div>
+        </div>
+      </div>
+    </div>`;
+}
+
+// Strip ngách trong Hub — vừa dashboard (đếm sp/ngách) vừa filter (click chip để lọc).
+function renderHubNicheStrip() {
+  const el = $("#hubNicheStrip"); if (!el) return;
+  const items = state.hub.items || [];
+  const counts = {}; let noNiche = 0;
+  for (const it of items) { if (it.niche) counts[it.niche] = (counts[it.niche] || 0) + 1; else noNiche++; }
+  const niches = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+  const active = state.hubNiche || "";
+  const chip = (val, label, count, color) =>
+    `<span onclick="setHubNiche('${val}')" style="cursor:pointer; user-select:none; font-size:0.8rem; font-weight:600; padding:5px 12px; border-radius:20px; border:1px solid ${active === val ? "var(--accent)" : "var(--border)"}; background:${active === val ? "var(--accent)" : "var(--bg-elev)"}; color:${active === val ? "#fff" : (color || "var(--text)")};">${label} <b>${count}</b></span>`;
+  el.innerHTML = `<div style="display:flex; gap:7px; flex-wrap:wrap; align-items:center;">
+    <span style="font-size:0.82rem; color:var(--text-mute); margin-right:2px;">🎯 Ngách:</span>
+    ${chip("", "Tất cả", items.length)}
+    ${niches.map(([n, c]) => chip(n, escapeHtml(n.replace(/-/g, " ")), c)).join("")}
+    ${noNiche ? chip("__none", "Chưa rõ ngách", noNiche, "var(--text-mute)") : ""}
+  </div>`;
+}
+function setHubNiche(n) { state.hubNiche = (state.hubNiche === n) ? "" : n; renderHub(); }
+
 // Import sản phẩm vào Hub bằng file JSON (đọc + parse phía client, gửi theo lô).
 async function hubImportFiles(fileList) {
   const files = Array.from(fileList || []);
@@ -1721,11 +2021,31 @@ async function hubImportFiles(fileList) {
   }
 }
 
+function populateHubBy() {
+  const sel = $("#hubBy"); if (!sel) return;
+  const me = state.user?.username;
+  const people = [...new Set((state.hub.items || []).map((it) => it.addedBy).filter(Boolean))].sort();
+  const cur = sel.value;
+  sel.innerHTML = `<option value="">👥 Cả đội</option>` +
+    (me ? `<option value="__me">🙋 Của tôi (${escapeHtml(me)})</option>` : "") +
+    people.filter((p) => p !== me).map((p) => `<option value="${escapeHtml(p)}">🧑 ${escapeHtml(p)}</option>`).join("");
+  if ([...sel.options].some((o) => o.value === cur)) sel.value = cur;
+}
+
 function renderHub() {
   ensureHubState();
+  renderHubNicheDashboard();
+  renderHubNicheStrip();
+  populateHubBy();
   const search = ($("#hubSearch").value || "").toLowerCase().trim();
   const filter = $("#hubFilter")?.value || "";
+  const byF = $("#hubBy")?.value || "";
+  const nicheF = state.hubNiche || "";
   let items = state.hub.items;
+  if (nicheF === "__none") items = items.filter((it) => !it.niche);
+  else if (nicheF) items = items.filter((it) => it.niche === nicheF);
+  if (byF === "__me") items = items.filter((it) => it.addedBy === state.user?.username);
+  else if (byF) items = items.filter((it) => it.addedBy === byF);
   if (filter === "listed") items = items.filter((it) => (it.listedCount || 0) > 0);
   else if (filter === "unlisted") items = items.filter((it) => (it.listedCount || 0) === 0);
   if (search) items = items.filter((it) => (it.title || "").toLowerCase().includes(search));
@@ -1773,6 +2093,8 @@ function renderHub() {
             <span class="pill">${it.variantCount} variant</span>
             <span class="pill">${it.colorCount}c × ${it.sizeCount}s</span>
             <span class="pill" title="${escapeHtml((it.listedShops || []).join(', ') || 'Chưa list lên shop nào')}" style="${it.listedCount > 0 ? 'border-color:var(--accent);color:var(--accent);' : ''}">📤 ${it.listedCount || 0} shop</span>
+            ${it.niche ? `<span class="pill" title="Ngách" style="text-transform:capitalize;">🎯 ${escapeHtml(it.niche.replace(/-/g, ' '))}</span>` : ''}
+            ${it.addedBy ? `<span class="pill" title="Người cào: ${escapeHtml(it.addedBy)}" style="${it.addedBy === state.user?.username ? 'border-color:var(--success);color:var(--success);' : ''}">🧑 ${escapeHtml(it.addedBy)}</span>` : ''}
           </div>
         </div>
         <div class="time-row"><span title="${escapeHtml(absTime(it.mtimeMs))}">⏱ ${escapeHtml(relTime(it.mtimeMs))}</span>${it.lastListedMs ? `<span class="scraped" title="List gần nhất">📤 ${escapeHtml(relTime(it.lastListedMs))}</span>` : ''}</div>
@@ -2140,6 +2462,7 @@ async function regenUserToken(username) {
 }
 
 function renderUsers() {
+  if (!$("#usersTableWrap")) return; // màn Users đã gỡ — brand/pricing/cron gộp vào Settings
   const users = state.config.users || [];
   const isAdmin = state.user.role === "admin";
   const canEdit = state.user.role !== "viewer";
@@ -2918,7 +3241,7 @@ function renderPromotions(r) {
         <h3 style="margin:0;">🏷️ Cần chạy Discount (${noDiscount.length + uncoveredShops.length + discountSoon.length})</h3>
         <a href="${DISC_URL}" target="_blank" class="btn btn-ghost" style="padding:4px 10px; font-size:0.8rem;">Mở 4Seller ↗</a>
       </div>
-      ${noDiscount.map((x) => actRow("🔴", x.shop, `CHƯA có discount nào — ${x.activeListings ?? "?"} sp active trần giá`, "var(--danger)")).join("")}
+      ${noDiscount.map((x) => actRow("🔴", x.shop, `${x.activeListings ?? "?"} sản phẩm chưa có discount`, "var(--danger)")).join("")}
       ${uncoveredShops.map((x) => actRow("🟡", x.shop, `<b>${x.uncoveredProducts}</b> sp chưa vào discount (active ${x.activeListings}, covered ${x.discountProductsCovered})`, "var(--warn)")).join("")}
       ${discountSoon.map((x) => actRow("⏳", x.shop, `discount sắp hết hạn ${rel(x.nextDiscountEnd)} (${fmtT(x.nextDiscountEnd)})`, "var(--warn)")).join("")}
       ${!noDiscount.length && !uncoveredShops.length && !discountSoon.length ? '<div class="empty" style="padding:12px;">✓ Discount phủ đủ mọi shop</div>' : ""}
@@ -2979,6 +3302,7 @@ function renderPromotions(r) {
 }
 
 // ─── Cookie (đa tài khoản 4Seller — port từ main) ──────
+let _cookiePingRun = 0;
 async function loadCookieStatus() {
   try {
     const res = await fetch("/admin/api/cookie/status");
@@ -2986,9 +3310,10 @@ async function loadCookieStatus() {
     if (!res.ok) throw new Error(data.error);
     const accounts = data.accounts || [];
     const isAdmin = state.user.role === "admin";
+    const wrap = $("#cookieAccountsWrap");
 
     if (accounts.length === 0) {
-      $("#cookieAccountsWrap").innerHTML = `
+      wrap.innerHTML = `
         <div class="card" style="border-color: var(--danger);">
           <span class="badge badge-danger">✕ Chưa có tài khoản 4Seller nào</span>
           <span style="color: var(--text-mute); margin-left: 8px;">Kéo file cookie export vào ô bên dưới — worker sẽ FAIL đến khi có cookie.</span>
@@ -2996,33 +3321,181 @@ async function loadCookieStatus() {
       return;
     }
 
-    $("#cookieAccountsWrap").innerHTML = accounts
-      .map((a) => {
+    wrap.innerHTML =
+      `<div style="margin-bottom:12px; font-size:0.92rem;">🔑 <b>${accounts.length}</b> tài khoản · <span id="ckSummary" style="color:var(--text-mute);">⏳ đang kiểm tra cookie…</span></div>` +
+      accounts.map((a) => {
         const shopsPreview = (a.shops || []).slice(0, 6).map((s) => `<span class="pill">${escapeHtml(s)}</span>`).join(" ");
         const more = a.shopCount > 6 ? `<span style="color:var(--text-mute);font-size:0.82rem;">+${a.shopCount - 6} shop nữa</span>` : "";
         const stale = Date.now() - (a.cookieUpdatedAt || 0) > 3 * 864e5;
         return `
-        <div class="card" style="margin-bottom: 10px;">
+        <div class="card ck-acc" data-uid="${escapeHtml(a.uid)}" style="margin-bottom: 10px;">
           <div style="display:flex; align-items:center; gap: 10px; flex-wrap: wrap;">
+            <span class="ck-health badge" style="background:var(--bg-elev); color:var(--text-mute);">⏳ kiểm tra…</span>
             <div style="font-weight: 700; font-size: 1.02rem;">🔑 ${escapeHtml(a.label)}</div>
             <span style="color: var(--text-mute); font-size: 0.82rem;">uid ${escapeHtml(a.uid)}</span>
             <span class="badge ${a.shopCount > 0 ? "badge-success" : "badge-warn"}">${a.shopCount} shop</span>
-            <span style="color: ${stale ? "var(--warn)" : "var(--text-mute)"}; font-size: 0.84rem;">
-              ${a.cookieCount} cookies · cập nhật ${relTime(a.cookieUpdatedAt)}${stale ? " ⚠️" : ""}
-            </span>
+            <span style="color: ${stale ? "var(--warn)" : "var(--text-mute)"}; font-size: 0.84rem;">${a.cookieCount} cookies · cập nhật ${relTime(a.cookieUpdatedAt)}${stale ? " ⚠️" : ""}</span>
             <span style="flex:1"></span>
-            <button class="btn btn-ghost" style="padding: 4px 10px;" onclick="renameCookieAccount('${escapeHtml(a.uid)}', '${escapeHtml(a.label)}')">✏️ Đổi tên</button>
-            <button class="btn btn-ghost" style="padding: 4px 10px;" onclick="testCookie('${escapeHtml(a.uid)}')">Test</button>
-            <button class="btn btn-ghost" style="padding: 4px 10px;" onclick="refreshAccountShopsUi('${escapeHtml(a.uid)}', this)">↺ Sync shop</button>
-            ${isAdmin ? `<button class="btn btn-ghost" style="padding: 4px 10px; color: var(--danger);" onclick="deleteCookieAccount('${escapeHtml(a.uid)}', '${escapeHtml(a.label)}')">🗑</button>` : ""}
+            <button class="btn btn-primary" style="padding: 4px 12px;" onclick="replaceCookie('${escapeHtml(a.uid)}','${escapeHtml(a.label)}')" title="Chọn file cookie mới của tài khoản này — tự thay, KHÔNG cần xoá cái cũ">🔄 Thay cookie</button>
+            <button class="btn btn-ghost" style="padding: 4px 10px;" onclick="renameCookieAccount('${escapeHtml(a.uid)}', '${escapeHtml(a.label)}')" title="Đổi tên">✏️</button>
+            <button class="btn btn-ghost" style="padding: 4px 10px;" onclick="refreshAccountShopsUi('${escapeHtml(a.uid)}', this)" title="Sync lại danh sách shop">↺</button>
+            ${isAdmin ? `<button class="btn btn-ghost" style="padding: 4px 10px; color: var(--danger);" onclick="deleteCookieAccount('${escapeHtml(a.uid)}', '${escapeHtml(a.label)}')" title="Xoá tài khoản">🗑</button>` : ""}
           </div>
+          <div class="ck-cta" style="display:none; margin-top:8px; padding:8px 10px; background:rgba(239,68,68,.1); border-radius:8px; color:var(--danger); font-size:0.85rem;">⚠️ Cookie <b>HẾT HẠN</b> — bấm <b>🔄 Thay cookie</b> chọn file cookie mới của tài khoản này. Tự thay, không cần xoá cái cũ.</div>
           <div style="margin-top: 8px; display:flex; gap: 6px; flex-wrap: wrap; align-items:center;">${shopsPreview} ${more}</div>
         </div>`;
-      })
-      .join("");
+      }).join("") +
+      `<input type="file" id="ckReplaceInput" accept=".json,application/json" style="display:none" onchange="onReplaceCookieFile(this)">`;
+
+    // Auto-check sống/chết (ping nhẹ song song) → cập nhật badge + viền đỏ cho cookie chết
+    const run = ++_cookiePingRun;
+    let alive = 0, dead = 0, checkedN = 0;
+    await Promise.all(accounts.map(async (a) => {
+      let r; try { r = await (await fetch(`/admin/api/cookie/ping?uid=${encodeURIComponent(a.uid)}`)).json(); } catch { r = { alive: false }; }
+      if (run !== _cookiePingRun) return;
+      const card = document.querySelector(`.ck-acc[data-uid="${CSS.escape(a.uid)}"]`);
+      if (!card) return;
+      const badge = card.querySelector(".ck-health");
+      if (r.alive) {
+        alive++;
+        badge.textContent = "✅ Sống"; badge.style.background = "rgba(34,197,94,.15)"; badge.style.color = "var(--success)";
+      } else {
+        dead++;
+        badge.textContent = "❌ Hết hạn"; badge.style.background = "rgba(239,68,68,.15)"; badge.style.color = "var(--danger)";
+        card.style.borderColor = "var(--danger)";
+        const cta = card.querySelector(".ck-cta"); if (cta) cta.style.display = "";
+      }
+      checkedN++;
+      const sum = $("#ckSummary");
+      if (sum) sum.innerHTML = `<span style="color:var(--success);">✅ ${alive} sống</span>${dead ? ` · <span style="color:var(--danger);">❌ ${dead} hết hạn</span>` : ""}${checkedN < accounts.length ? " · ⏳…" : ""}`;
+    }));
   } catch (err) {
     $("#cookieAccountsWrap").innerHTML = `<div class="card"><span class="badge badge-danger">Lỗi tải status</span> ${escapeHtml(err.message)}</div>`;
   }
+}
+
+// Thay cookie 1 chạm: mở file picker → upload → server tự upsert theo uid (thay cái cũ)
+let _ckReplaceLabel = "";
+function replaceCookie(uid, label) {
+  _ckReplaceLabel = label || uid;
+  const inp = $("#ckReplaceInput"); if (inp) { inp.value = ""; inp.click(); }
+}
+async function onReplaceCookieFile(input) {
+  const f = input.files && input.files[0];
+  if (!f) return;
+  try {
+    const parsed = JSON.parse(await f.text());
+    await uploadCookieArray(parsed, `Thay cookie "${_ckReplaceLabel}"`);
+  } catch (err) {
+    toast(err.message, "error");
+  }
+  input.value = "";
+  loadCookieStatus();
+}
+
+// ── Ngách: shop chơi ngách nào + top sản phẩm crawl ──
+function nicheCleanShop(s) { return (s || "").replace(/^T[AN]\s*Scan\s*/i, "").replace(/_US$/i, "").trim().slice(0, 18); }
+function setNicheView(v) {
+  state.nicheView = v;
+  const a = $("#nvNiche"), b = $("#nvShop");
+  if (a) a.classList.toggle("active", v === "niche");
+  if (b) b.classList.toggle("active", v === "shop");
+  loadNiche();
+}
+async function loadNiche() {
+  exitNicheDetail();
+  if (!state.nicheView) state.nicheView = "niche";
+  if (state.nicheView === "shop") return loadNicheByShop();
+  $("#nicheOverview").innerHTML = '<div class="empty">Đang tải…</div>';
+  try {
+    const d = await (await fetch("/admin/api/niche/overview")).json();
+    if (d.error) throw new Error(d.error);
+    renderNicheOverview(d);
+  } catch (err) { $("#nicheOverview").innerHTML = `<div class="empty">Lỗi: ${escapeHtml(err.message)}</div>`; }
+}
+async function loadNicheByShop() {
+  $("#nicheOverview").innerHTML = '<div class="empty">Đang tải…</div>';
+  try {
+    const d = await (await fetch("/admin/api/niche/by-shop")).json();
+    if (d.error) throw new Error(d.error);
+    renderNicheByShop(d);
+  } catch (err) { $("#nicheOverview").innerHTML = `<div class="empty">Lỗi: ${escapeHtml(err.message)}</div>`; }
+}
+function renderNicheByShop(d) {
+  const shops = d.shops || [];
+  const sub = $("#nicheSubtitle");
+  if (sub) sub.innerHTML = `<b>${shops.length}</b> shop · mỗi shop chơi ngách nào (theo category sản phẩm crawl)`;
+  const statusCol = { scaling: "var(--success)", testing: "#3b82f6", paused: "var(--text-mute)" };
+  $("#nicheOverview").innerHTML = shops.length
+    ? '<div class="snc-grid">' + shops.map((s) => {
+        const chips = (s.niches || []).map((n) => {
+          const prim = n.niche === s.primary;
+          return `<span class="snc-chip${prim ? " primary" : ""}" onclick="enterNicheDetail('${escapeHtml(n.niche)}')" title="${escapeHtml(n.niche)}: ${n.products} sp${n.listed ? ` · ${n.listed} đã list` : ""}">${prim ? "★ " : ""}${escapeHtml(n.niche.replace(/-/g, " "))} <b>${n.products}</b></span>`;
+        }).join("");
+        const gan = s.primary ? ` · gán <span style="color:${statusCol[s.status] || "var(--text-mute)"}; font-weight:700; text-transform:capitalize;">${escapeHtml(s.primary.replace(/-/g, " "))}</span>${s.status ? ` [${escapeHtml(s.status)}]` : ""}` : "";
+        return `<div class="snc-card">
+          <div class="snc-head" title="${escapeHtml(s.shop)}">🏪 ${escapeHtml(s.shop)}</div>
+          <div class="snc-sub">📦 <b>${s.total}</b> sp crawl · ${(s.niches || []).length} ngách${gan}</div>
+          <div class="snc-chips">${chips || '<span style="color:var(--text-mute);font-size:0.78rem;">chưa crawl sản phẩm</span>'}</div>
+        </div>`;
+      }).join("") + "</div>"
+    : '<div class="empty">Chưa có data</div>';
+}
+function renderNicheOverview(d) {
+  const niches = d.niches || [], t = d.totals || {};
+  const sub = $("#nicheSubtitle");
+  if (sub) sub.innerHTML = `<b>${t.niches || 0}</b> ngách · <b>${t.shops || 0}</b> shop đang chơi · <b>${t.products || 0}</b> sản phẩm crawl`;
+  const pill = (s) => `<span class="nstat ${s.status || "testing"}" title="${escapeHtml(s.shop)} · ${escapeHtml(s.status || "")}">${escapeHtml(nicheCleanShop(s.shop))}</span>`;
+  $("#nicheOverview").innerHTML = niches.length
+    ? '<div class="niche-grid">' + niches.map((n) => {
+        const prev = (n.previews || []).length
+          ? n.previews.map((u) => `<div style="background-image:url('${escapeHtml(u)}')"></div>`).join("")
+          : '<div style="display:flex;align-items:center;justify-content:center;color:var(--text-mute);font-size:0.8rem;flex:1;">(no image)</div>';
+        return `<div class="niche-card" onclick="enterNicheDetail('${escapeHtml(n.niche)}')">
+          <div class="niche-prev">${prev}</div>
+          <div class="niche-body">
+            <div class="niche-name">${escapeHtml(n.niche.replace(/-/g, " "))}</div>
+            <div class="niche-stat">📦 <b>${n.products}</b> sp · ✅ ${n.listed} đã list${n.avgOpp != null ? ` · 🎯 opp TB ${n.avgOpp}` : ""}</div>
+            <div class="niche-shops">${n.shops.length ? n.shops.map(pill).join("") : '<span style="color:var(--text-mute);font-size:0.78rem;">chưa gán shop</span>'}</div>
+          </div>
+        </div>`;
+      }).join("") + "</div>"
+    : '<div class="empty">Chưa có data ngách</div>';
+}
+async function enterNicheDetail(niche) {
+  $("#nicheOverview").style.display = "none";
+  $("#nicheDetail").style.display = "";
+  $("#nicheDetailName").textContent = niche;
+  $("#nicheDetailMeta").textContent = "";
+  $("#nicheDetailShops").innerHTML = "";
+  $("#nicheProductsGrid").innerHTML = '<div class="empty">Đang tải sản phẩm…</div>';
+  // shop chơi ngách này (lấy từ overview đã cache trong DOM? → fetch lại overview nhẹ hoặc từ card). Đơn giản: hiện từ products response không có shop-status → bỏ, chỉ hiện sp.
+  try {
+    const d = await (await fetch(`/admin/api/niche/products?niche=${encodeURIComponent(niche)}&limit=80`)).json();
+    if (d.error) throw new Error(d.error);
+    const ps = d.products || [];
+    $("#nicheDetailMeta").textContent = `${ps.length} sản phẩm · xếp theo điểm cơ hội`;
+    $("#nicheProductsGrid").innerHTML = ps.length
+      ? '<div class="prod-grid">' + ps.map((p, i) => {
+          const url = escapeHtml(p.url || "");
+          return `<div class="prod-card" ${url ? `onclick="window.open('${url}','_blank')"` : ""}>
+            <div class="pimg" style="${p.image ? `background-image:url('${escapeHtml(p.image)}')` : ""}">
+              <span class="prank">#${i + 1}</span>
+              ${p.listed ? '<span class="prank" style="left:auto;right:6px;background:rgba(34,197,94,.85);">✓ listed</span>' : ""}
+            </div>
+            <div class="pbody">
+              <div class="prod-name" title="${escapeHtml(p.name || "")}">${escapeHtml(p.name || "(no name)")}</div>
+              <div class="prod-meta"><b>${p.price != null ? "$" + p.price : ""}</b>${p.opp != null ? `<span class="pscore">🎯 ${p.opp}</span>` : ""}${p.shopCount > 1 ? `<span style="color:var(--text-mute);">${p.shopCount} shop</span>` : ""}</div>
+            </div>
+          </div>`;
+        }).join("") + "</div>"
+      : '<div class="empty">Ngách này chưa có sản phẩm crawl</div>';
+  } catch (err) { $("#nicheProductsGrid").innerHTML = `<div class="empty">Lỗi: ${escapeHtml(err.message)}</div>`; }
+}
+function exitNicheDetail() {
+  const ov = $("#nicheOverview"), dt = $("#nicheDetail");
+  if (ov) ov.style.display = "";
+  if (dt) dt.style.display = "none";
 }
 
 // Upload 1 mảng cookie (1 file export) — server tự detect tài khoản qua uid.

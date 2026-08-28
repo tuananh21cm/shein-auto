@@ -1313,7 +1313,7 @@ async function retryEntry(id) {
     toast(err.message, "error");
   }
 }
-const closeModal = () => $("#modalBg").classList.remove("show");
+const closeModal = () => { $("#modalBg").classList.remove("show"); if (typeof closeVideoLibrary === "function") closeVideoLibrary(); };
 
 // ─── Listings: 2 view (shops summary + detail drill-down) ───
 state.listings = {
@@ -2174,7 +2174,8 @@ function renderHub(resetPage) {
     <div style="display:flex; align-items:center; gap:10px; margin-bottom:12px; padding:10px 14px; background:var(--bg-elev); border-radius:8px; font-size:0.85rem;">
       <button class="btn btn-ghost" onclick="selectAllHub()" style="padding:5px 12px;">☑ Chọn tất cả (${items.length})</button>
       <button class="btn btn-ghost" onclick="clearHubSelect()" style="padding:5px 12px;">Bỏ chọn</button>
-      <span style="color:var(--text-mute);">Click card để chọn → “📤 List lên shop”</span>
+      <button class="btn btn-ghost" onclick="openVideoLibrary()" style="padding:5px 12px;">🎬 Thư viện video</button>
+      <span style="color:var(--text-mute);">Click card để chọn → “📤 List” hoặc “🎬 Tạo video”</span>
     </div>` : '';
 
   const totalPages = Math.max(1, Math.ceil(items.length / HUB_PAGE));
@@ -2261,9 +2262,75 @@ function renderHubBulkBar() {
   bar.innerHTML = `
     <span class="count">✓ ${n} đã chọn</span>
     <button class="btn btn-primary" onclick="listHubToShops()">📤 List ${n} → shop</button>
+    <button class="btn btn-primary" style="background:#8b5cf6;border-color:#8b5cf6;" onclick="makeHubVideos()">🎬 Tạo video ${n}</button>
     <button class="btn btn-danger" onclick="deleteHubSelected()">🗑 Xoá ${n}</button>
     <button class="btn btn-ghost" onclick="clearHubSelect()">Bỏ chọn</button>
   `;
+}
+
+async function makeHubVideos() {
+  const files = Array.from(state.hub?.selected || []);
+  if (!files.length) return;
+  if (!confirm(`Tạo ${files.length} video từ ảnh sản phẩm (render trên server LAN)?\nMỗi sp cần ≥3 ảnh. Video sẽ hiện ở "Thư viện video".`)) return;
+  try {
+    const res = await fetch("/admin/api/videos/from-hub", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ files }),
+    });
+    const d = await res.json();
+    if (!res.ok) throw new Error(d.error);
+    const skip = (d.skipped || []).length;
+    toast(`🎬 Đã gửi ${d.created.length} video render${skip ? ` · ${skip} bỏ (thiếu ảnh)` : ""}`);
+    ensureHubState(); state.hub.selected = new Set(); renderHubBulkBar();
+    openVideoLibrary();
+  } catch (err) { toast(err.message, "error"); }
+}
+
+let _vidPollTimer = null;
+async function openVideoLibrary() {
+  $("#modalTitle").textContent = "🎬 Thư viện video (nguồn Hub)";
+  $("#modalBody").innerHTML = '<div class="empty">Đang tải…</div>';
+  $("#modalBg").classList.add("show");
+  await refreshVideoLib();
+}
+function closeVideoLibrary() { if (_vidPollTimer) { clearInterval(_vidPollTimer); _vidPollTimer = null; } }
+async function refreshVideoLib() {
+  try {
+    const d = await (await fetch("/admin/api/videos?shop=hub&limit=100")).json();
+    const vids = d.videos || [];
+    const badge = (s) => ({ ready: '<span style="color:var(--success);">✅ xong</span>', generating: '<span style="color:#8b5cf6;">⏳ đang render…</span>', queued: '<span style="color:var(--text-mute);">⏳ chờ</span>', error: '<span style="color:#ef4444;">❌ lỗi</span>', posted: '<span style="color:var(--accent);">📤 đã đăng</span>' }[s] || s);
+    $("#modalBody").innerHTML = vids.length ? `
+      <div style="display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:12px;">
+        ${vids.map((v) => `
+          <div style="border:1px solid var(--border); border-radius:10px; overflow:hidden; background:var(--bg-card);">
+            ${v.status === "ready" || v.status === "posted"
+              ? `<video src="/admin/api/videos/file/${v.id}" controls preload="metadata" style="width:100%; aspect-ratio:9/16; object-fit:cover; background:#000;"></video>`
+              : `<div style="width:100%; aspect-ratio:9/16; display:flex; align-items:center; justify-content:center; background:var(--bg-soft,#1a1a2e); color:var(--text-mute); font-size:0.8rem; text-align:center; padding:8px;">${v.status === "error" ? "❌ " + escapeHtml((v.error || "").slice(0, 80)) : "⏳ đang render…"}</div>`}
+            <div style="padding:8px;">
+              <div style="font-size:0.76rem; line-height:1.3; height:2.6em; overflow:hidden;" title="${escapeHtml(v.title)}">${escapeHtml(v.title)}</div>
+              <div style="font-size:0.75rem; margin:5px 0;">${badge(v.status)}</div>
+              <div style="display:flex; gap:5px;">
+                ${v.status === "ready" || v.status === "posted" ? `<a class="btn btn-ghost" style="padding:3px 8px; font-size:0.74rem;" href="/admin/api/videos/file/${v.id}" download="video_${v.id}.mp4">⬇</a>` : ""}
+                ${v.status === "ready" ? `<button class="btn btn-ghost" style="padding:3px 8px; font-size:0.74rem;" onclick="markVideoPosted(${v.id})">📤 đã đăng</button>` : ""}
+                <button class="btn btn-ghost" style="padding:3px 8px; font-size:0.74rem; color:#ef4444;" onclick="deleteVideo(${v.id})">🗑</button>
+              </div>
+            </div>
+          </div>`).join("")}
+      </div>` : '<div class="empty">Chưa có video nào. Chọn sản phẩm ở Hub → 🎬 Tạo video.</div>';
+    // Auto-poll khi còn video đang render
+    const pending = vids.some((v) => v.status === "generating" || v.status === "queued");
+    if (pending && !_vidPollTimer) _vidPollTimer = setInterval(refreshVideoLib, 5000);
+    if (!pending && _vidPollTimer) { clearInterval(_vidPollTimer); _vidPollTimer = null; }
+  } catch (err) { $("#modalBody").innerHTML = `<div class="empty">Lỗi: ${escapeHtml(err.message)}</div>`; }
+}
+async function markVideoPosted(id) {
+  await fetch(`/admin/api/videos/${id}/posted`, { method: "POST" }).catch(() => {});
+  refreshVideoLib();
+}
+async function deleteVideo(id) {
+  if (!confirm("Xoá video này?")) return;
+  await fetch(`/admin/api/videos/${id}`, { method: "DELETE" }).catch(() => {});
+  refreshVideoLib();
 }
 
 function listHubToShops() {

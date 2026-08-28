@@ -2164,6 +2164,79 @@ export const startAdminServer = async () => {
     }
   });
 
+  // ── Video Studio: gen video từ ảnh Hub qua render server LAN (autoshein) ──
+  app.post("/admin/api/videos/from-hub", async (req, res) => {
+    try {
+      const sessionUser = (req.session as any).user as SessionUser;
+      if (sessionUser.role === "viewer") return res.status(403).json({ error: "Viewer không thể tạo video" });
+      const { files } = req.body as { files?: string[] };
+      if (!Array.isArray(files) || !files.length) return res.status(400).json({ error: "Chọn ít nhất 1 sản phẩm Hub" });
+      if (!process.env.VIDEO_RENDER_URL) return res.status(400).json({ error: "Chưa cấu hình VIDEO_RENDER_URL (server render LAN) trong .env" });
+      const { createHubVideos } = await import("./core/videoStudio/hubVideo");
+      const out = await createHubVideos(files.slice(0, 50));
+      res.json({ ok: true, ...out });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? "Lỗi tạo video" });
+    }
+  });
+
+  app.get("/admin/api/videos", async (req, res) => {
+    try {
+      const { VideoDb } = await import("./state/videoDb");
+      const db = new VideoDb();
+      const rows = db.list({
+        shop: (req.query.shop as string) || undefined,
+        status: (req.query.status as string) || undefined,
+        limit: Math.min(500, Number(req.query.limit) || 200),
+      });
+      db.close();
+      res.json({ videos: rows.map((r) => ({ id: r.id, shop: r.shop, title: r.title, status: r.status, step: r.step, error: r.error, hasFile: !!r.file, createdAt: r.created_at, updatedAt: r.updated_at, postedAt: r.posted_at })) });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? "Lỗi list video" });
+    }
+  });
+
+  app.get("/admin/api/videos/file/:id", async (req, res) => {
+    try {
+      const { VideoDb } = await import("./state/videoDb");
+      const db = new VideoDb();
+      const row = db.get(Number(req.params.id));
+      db.close();
+      if (!row?.file || !(await fs.pathExists(row.file))) return res.status(404).json({ error: "Chưa có file mp4" });
+      res.sendFile(path.resolve(row.file));
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? "Lỗi tải video" });
+    }
+  });
+
+  app.post("/admin/api/videos/:id/posted", async (req, res) => {
+    try {
+      const { VideoDb } = await import("./state/videoDb");
+      const db = new VideoDb();
+      db.markPosted(Number(req.params.id));
+      db.close();
+      res.json({ ok: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? "Lỗi cập nhật" });
+    }
+  });
+
+  app.delete("/admin/api/videos/:id", async (req, res) => {
+    try {
+      const sessionUser = (req.session as any).user as SessionUser;
+      if (sessionUser.role === "viewer") return res.status(403).json({ error: "Viewer không thể xoá" });
+      const { VideoDb } = await import("./state/videoDb");
+      const db = new VideoDb();
+      const row = db.get(Number(req.params.id));
+      if (row?.file) await fs.remove(row.file).catch(() => {});
+      db.remove(Number(req.params.id));
+      db.close();
+      res.json({ ok: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? "Lỗi xoá video" });
+    }
+  });
+
   // ── Cookie 4Seller (per-user) ─────────────────────────
   // Resolve user đích cho thao tác cookie. Admin có thể nhắm user bất kỳ (phải
   // tồn tại — chống path traversal); non-admin bị ép về chính mình.
@@ -2351,6 +2424,9 @@ export const startAdminServer = async () => {
   // Chuyển đổi mượt: import cookie legacy (data/cookies/<user>.json) vào registry
   // tài khoản 1 lần khi start (file có uid/userToken mới import được).
   bootstrapLegacyCookies().catch(() => {});
+
+  // Nối lại poll cho video Hub đang render dở (sau restart) — best-effort.
+  import("./core/videoStudio/hubVideo").then((m) => m.resumePendingHubJobs()).catch(() => {});
 
   const port = Number(process.env.ADMIN_PORT ?? 3000);
   // Bind port là "single-instance guard": nếu instance khác đã chiếm port →

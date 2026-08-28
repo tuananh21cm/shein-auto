@@ -30,6 +30,7 @@ export interface VideoRow {
   created_at: number;
   updated_at: number;
   posted_at: number | null;
+  job_id?: string | null;      // id job render server LAN (video nguồn Hub)
 }
 
 export class VideoDb {
@@ -62,6 +63,19 @@ export class VideoDb {
       CREATE INDEX IF NOT EXISTS idx_videos_status ON videos(status);
       CREATE INDEX IF NOT EXISTS idx_videos_product ON videos(product_id);
     `);
+    // job_id: id job trên render server LAN (video nguồn Hub render từ xa). Guard ALTER.
+    try { this.db.exec(`ALTER TABLE videos ADD COLUMN job_id TEXT`); } catch { /* đã có */ }
+  }
+
+  setJobId(id: number, jobId: string): void {
+    this.db.prepare(`UPDATE videos SET job_id=?, updated_at=? WHERE id=?`).run(jobId, Date.now(), id);
+  }
+
+  /** Video đang render từ xa (status generating + có job_id) — để resume poll sau restart. */
+  pendingRemote(): VideoRow[] {
+    return this.db.prepare(
+      `SELECT * FROM videos WHERE status IN ('queued','generating') AND job_id IS NOT NULL AND job_id<>''`
+    ).all() as VideoRow[];
   }
 
   create(v: { shop: string; productId: string; listingId: string; title: string; seed: string; hookStyle?: string }): number {

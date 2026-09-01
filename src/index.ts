@@ -12,6 +12,7 @@ import { scheduleDripPublisher } from "./core/dripPublisher";
 import { scheduleCrmSync } from "./core/crmSync";
 import { scheduleRankTracking } from "./core/rankTracking";
 import { schedulePromotionCron } from "./core/promotionScan";
+import { scheduleCookieAutoRefresh } from "./services/fourseller/autoRefresh";
 
 // Pipe console.* lên eventBus để SSE stream xuống UI. Phải gọi sớm.
 installConsoleTap();
@@ -50,6 +51,7 @@ const bootstrap = async () => {
   scheduleCrmSync();       // agent bridge KBT CRM: pull hiệu năng + push registry
   scheduleRankTracking();  // Apify bestseller rank
   schedulePromotionCron(); // cào promotion 4Seller (Flash/Discount) mỗi 2 giờ
+  scheduleCookieAutoRefresh(); // cookie hết hạn → tự login lại (account đã lưu user/pass)
 };
 bootstrap().catch((err) => {
   console.error("❌ Bootstrap failed:", err?.message ?? err);

@@ -775,6 +775,21 @@
           <button class="btn btn-primary" onclick="saveCookie()">Lưu cookie đã paste</button>
         </div>
       </div>
+      <div class="card" style="margin-bottom:14px; border-left:3px solid var(--accent);">
+        <h3 style="margin:0 0 4px;">🔐 Tự đăng nhập <span style="font-size:0.72rem;font-weight:600;color:var(--success);background:rgba(34,197,94,.12);padding:2px 8px;border-radius:10px;">khỏi paste cookie tay</span></h3>
+        <div style="color:var(--text-mute); font-size:0.84rem; margin-bottom:12px;">Nhập email + mật khẩu 4Seller — hệ thống tự đăng nhập (giải captcha qua CapSolver) và lưu cookie. Tích "Nhớ…" thì cookie hết hạn sẽ <b>tự login lại</b>, khỏi làm gì.</div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:10px;">
+          <label class="field" style="margin:0;"><span>Email 4Seller</span><input id="alEmail" placeholder="you@gmail.com" autocomplete="off" /></label>
+          <label class="field" style="margin:0;"><span>Mật khẩu</span><input id="alPass" type="password" placeholder="••••••••" autocomplete="new-password" /></label>
+        </div>
+        <div style="display:flex; align-items:center; gap:14px; flex-wrap:wrap;">
+          <label style="display:flex; align-items:center; gap:6px; font-size:0.85rem; cursor:pointer;"><input type="checkbox" id="alRemember" checked /> Nhớ để tự đăng nhập lại khi hết hạn</label>
+          <label style="display:flex; align-items:center; gap:6px; font-size:0.85rem; cursor:pointer;"><input type="checkbox" id="alHeaded" /> Hiện trình duyệt (xem lần đầu)</label>
+          <span style="flex:1"></span>
+          <button class="btn btn-primary" id="alBtn" onclick="autoLogin()">🔐 Đăng nhập &amp; lưu cookie</button>
+        </div>
+        <div id="alResult" style="margin-top:10px;"></div>
+      </div>
       <div id="cookieAccountsWrap" style="margin-bottom: 14px;"></div>
       <div class="card" id="cookieDropZone"
            style="border: 2px dashed var(--border); text-align:center; padding: 26px 20px; margin-bottom: 14px; transition: border-color .15s, background .15s;">
@@ -3673,6 +3688,31 @@ function renderPromotions(r) {
 
 // ─── Cookie (đa tài khoản 4Seller — port từ main) ──────
 let _cookiePingRun = 0;
+async function autoLogin() {
+  const username = $("#alEmail").value.trim();
+  const password = $("#alPass").value;
+  if (!username || !password) return toast("Nhập email + mật khẩu 4Seller", "error");
+  const btn = $("#alBtn"), out = $("#alResult");
+  btn.disabled = true; btn.textContent = "Đang đăng nhập…";
+  out.innerHTML = '<span style="color:var(--text-mute);font-size:0.85rem;">⏳ Mở trình duyệt · điền thông tin · giải captcha… (~15–30s)</span>';
+  try {
+    const r = await fetch("/admin/api/cookie/auto-login", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username, password, remember: $("#alRemember").checked, headed: $("#alHeaded").checked }),
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error);
+    out.innerHTML = `<span style="color:var(--success);font-weight:600;">✅ ${escapeHtml(d.label)} · ${d.shopCount} shop · giải captcha ${d.attempts} lần</span>`;
+    $("#alPass").value = "";
+    toast(`✅ Đăng nhập ${d.label} thành công`);
+    loadCookieStatus();
+  } catch (err) {
+    out.innerHTML = `<span style="color:#ef4444;font-size:0.85rem;">❌ ${escapeHtml(err.message)}</span>`;
+  } finally {
+    btn.disabled = false; btn.innerHTML = "🔐 Đăng nhập &amp; lưu cookie";
+  }
+}
+
 async function loadCookieStatus() {
   try {
     const res = await fetch("/admin/api/cookie/status");

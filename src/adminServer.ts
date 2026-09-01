@@ -2400,6 +2400,63 @@ export const startAdminServer = async () => {
     }
   });
 
+  // ── Tự đăng nhập 4Seller (email + pass + CapSolver) → lưu cookie. User khỏi paste cookie tay ──
+  app.post("/admin/api/cookie/auto-login", async (req, res) => {
+    try {
+      const sessionUser = (req.session as any).user as SessionUser;
+      if (sessionUser.role === "viewer") return res.status(403).json({ error: "Viewer không thể đăng nhập" });
+      const { username, password, remember, headed } = req.body as { username?: string; password?: string; remember?: boolean; headed?: boolean };
+      if (!username || !password) return res.status(400).json({ error: "Nhập email + mật khẩu 4Seller" });
+      if (!process.env.CAPSOLVER_API_KEY) return res.status(400).json({ error: "Chưa cấu hình CAPSOLVER_API_KEY trong .env" });
+      const { loginAndSaveCookie } = await import("./services/fourseller/autoLogin");
+      const r = await loginAndSaveCookie(username.trim(), password, { headless: !headed, remember: remember !== false });
+      shopListCache.clear(); liveCountCache.clear(); ordersCache.clear();
+      res.json({ ok: true, ...r });
+    } catch (err: any) {
+      res.status(400).json({ error: err?.message ?? "Đăng nhập thất bại" });
+    }
+  });
+
+  // Ép re-login 1 account theo uid (dùng creds đã lưu) — hoặc kiểm tra + refresh nếu hết hạn.
+  app.post("/admin/api/cookie/relogin", async (req, res) => {
+    try {
+      const sessionUser = (req.session as any).user as SessionUser;
+      if (sessionUser.role === "viewer") return res.status(403).json({ error: "Viewer không thể" });
+      const uid = String((req.body as any)?.uid || "");
+      if (!uid) return res.status(400).json({ error: "Thiếu uid" });
+      const { ensureFreshCookie } = await import("./services/fourseller/autoRefresh");
+      const r = await ensureFreshCookie(uid);
+      shopListCache.clear(); liveCountCache.clear(); ordersCache.clear();
+      res.json({ ok: true, ...r });
+    } catch (err: any) {
+      res.status(400).json({ error: err?.message ?? "Lỗi re-login" });
+    }
+  });
+
+  // Danh sách account đã lưu user/pass (auto-refresh được) — ẩn mật khẩu.
+  app.get("/admin/api/cookie/creds", async (_req, res) => {
+    try {
+      const { listCreds } = await import("./state/fourSellerCreds");
+      res.json({ creds: await listCreds() });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? "Lỗi" });
+    }
+  });
+
+  app.delete("/admin/api/cookie/creds", async (req, res) => {
+    try {
+      const sessionUser = (req.session as any).user as SessionUser;
+      if (sessionUser.role === "viewer") return res.status(403).json({ error: "Viewer không thể" });
+      const username = String((req.body as any)?.username || "");
+      if (!username) return res.status(400).json({ error: "Thiếu username" });
+      const { removeCred } = await import("./state/fourSellerCreds");
+      await removeCred(username);
+      res.json({ ok: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? "Lỗi" });
+    }
+  });
+
   // Tạo/đổi API token cho 1 user (admin: bất kỳ; non-admin: chính mình)
   app.post("/admin/api/user-token/regen", async (req, res) => {
     try {

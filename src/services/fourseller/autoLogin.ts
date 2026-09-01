@@ -10,17 +10,28 @@ import { saveCred } from "../../state/fourSellerCreds";
  */
 const LOGIN_URL = "https://www.4seller.com/en-US/login.html";
 
-/** Tìm ô nhập verification code (captcha xuất hiện sau khi điền creds — thử nhiều cách). */
+/** Grab ảnh captcha THẬT (visible, đủ to) — bỏ ảnh placeholder tí hon ẩn (w_18, width=0). */
+async function grabVisibleCaptcha(page: Page): Promise<string | null> {
+  return page.evaluate(() => {
+    const imgs = [...document.querySelectorAll("img")]
+      .filter((im: any) => (im.src || "").startsWith("data:image"))
+      .map((im: any) => ({ src: im.src, w: im.getBoundingClientRect().width }))
+      .filter((x) => x.w > 30)
+      .sort((a, b) => b.w - a.w);
+    return imgs[0]?.src || null;
+  }).catch(() => null);
+}
+
+/** Tìm ô nhập verification code (xuất hiện sau khi bấm Sign In lần đầu). */
 async function findCodeInput(page: Page) {
-  // 1. input cùng el-form-item với ảnh captcha base64
   const inFormItem = page.locator('.el-form-item:has(img[src^="data:image"]) input.el-input__inner');
   if (await inFormItem.count()) return inFormItem.first();
-  // 2. text input thứ 2 (email là cái đầu)
   const texts = page.locator("input.el-input__inner[type='text']");
   if ((await texts.count()) >= 2) return texts.nth(1);
-  // 3. bất kỳ text input nào chưa có giá trị, khác email
   return texts.last();
 }
+
+const clickSignIn = (page: Page) => page.locator("button", { hasText: "Sign in" }).first().click().catch(() => {});
 
 async function errorToast(page: Page): Promise<string | null> {
   const t = page.locator(".el-message--error, .el-message__content").first();
@@ -53,29 +64,32 @@ export async function loginAndSaveCookie(
     await emailInput.waitFor({ state: "visible", timeout: 15000 });
     await emailInput.fill(username);
     await passInput.fill(password);
-    await page.waitForTimeout(800);
+    await page.waitForTimeout(500);
+
+    // Bấm Sign In LẦN ĐẦU → 4Seller mới render ô Verification Code + ảnh captcha thật.
+    await clickSignIn(page);
 
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-      const captchaImg = page.locator('img[src^="data:image"]').first();
-      await captchaImg.waitFor({ state: "visible", timeout: 10000 }).catch(() => {});
-      const src = await captchaImg.getAttribute("src").catch(() => null);
-      if (!src) throw new Error("Không thấy ảnh captcha trên trang login (selector đổi?)");
+      // Chờ captcha THẬT (visible, đủ to) hiện — sau Sign In lần đầu, hoặc refresh sau lần sai.
+      let src: string | null = null;
+      for (let i = 0; i < 20 && !src; i++) { src = await grabVisibleCaptcha(page); if (!src) await page.waitForTimeout(500); }
+      if (!src) throw new Error("Không thấy ảnh captcha sau khi bấm Sign In (selector/luồng đổi?)");
 
       const code = await solveImageCaptcha(src, { caseSensitive: false });
       console.log(`🔐 [login ${username}] captcha #${attempt} → "${code}"`);
 
       const codeInput = await findCodeInput(page);
+      await codeInput.fill("");
       await codeInput.fill(code);
-      await page.locator("button", { hasText: "Sign in" }).first().click();
+      await clickSignIn(page); // submit với code
 
-      // Chờ điều hướng khỏi login HOẶC toast lỗi hiện.
+      // Chờ điều hướng khỏi login HOẶC captcha đổi (sai) / toast lỗi.
       await Promise.race([
         page.waitForURL((u) => !/login\.html/i.test(u.toString()), { timeout: 8000 }).catch(() => {}),
-        page.waitForTimeout(4000),
+        page.waitForTimeout(4500),
       ]);
 
       if (!/login\.html/i.test(page.url())) {
-        // ✅ Vào được → lấy cookie domain 4seller → lưu account
         await page.waitForTimeout(1500);
         const cookies = (await context.cookies()).filter((c) => (c.domain || "").includes("4seller.com"));
         const { account, shopSyncError } = await saveAccountCookie(cookies);
@@ -85,13 +99,12 @@ export async function loginAndSaveCookie(
       }
 
       const toast = await errorToast(page);
-      console.warn(`⚠️ [login ${username}] chưa vào (attempt ${attempt})${toast ? " · " + toast : ""} → refresh captcha`);
-      // Sai pass thì retry vô ích → dừng sớm.
-      if (toast && /password|account|incorrect|not exist|wrong/i.test(toast)) {
+      if (toast && /password|account|incorrect|not exist|wrong|密码|账号/i.test(toast)) {
         throw new Error(`Sai tài khoản/mật khẩu: ${toast}`);
       }
-      // Refresh captcha: click ảnh (4Seller thường đổi ảnh khi click). Đổi src → ok.
-      await captchaImg.click().catch(() => {});
+      console.warn(`⚠️ [login ${username}] captcha sai/chưa vào (attempt ${attempt})${toast ? " · " + toast : ""} → thử captcha mới`);
+      // 4Seller thường tự đổi ảnh captcha sau lần sai; nếu không, click ảnh để refresh.
+      await page.locator('img[src^="data:image"]').last().click().catch(() => {});
       await page.waitForTimeout(1200);
     }
     throw new Error(`Đăng nhập thất bại sau ${maxAttempts} lần (captcha đọc sai liên tục?)`);

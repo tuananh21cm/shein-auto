@@ -382,6 +382,37 @@
     .bg-chip.on { background: #8b5cf6; color: #fff; border-color: #8b5cf6; }
     .bg-name { font-size: 0.92rem; font-weight: 700; letter-spacing: 0.5px; padding: 7px 14px; border-radius: 8px; border: 1px solid rgba(139,92,246,.4); background: var(--bg-card); color: var(--text); cursor: pointer; transition: all .12s; }
     .bg-name:hover { background: #8b5cf6; color: #fff; border-color: #8b5cf6; }
+    /* Queue progress panel (Listings) */
+    .qp-card { margin-bottom: 14px; border-left: 3px solid var(--accent); }
+    .qp-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
+    .qp-head h3 { display: flex; align-items: center; gap: 8px; font-size: 1rem; }
+    .qp-live { font-size: 0.68rem; font-weight: 700; color: #22c55e; animation: qp-blink 1.4s ease-in-out infinite; }
+    @keyframes qp-blink { 50% { opacity: 0.3; } }
+    .qp-kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 12px; }
+    .qp-kpi { background: var(--bg-elev); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; }
+    .qp-kpi.qp-run { background: linear-gradient(135deg, rgba(99,102,241,.14), rgba(99,102,241,.04)); border-color: rgba(99,102,241,.35); }
+    .qp-v { font-size: 1.7rem; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; }
+    .qp-run .qp-v { color: var(--accent); }
+    .qp-sub { font-size: 0.8rem; font-weight: 600; color: var(--text-mute); margin-left: 4px; }
+    .qp-k { font-size: 0.76rem; color: var(--text-mute); margin-top: 5px; }
+    .qp-slots { display: flex; align-items: center; gap: 4px; margin-bottom: 10px; flex-wrap: wrap; }
+    .qp-slot { width: 26px; height: 7px; border-radius: 4px; background: var(--border); }
+    .qp-slot.on { background: var(--accent); animation: qp-blink 1.4s ease-in-out infinite; }
+    .qp-slotlbl { font-size: 0.74rem; color: var(--text-mute); margin-left: 6px; }
+    .qp-jobs { display: flex; flex-wrap: wrap; gap: 7px; }
+    .qp-job { display: inline-flex; align-items: center; gap: 6px; font-size: 0.8rem; background: var(--bg-card); border: 1px solid rgba(99,102,241,.3); border-radius: 20px; padding: 4px 11px; font-variant-numeric: tabular-nums; }
+    .qp-job b { color: var(--accent); }
+    .qp-dot { width: 7px; height: 7px; border-radius: 50%; background: #22c55e; animation: qp-pulse 1.4s infinite; }
+    @keyframes qp-pulse { 0% { box-shadow: 0 0 0 0 rgba(34,197,94,.5); } 70% { box-shadow: 0 0 0 6px rgba(34,197,94,0); } 100% { box-shadow: 0 0 0 0 rgba(34,197,94,0); } }
+    .qp-idle { font-size: 0.82rem; color: var(--text-mute); }
+    .qp-ptitle { font-size: 0.74rem; color: var(--text-mute); margin: 14px 0 6px; text-transform: uppercase; letter-spacing: .5px; }
+    .qp-pending { display: flex; flex-direction: column; gap: 5px; }
+    .qp-prow { display: flex; align-items: center; gap: 10px; font-size: 0.8rem; }
+    .qp-pname { width: 140px; flex-shrink: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .qp-pbar { flex: 1; height: 8px; background: var(--bg-elev); border-radius: 5px; overflow: hidden; }
+    .qp-pbar > span { display: block; height: 100%; background: linear-gradient(90deg, #f59e0b, #fbbf24); border-radius: 5px; }
+    .qp-prow b { width: 32px; text-align: right; font-variant-numeric: tabular-nums; }
+    @media (max-width: 640px) { .qp-kpis { grid-template-columns: 1fr 1fr; } }
     .mf.bad { color: var(--danger); } .mf.warn { color: var(--warn); }
     /* toggle switch (modal cấu hình shop) */
     .sw { position: relative; width: 42px; height: 23px; flex: none; display: inline-block; }
@@ -484,6 +515,7 @@
 
       <!-- View 1: Shop summary cards (mặc định) -->
       <div id="shopsView">
+        <div id="queueProgress"></div>
         <div id="listProgress"></div>
         <div class="card">
           <div id="shopsGrid"><div class="empty">Đang tải…</div></div>
@@ -1192,11 +1224,13 @@ function renderQueue(queue) {
   if (!_lastDashConfig) return;
   _lastDashConfig = { ..._lastDashConfig, queue };
   renderWorkerStrip(_lastDashConfig);
+  renderQueueProgress(_lastDashConfig);
 }
 function renderActive(worker) {
   if (!_lastDashConfig) return;
   _lastDashConfig = { ..._lastDashConfig, worker };
   renderWorkerStrip(_lastDashConfig);
+  renderQueueProgress(_lastDashConfig);
 }
 
 // ─── SSE ──────────────────────────────────────────────
@@ -1331,9 +1365,63 @@ async function loadShops() {
     if (!res.ok) throw new Error(data.error);
     state.listings.shops = data.shops || [];
     loadListingProgress(); // render KPI + card (kèm progress bar) cho TẤT CẢ shop
+    loadQueueProgress();   // panel queue live (đang list / chờ) đầu màn
   } catch (err) {
     toast("Không tải được shops: " + err.message, "error");
     $("#shopsGrid").innerHTML = '<div class="empty">Lỗi tải dữ liệu</div>';
+  }
+}
+
+// ── Queue progress: tổng quan listing đang chạy / chờ (realtime qua SSE) ──
+let _qpTick = null;
+function loadQueueProgress() {
+  fetch("/admin/api/dashboard")
+    .then((r) => r.json())
+    .then((d) => { if (d.error) return; _lastDashConfig = { ...(_lastDashConfig || {}), ...d }; renderQueueProgress(_lastDashConfig); })
+    .catch(() => {});
+}
+function fmtElapsed(ms) {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  const m = Math.floor(s / 60);
+  return m > 0 ? `${m}:${String(s % 60).padStart(2, "0")}` : `${s}s`;
+}
+function renderQueueProgress(d) {
+  const el = $("#queueProgress");
+  if (!el || !d || !d.queue || !d.worker) return;
+  const active = d.worker.active || [];
+  const folders = (d.queue.folders || []).filter((f) => f.pendingCount > 0);
+  const concurrency = d.config?.concurrency || 1;
+  const pendingTotal = folders.reduce((a, f) => a + f.pendingCount, 0);
+  const inProgress = active.length;
+  const now = Date.now();
+
+  const slots = Array.from({ length: concurrency }, (_, i) => `<span class="qp-slot${i < inProgress ? " on" : ""}"></span>`).join("");
+  const jobs = active.length
+    ? active.map((j) => `<span class="qp-job"><span class="qp-dot"></span>${escapeHtml(nicheCleanShop(j.profile))} <b>${fmtElapsed(now - j.startedAt)}</b></span>`).join("")
+    : '<span class="qp-idle">Không có listing nào đang chạy</span>';
+  const maxP = Math.max(1, ...folders.map((f) => f.pendingCount));
+  const topPending = folders.slice().sort((a, b) => b.pendingCount - a.pendingCount).slice(0, 6)
+    .map((f) => `<div class="qp-prow"><span class="qp-pname" title="${escapeHtml(f.name)}">${escapeHtml(nicheCleanShop(f.name))}</span><span class="qp-pbar"><span style="width:${Math.round(f.pendingCount / maxP * 100)}%"></span></span><b>${f.pendingCount}</b></div>`).join("");
+
+  el.innerHTML = `
+    <div class="card qp-card">
+      <div class="qp-head">
+        <h3 style="margin:0;">🚀 Queue listing ${inProgress ? '<span class="qp-live">● live</span>' : ''}</h3>
+        <span style="font-size:0.76rem; color:var(--text-mute);">tự cập nhật realtime</span>
+      </div>
+      <div class="qp-kpis">
+        <div class="qp-kpi qp-run"><div class="qp-v">${inProgress}<span class="qp-sub">/${concurrency} luồng</span></div><div class="qp-k">⚙️ Đang list</div></div>
+        <div class="qp-kpi"><div class="qp-v">${pendingTotal}</div><div class="qp-k">📄 Chờ trong queue</div></div>
+        <div class="qp-kpi"><div class="qp-v">${folders.length}</div><div class="qp-k">🏪 Shop còn hàng chờ</div></div>
+      </div>
+      <div class="qp-slots">${slots}<span class="qp-slotlbl">${inProgress}/${concurrency} luồng</span></div>
+      <div class="qp-jobs">${jobs}</div>
+      ${topPending ? `<div class="qp-ptitle">Chờ nhiều nhất</div><div class="qp-pending">${topPending}</div>` : ''}
+    </div>`;
+
+  clearInterval(_qpTick); _qpTick = null;
+  if (inProgress && document.getElementById("view-listings")?.classList.contains("active")) {
+    _qpTick = setInterval(() => renderQueueProgress(_lastDashConfig), 1000);
   }
 }
 

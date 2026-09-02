@@ -1160,7 +1160,8 @@ export const startAdminServer = async () => {
         fetchShopImages(sessionUser.username).catch(() => ({} as Record<string, string>)),
       ]);
       const localByShop = new Map<string, any>();
-      try { for (const s of await scanShopsSummary({ username: ownerScope(req) })) localByShop.set(s.folder.toLowerCase(), s); } catch { /* ignore */ }
+      // allFolders: quét MỌI folder trên đĩa (không giới hạn allowlist profiles) → thấy hết fail/pending.
+      try { for (const s of await scanShopsSummary({ username: ownerScope(req), allFolders: true })) localByShop.set(s.folder.toLowerCase(), s); } catch { /* ignore */ }
       const seen = new Set<string>();
       const shops: any[] = [];
       for (const acc of accounts) {
@@ -1181,6 +1182,24 @@ export const startAdminServer = async () => {
             todayCount: loc.todayCount || 0,
           });
         }
+      }
+      // Folder có HOẠT ĐỘNG (fail/pending/success) nhưng KHÔNG khớp shop 4Seller nào →
+      // vẫn hiện để user thấy + retry fail (vd shop cũ, tên folder lệch tên 4Seller).
+      for (const [lc, loc] of localByShop) {
+        if (seen.has(lc)) continue;
+        if ((loc.fail || 0) + (loc.pending || 0) + (loc.success || 0) === 0) continue;
+        seen.add(lc);
+        shops.push({
+          folder: loc.folder,
+          owner: loc.owner || sessionUser.username,
+          account: null,
+          live: lc in liveByShop ? liveByShop[lc] : null,
+          image: loc.cover || imgByShop[lc] || null,
+          pending: loc.pending || 0,
+          fail: loc.fail || 0,
+          success: loc.success || 0,
+          todayCount: loc.todayCount || 0,
+        });
       }
       res.json({ shops, target: 100 });
     } catch (err: any) {

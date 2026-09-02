@@ -244,8 +244,13 @@ const scanListingsInDir = async (
 
   const entries = await fs.readdir(baseSheinAutoDir);
   let folders = entries.filter((n) => !n.startsWith(".") && n !== "Success" && n !== "Fail");
-  if (profiles.length > 0) folders = folders.filter((f) => profiles.includes(f));
-  if (opts?.folder) folders = folders.filter((f) => f === opts.folder);
+  if (opts?.folder) {
+    // Xem chi tiết 1 shop cụ thể → cho phép mọi folder có trên đĩa (kể cả ngoài profiles),
+    // để thấy được fail/listing của shop không nằm trong allowlist.
+    folders = folders.filter((f) => f === opts.folder);
+  } else if (profiles.length > 0) {
+    folders = folders.filter((f) => profiles.includes(f));
+  }
 
   const cards: ListingCard[] = [];
   for (const folderName of folders) {
@@ -281,6 +286,9 @@ export const scanShopsSummary = async (opts?: {
   /** Gồm cả shop có trong profiles nhưng CHƯA tạo folder trên đĩa (counts = 0).
    *  Dùng cho picker clone — clone sẽ tự ensureDir folder khi ghi. */
   includeEmptyProfiles?: boolean;
+  /** Quét MỌI folder trên đĩa (bỏ qua allowlist `profiles`) — để overview thấy hết
+   *  fail/pending của cả shop ngoài profiles. profiles chỉ nên dùng cho worker routing. */
+  allFolders?: boolean;
 }): Promise<ShopSummary[]> => {
   const allDirs = await getAllUserDirs();
   const targetDirs = opts?.username
@@ -293,7 +301,7 @@ export const scanShopsSummary = async (opts?: {
     const baseExists = await fs.pathExists(baseSheinAutoDir);
 
     let folders: string[];
-    if (profiles.length > 0) {
+    if (profiles.length > 0 && !opts?.allFolders) {
       // includeEmptyProfiles → toàn bộ profile (kể cả chưa có folder); ngược lại chỉ folder đã tồn tại ∩ profiles.
       if (opts?.includeEmptyProfiles) {
         folders = [...profiles];
@@ -303,6 +311,7 @@ export const scanShopsSummary = async (opts?: {
         folders = entries.filter((n) => !n.startsWith(".") && n !== "Success" && n !== "Fail" && profiles.includes(n));
       }
     } else {
+      // allFolders hoặc profiles rỗng → quét mọi folder có trên đĩa.
       if (!baseExists) continue;
       const entries = await fs.readdir(baseSheinAutoDir);
       folders = entries.filter((n) => !n.startsWith(".") && n !== "Success" && n !== "Fail");

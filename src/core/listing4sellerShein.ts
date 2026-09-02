@@ -335,10 +335,12 @@ export const listing4sellerShein = async (
 
     console.log(`✅ Hoàn thành đăng sản phẩm. ${outcome.reason}`);
 
-    // Dry-run + browser hiện: giữ mở 5 phút để user xem form đã điền (Ctrl+C để thoát sớm).
+    // Dry-run + browser hiện: giữ mở để user xem form đã điền (Ctrl+C để thoát sớm).
+    // Số phút cấu hình qua env DRYRUN_HOLD_MIN (mặc định 5).
     if (!headless && opts?.dryRun) {
-      console.log("🐛 [DRY-RUN] Giữ browser mở 5 phút để bạn kiểm tra form (không bấm Save)...");
-      try { await page.waitForTimeout(300_000); } catch { /* page đóng tay → thôi */ }
+      const mins = Math.max(1, Math.min(30, Number(process.env.DRYRUN_HOLD_MIN) || 5));
+      console.log(`🐛 [DRY-RUN] Giữ browser mở ${mins} phút để bạn kiểm tra form (không bấm Save)...`);
+      try { await page.waitForTimeout(mins * 60_000); } catch { /* page đóng tay → thôi */ }
     }
   } catch (error: any) {
     // Chụp screenshot final + đính path vào error message để UI hiển thị

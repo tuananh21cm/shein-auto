@@ -562,6 +562,13 @@
           <select id="hubBy" onchange="state.hubBy=this.value; renderHub(true)" style="width:auto; min-width:150px;" title="Lọc theo người cào">
             <option value="">👥 Cả đội</option>
           </select>
+          <select id="hubDate" onchange="renderHub(true)" style="width:auto; min-width:130px;" title="Lọc theo ngày thêm vào Hub">
+            <option value="">📅 Mọi lúc</option>
+            <option value="today">Hôm nay</option>
+            <option value="yesterday">Hôm qua</option>
+            <option value="7d">7 ngày qua</option>
+            <option value="30d">30 ngày qua</option>
+          </select>
           <select id="hubSort" onchange="renderHub(true)" style="width:auto; min-width:190px;">
             <option value="">Mới nhất</option>
             <option value="listed_desc">📤 Đã đẩy: nhiều → ít</option>
@@ -2288,6 +2295,17 @@ function renderHub(resetPage) {
   if (filter === "listed") items = items.filter((it) => (it.listedCount || 0) > 0);
   else if (filter === "unlisted") items = items.filter((it) => (it.listedCount || 0) === 0);
   if (search) items = items.filter((it) => (it.title || "").toLowerCase().includes(search));
+  // Lọc theo ngày thêm vào Hub (addedAt; fallback scrapedAt/mtime). Mốc theo NGÀY local.
+  const dateF = $("#hubDate")?.value || "";
+  if (dateF) {
+    const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
+    const t0 = todayStart.getTime(), day = 864e5;
+    const ts = (it) => it.addedAt || (it.scrapedAt ? Date.parse(it.scrapedAt) : 0) || it.mtimeMs || 0;
+    if (dateF === "today") items = items.filter((it) => ts(it) >= t0);
+    else if (dateF === "yesterday") items = items.filter((it) => ts(it) >= t0 - day && ts(it) < t0);
+    else if (dateF === "7d") items = items.filter((it) => ts(it) >= t0 - 6 * day);
+    else if (dateF === "30d") items = items.filter((it) => ts(it) >= t0 - 29 * day);
+  }
   // Sort theo số shop đã đẩy (tạo bản sao để không mutate state.hub.items)
   const sort = $("#hubSort")?.value || "";
   if (sort === "listed_desc") items = [...items].sort((a, b) => (b.listedCount || 0) - (a.listedCount || 0));

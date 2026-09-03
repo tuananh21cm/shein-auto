@@ -423,10 +423,19 @@
     .help-head h3 { margin: 0; font-size: 1.05rem; }
     .help-x { background: none; border: none; color: var(--text-mute); font-size: 1.1rem; cursor: pointer; }
     .help-x:hover { color: var(--text); }
-    .help-body { padding: 16px 20px; font-size: 0.9rem; line-height: 1.6; }
+    .help-body { padding: 16px 20px 20px; font-size: 0.9rem; line-height: 1.6; }
     .help-body p { margin: 0 0 10px; color: var(--text-mute); }
-    .help-body ul { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 7px; }
+    .help-body h4 { margin: 18px 0 8px; font-size: 0.95rem; color: var(--text); display: flex; align-items: center; gap: 6px; padding-bottom: 5px; border-bottom: 1px solid var(--border); }
+    .help-body h4:first-child { margin-top: 0; }
+    .help-body ul, .help-body ol { margin: 0 0 6px; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; }
+    .help-body li { color: var(--text-mute); }
     .help-body b { color: var(--text); }
+    .help-body code { background: var(--bg-elev); padding: 1px 6px; border-radius: 5px; font-size: 0.84em; color: var(--accent); }
+    .help-tip { background: rgba(99,102,241,.1); border-left: 3px solid var(--accent); border-radius: 6px; padding: 8px 12px; margin: 10px 0; font-size: 0.85rem; color: var(--text-mute); }
+    .help-warn { background: rgba(239,68,68,.1); border-left: 3px solid var(--danger); border-radius: 6px; padding: 8px 12px; margin: 10px 0; font-size: 0.85rem; color: var(--text-mute); }
+    .help-steps { counter-reset: hs; list-style: none; padding-left: 0; }
+    .help-steps li { counter-increment: hs; position: relative; padding-left: 30px; }
+    .help-steps li::before { content: counter(hs); position: absolute; left: 0; top: 0; width: 20px; height: 20px; border-radius: 50%; background: var(--accent); color: #fff; font-size: 0.72rem; font-weight: 700; display: flex; align-items: center; justify-content: center; }
     .mf.bad { color: var(--danger); } .mf.warn { color: var(--warn); }
     /* toggle switch (modal cấu hình shop) */
     .sw { position: relative; width: 42px; height: 23px; flex: none; display: inline-block; }
@@ -960,54 +969,140 @@ document.querySelectorAll(".nav-item").forEach((item) => {
 // ── Hướng dẫn theo màn (nút ? float góc phải dưới) ──
 const HELP = {
   dashboard: { title: "📊 Dashboard — Tổng quan", html: `
-    <p>Tổng quan hiệu năng shop, <b>gộp tất cả tài khoản 4Seller</b>.</p>
+    <p>Nhìn nhanh sức khỏe kinh doanh của <b>tất cả shop, gộp mọi tài khoản 4Seller</b> đã upload cookie. Số liệu lấy từ 4Seller, cache sẵn nên vào rất nhanh.</p>
+    <h4>📈 Chart doanh thu &amp; đơn (30 ngày)</h4>
     <ul>
-      <li><b>Chart 30 ngày</b>: doanh thu (xanh dương) + đơn (xanh lá), cộng gộp mọi account.</li>
-      <li><b>Thanh Worker</b>: số luồng đang list · pending · xong gần nhất.</li>
-      <li><b>Card từng shop</b>: live listing, đơn hôm nay (Δ so hôm qua), doanh thu, cảnh báo promotion.</li>
-      <li>Vào nhanh nhờ cache SWR; bấm <b>Refresh</b> để tải mới.</li>
-    </ul>` },
-  listings: { title: "📦 Listings", html: `
-    <p>Quản lý listing theo shop — target <b>100 listing/shop</b>.</p>
+      <li>2 đường: <b>xanh dương = doanh thu ($)</b>, <b>xanh lá = số đơn</b>. Trục trái là tiền, trục phải là đơn.</li>
+      <li><b>Cộng gộp mọi tài khoản</b>: có 2 cookie khác account thì đơn/doanh thu cả 2 đều cộng vào.</li>
+      <li>2 ô lớn góc trái: tổng doanh thu &amp; tổng đơn 30 ngày.</li>
+    </ul>
+    <h4>⚙️ Thanh Worker</h4>
     <ul>
-      <li><b>Queue listing</b> (đầu màn): đang list / chờ / shop còn hàng — realtime.</li>
-      <li><b>Tiến độ đăng</b>: KPI tổng + ô <b>❌ Fail</b>. Nút <b>↻ Chạy lại hết fail</b> đẩy mọi fail về queue.</li>
-      <li>Click <b>card shop</b> → chi tiết. Lọc status (pending/success/fail), tìm tên.</li>
-      <li>Trong shop: tick card → Run/Retry/Clone; nút <b>↻ Chạy lại N fail shop này</b>.</li>
-    </ul>` },
-  hub: { title: "🗂️ Hub sản phẩm", html: `
-    <p>Kho sản phẩm <b>chung cả đội</b> (share qua LAN). Lấy sp của nhau về list bằng config của mình.</p>
+      <li><b>Worker N/6</b>: mấy luồng list đang chạy / tổng luồng. <b>Pending</b>: số file đang chờ list. <b>Xong gần nhất</b>: giờ listing cuối hoàn tất.</li>
+    </ul>
+    <h4>🏪 Card từng shop</h4>
     <ul>
-      <li><b>Dashboard ngách</b> + chip ngách: lọc theo ngành.</li>
-      <li><b>Lọc</b>: đã đẩy/chưa đẩy · người cào · 📅 ngày thêm · tìm tên.</li>
-      <li>Tick card → <b>📤 List lên shop</b> (dùng giá/brand/cookie của bạn) hoặc <b>🎬 Tạo video</b>.</li>
-      <li><b>Thư viện video</b>: xem/tải video đã gen.</li>
-    </ul>` },
-  niche: { title: "🎯 Ngách", html: `
-    <p>Thống kê sản phẩm theo <b>ngách</b> (suy từ category) — không cần crawler.</p>
+      <li>Mỗi shop: số <b>listing live</b> thật, <b>đơn hôm nay</b> (mũi tên Δ so hôm qua), <b>doanh thu</b>, cảnh báo <b>promotion</b>.</li>
+    </ul>
+    <div class="help-warn">⚠️ Số chỉ đủ khi <b>mọi cookie còn sống</b>. Cookie nào hết hạn → đơn account đó không được cộng.</div>
+    <div class="help-tip">💡 Bấm <b>Refresh</b> để ép tải mới; bình thường hệ thống tự làm tươi cache nền mỗi 5 phút.</div>` },
+
+  listings: { title: "📦 Listings — Đăng sản phẩm", html: `
+    <p>Trung tâm quản lý việc đăng listing lên các shop. Mục tiêu mặc định <b>100 listing/shop</b>.</p>
+    <h4>🚀 Queue listing (panel đầu màn)</h4>
     <ul>
-      <li><b>Theo ngách</b>: ngách nào nhiều sp + top sản phẩm.</li>
-      <li><b>Theo shop</b>: shop nào đang chơi ngách gì (từ sp đã list).</li>
-      <li>Bấm 1 ngách để xem chi tiết + sản phẩm.</li>
-    </ul>` },
-  settings: { title: "⚙️ Settings", html: `
-    <p>Cấu hình <b>riêng máy bạn</b> (không share đội).</p>
+      <li><b>Đang list N/6</b>: số listing đang chạy thật + tên shop + đồng hồ đếm giây (realtime).</li>
+      <li><b>Chờ trong queue</b>: tổng file pending. <b>Shop còn hàng chờ</b>: mấy shop còn pending.</li>
+      <li>Thanh luồng sáng/mờ cho biết đang dùng mấy luồng.</li>
+    </ul>
+    <h4>📊 Tiến độ đăng (target 100/shop)</h4>
     <ul>
-      <li><b>Cấu hình listing theo shop</b>: bật/tắt tính năng từng shop. Thẻ <b>⭐ Mặc định chung</b> → shop mới tự ăn theo.</li>
-      <li><b>Brand</b>: brand mặc định + theo shop. Nút <b>✨ Gợi ý tên</b> để AI đặt tên brand.</li>
-      <li><b>Pricing</b>: công thức giá · <b>imgbb</b>: pool key ảnh.</li>
-    </ul>` },
-  promotions: { title: "🏷️ Promotions", html: `
-    <p>Theo dõi khuyến mãi 4Seller (cron cào mỗi 2 giờ).</p>
-    <ul><li>Sản phẩm <b>hết flash</b> · <b>chưa có discount</b> theo shop.</li></ul>` },
-  cookie: { title: "🔑 Cookie 4Seller", html: `
-    <p>Quản lý đa tài khoản 4Seller.</p>
+      <li>KPI: <b>Tổng listing</b> · <b>% Hoàn thành</b> · <b>Shop đạt target</b> · <b>Đang chờ</b> · <b>❌ Fail</b> · <b>Đăng hôm nay</b>.</li>
+      <li>Nút <b>↻ Chạy lại hết fail (N)</b>: đưa TẤT CẢ listing fail (mọi shop) về pending cho cron chạy lại.</li>
+      <li>Tick <b>Ẩn shop đã đạt</b> để chỉ xem shop chưa đủ 100.</li>
+      <li>Card mỗi shop: thanh tiến độ /100 + badge <b>fail : N</b> · <b>⏳ pending</b> · <b>+ hôm nay</b>.</li>
+    </ul>
+    <h4>🔎 Vào chi tiết 1 shop</h4>
+    <ol class="help-steps">
+      <li>Click <b>card shop</b> → xem danh sách listing của shop.</li>
+      <li>Lọc theo <b>status</b> (pending/success/fail) hoặc <b>tìm tên</b>.</li>
+      <li>Tick checkbox góc trái card: <b>pending → Run</b>, <b>fail → Retry</b>, <b>success → Clone</b>.</li>
+      <li>Nút <b>↻ Chạy lại N fail shop này</b> để retry toàn bộ fail của riêng shop.</li>
+      <li>Card fail có nút <b>View</b> (xem lỗi + screenshot) và <b>Retry</b>.</li>
+    </ol>
+    <div class="help-warn">⚠️ Retry chỉ ăn khi <b>cookie shop đó còn sống</b>. Cookie hết hạn thì retry vẫn fail lại — renew cookie trước.</div>` },
+
+  hub: { title: "🗂️ Hub sản phẩm — Kho chung cả đội", html: `
+    <p>Kho sản phẩm <b>dùng chung nhiều máy qua LAN</b>. Ai cào được sp nào đẩy vào đây, cả đội lấy về list. Khi bạn list, hệ thống <b>tự dùng giá/brand/cookie của MÁY BẠN</b> — data chung, config riêng.</p>
+    <h4>🎯 Dashboard ngách + chip lọc</h4>
+    <ul><li>Donut: tỉ lệ sp theo ngành. Bấm 1 chip ngách để lọc chỉ sp ngách đó.</li></ul>
+    <h4>🔍 Bộ lọc</h4>
     <ul>
-      <li><b>🔐 Tự đăng nhập</b>: nhập email + mật khẩu → tự login (giải captcha) + lưu cookie. Tích "Nhớ" để tự login lại khi hết hạn.</li>
-      <li>Hoặc <b>kéo/paste</b> file cookie export (Cookie-Editor).</li>
-      <li>Cookie hết hạn → nút <b>🔄 Thay cookie</b> trên đúng card (không tạo account trùng).</li>
-      <li>✏️ đổi tên · ↺ sync shop · 🗑 xoá.</li>
-    </ul>` },
+      <li><b>Trạng thái</b>: Đã đẩy / Chưa đẩy lên shop.</li>
+      <li><b>Người cào</b>: Cả đội / từng người.</li>
+      <li><b>📅 Ngày thêm</b>: Hôm nay / Hôm qua / 7 / 30 ngày.</li>
+      <li><b>Tìm tên</b> + sắp xếp (Mới nhất / theo lượt đẩy). Phân trang 48 sp/trang cho nhẹ.</li>
+    </ul>
+    <h4>📤 List sản phẩm lên shop</h4>
+    <ol class="help-steps">
+      <li>Tick checkbox góc card (1 hoặc nhiều).</li>
+      <li>Bấm <b>📤 List → shop</b> → chọn shop đích.</li>
+      <li>Sp copy vào folder shop dạng <b>pending</b> → cron listing tự chạy (dùng config của bạn).</li>
+    </ol>
+    <h4>🎬 Tạo video</h4>
+    <ul>
+      <li>Tick sp → <b>🎬 Tạo video</b>: gửi ảnh sang server render → video TikTok 9:16.</li>
+      <li><b>Thư viện video</b>: xem tiến độ, tải mp4, đánh dấu đã đăng.</li>
+    </ul>
+    <div class="help-tip">💡 Muốn cả đội thấy hàng của bạn: cào bằng userscript (tự đẩy vào Hub) hoặc <b>📥 Import file</b> JSON.</div>` },
+
+  niche: { title: "🎯 Ngách — Thống kê theo ngành", html: `
+    <p>Thống kê sản phẩm theo <b>ngách</b>, suy tự động từ <b>category</b> sản phẩm — không cần crawler, không cần cookie.</p>
+    <h4>Xem theo NGÁCH</h4>
+    <ul>
+      <li>Mỗi ngách: bao nhiêu sp, đã list bao nhiêu, ảnh preview.</li>
+      <li>Bấm 1 ngách → xem <b>top sản phẩm</b> trong ngách.</li>
+    </ul>
+    <h4>Xem theo SHOP</h4>
+    <ul>
+      <li>Mỗi shop đang chơi ngách nào (suy từ sp đã list vào shop).</li>
+      <li>Ngách chủ đạo (★) = ngách nhiều sp nhất của shop.</li>
+    </ul>
+    <div class="help-tip">💡 Ngách suy từ từ khóa trong <code>config/niche-keywords.json</code>. Sp chưa khớp nằm ở "Chưa rõ ngách".</div>` },
+
+  settings: { title: "⚙️ Settings — Cấu hình riêng máy", html: `
+    <p>Mọi cấu hình ở đây là <b>của riêng máy bạn</b>, KHÔNG share cho đội. Đổi ở đây → listing sau áp dụng ngay.</p>
+    <h4>🏪 Cấu hình listing theo shop</h4>
+    <ul>
+      <li>Mỗi shop 1 card: bật/tắt tính năng khi list (ảnh ghép showcase màu, mô tả AI, banner, size guide, bù ảnh variant…).</li>
+      <li>Thẻ <b>⭐ Mặc định chung</b>: set 1 lần → mọi shop <b>chưa cấu hình riêng</b> tự ăn theo (kể cả shop mới).</li>
+      <li>Card có ↪ "mặc định" = đang ăn theo; nút <b>↺ Theo mặc định</b> để bỏ cấu hình riêng.</li>
+    </ul>
+    <h4>🏷️ Brand</h4>
+    <ul>
+      <li>Đặt <b>brand mặc định</b> + brand riêng từng shop (trong modal cấu hình shop).</li>
+      <li>Nút <b>✨ Gợi ý tên</b>: chọn vibe/ngách → AI đặt tên brand ngắn gọn kiểu ROMWE.</li>
+    </ul>
+    <h4>💰 Pricing &amp; imgbb</h4>
+    <ul>
+      <li><b>Pricing</b>: công thức tính giá bán (phí ship, hệ số, cộng thêm).</li>
+      <li><b>imgbb</b>: pool API key upload ảnh mô tả. Key hết quota → thay key mới ở đây.</li>
+    </ul>
+    <div class="help-warn">⚠️ Config per-máy (gitignore): pull code không bị đè, nhưng cũng không tự đồng bộ sang máy khác.</div>` },
+
+  promotions: { title: "🏷️ Promotions — Khuyến mãi", html: `
+    <p>Theo dõi tình trạng khuyến mãi các shop trên 4Seller. Cron tự cào mỗi 2 giờ.</p>
+    <h4>Các chỉ số</h4>
+    <ul>
+      <li><b>Sản phẩm hết flash</b>: listing từng chạy flash nay đã hết → nên gia hạn.</li>
+      <li><b>Chưa có discount</b>: sp active nhưng chưa gắn discount nào.</li>
+      <li>Xem theo từng shop để biết shop nào cần xử lý.</li>
+    </ul>
+    <div class="help-tip">💡 Dùng để nhắc gắn/gia hạn khuyến mãi, tránh sp "trần giá" không ưu đãi.</div>` },
+
+  cookie: { title: "🔑 Cookie 4Seller — Đa tài khoản", html: `
+    <p>Quản lý nhiều tài khoản 4Seller. Mỗi shop thuộc tài khoản nào, worker tự dùng cookie tài khoản đó khi list.</p>
+    <h4>🔐 Tự đăng nhập (khỏi paste tay)</h4>
+    <ol class="help-steps">
+      <li>Nhập <b>email + mật khẩu</b> 4Seller.</li>
+      <li>Tích <b>"Nhớ để tự đăng nhập lại"</b> → cookie hết hạn hệ thống tự login lại.</li>
+      <li>Bấm <b>Đăng nhập &amp; lưu cookie</b>: tự mở trình duyệt, điền, <b>giải captcha (CapSolver)</b>, lưu cookie.</li>
+    </ol>
+    <h4>📥 Paste cookie thủ công</h4>
+    <ul>
+      <li>Kéo-thả hoặc paste file cookie export từ <b>Cookie-Editor</b> (Chrome extension).</li>
+      <li>Hệ thống tự nhận diện tài khoản qua cookie <code>uid</code>.</li>
+    </ul>
+    <h4>♻️ Cookie hết hạn → renew</h4>
+    <ul>
+      <li>Card cookie chết viền đỏ. Bấm <b>🔄 Thay cookie</b> ngay trên card đó → chọn file cookie mới.</li>
+      <li>Cách này <b>ép vào đúng tài khoản cũ</b>, KHÔNG tạo tài khoản trùng (kể cả cookie mới thiếu uid).</li>
+    </ul>
+    <h4>Các nút khác trên card</h4>
+    <ul>
+      <li><b>📧 email</b> (khi login qua auto-login) · <b>✏️</b> đổi tên · <b>↺</b> sync lại shop · <b>🗑</b> xoá tài khoản.</li>
+    </ul>
+    <div class="help-warn">⚠️ Cookie có 2 lớp: API (sống lâu) và session web (mở form list, hết nhanh). Health báo "sống" là lớp API — vẫn có thể cần renew để list được.</div>` },
 };
 function openHelp() {
   const v = window._view || "dashboard";

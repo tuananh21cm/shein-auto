@@ -471,6 +471,9 @@
     <div class="nav-item" data-view="hub">
       <span class="ico">🗂️</span><span>Hub sản phẩm</span>
     </div>
+    <div class="nav-item" data-view="video">
+      <span class="ico">🎬</span><span>Video</span>
+    </div>
     <div class="nav-item" data-view="niche">
       <span class="ico">🎯</span><span>Ngách</span>
     </div>
@@ -615,6 +618,28 @@
       </div>
     </section>
 
+
+    <!-- ───── VIDEO ───── -->
+    <section class="view" id="view-video">
+      <div class="page-head">
+        <div>
+          <h1>🎬 Video</h1>
+          <div class="subtitle" id="videoSubtitle">Tạo video theo shop · chọn listing → gen</div>
+        </div>
+        <div style="display:flex; gap:8px;">
+          <button class="btn btn-primary" onclick="openVideoGen()">🎬 Tạo video</button>
+          <button class="btn btn-ghost" onclick="loadVideo()">Refresh</button>
+        </div>
+      </div>
+      <div id="videoDash"></div>
+      <div class="card">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; gap:10px; flex-wrap:wrap;">
+          <h3 style="margin:0;">📚 Thư viện video</h3>
+          <select id="videoShopFilter" onchange="loadVideoLib()" style="width:auto; min-width:200px;"><option value="">Tất cả shop</option></select>
+        </div>
+        <div id="videoLibGrid"><div class="empty">Đang tải…</div></div>
+      </div>
+    </section>
 
     <!-- ───── NGÁCH ───── -->
     <section class="view" id="view-niche">
@@ -958,6 +983,7 @@ document.querySelectorAll(".nav-item").forEach((item) => {
     $(`#view-${view}`).classList.add("active");
     if (view === "listings") loadShopsOrListings();
     if (view === "hub") loadHub();
+    if (view === "video") loadVideo();
     if (view === "niche") loadNiche();
     if (view === "users") renderUsers();
     if (view === "settings") { loadSettings(); loadBrands(); loadPricing(); loadImgbbStatus(); }
@@ -2658,14 +2684,156 @@ async function refreshVideoLib() {
     if (!pending && _vidPollTimer) { clearInterval(_vidPollTimer); _vidPollTimer = null; }
   } catch (err) { $("#modalBody").innerHTML = `<div class="empty">Lỗi: ${escapeHtml(err.message)}</div>`; }
 }
+function _refreshVideoViews() {
+  if (document.getElementById("view-video")?.classList.contains("active")) loadVideo();
+  else refreshVideoLib();
+}
 async function markVideoPosted(id) {
   await fetch(`/admin/api/videos/${id}/posted`, { method: "POST" }).catch(() => {});
-  refreshVideoLib();
+  _refreshVideoViews();
 }
 async function deleteVideo(id) {
   if (!confirm("Xoá video này?")) return;
   await fetch(`/admin/api/videos/${id}`, { method: "DELETE" }).catch(() => {});
-  refreshVideoLib();
+  _refreshVideoViews();
+}
+
+// ═══════════ ROUTE VIDEO (phân theo shop) ═══════════
+const VSTATUS = { ready: '<span style="color:var(--success);">✅ xong</span>', generating: '<span style="color:#8b5cf6;">⏳ đang render…</span>', queued: '<span style="color:var(--text-mute);">⏳ chờ</span>', error: '<span style="color:#ef4444;">❌ lỗi</span>', posted: '<span style="color:var(--accent);">📤 đã đăng</span>' };
+let _vidLibTimer = null;
+
+async function loadVideo() {
+  try {
+    const d = await (await fetch("/admin/api/videos/by-shop")).json();
+    if (d.error) throw new Error(d.error);
+    renderVideoDash(d);
+    // populate shop filter
+    const sel = $("#videoShopFilter"); const cur = sel.value;
+    sel.innerHTML = '<option value="">Tất cả shop</option>' + (d.shops || []).map((s) => `<option value="${escapeHtml(s.shop)}">${escapeHtml(nicheCleanShop(s.shop))} (${s.total})</option>`).join("");
+    sel.value = cur;
+  } catch (err) { $("#videoDash").innerHTML = `<div class="card" style="margin-bottom:14px;"><div class="empty">Lỗi: ${escapeHtml(err.message)}</div></div>`; }
+  loadVideoLib();
+}
+
+function renderVideoDash(d) {
+  const t = d.totals || {}, shops = d.shops || [];
+  const kpi = (label, val, color) => `<div class="lp-kpi"><div class="lp-kpi-k">${label}</div><div class="lp-kpi-v" style="color:${color};">${val || 0}</div></div>`;
+  $("#videoSubtitle").innerHTML = `<b>${t.total || 0}</b> video · <b>${shops.length}</b> shop · <span style="color:var(--success);">${t.ready || 0} xong</span> · <span style="color:#8b5cf6;">${t.generating || 0} đang render</span>`;
+  $("#videoDash").innerHTML = `
+    <div class="card" style="margin-bottom:14px;">
+      <div class="lp-kpis">
+        ${kpi("Tổng video", t.total, "var(--text)")}
+        ${kpi("✅ Xong", t.ready, "var(--success)")}
+        ${kpi("⏳ Đang render", t.generating, "#8b5cf6")}
+        ${kpi("📤 Đã đăng", t.posted, "var(--accent)")}
+        ${kpi("❌ Lỗi", t.error, "var(--danger)")}
+      </div>
+      ${shops.length ? `<div style="margin-top:14px;"><div style="font-size:0.8rem;color:var(--text-mute);margin-bottom:8px;">Theo shop (bấm để lọc thư viện):</div>
+        <div style="display:flex;flex-wrap:wrap;gap:8px;">${shops.map((s) => `<button class="btn btn-ghost" style="padding:6px 12px;font-size:0.82rem;" onclick="$('#videoShopFilter').value='${escapeHtml(s.shop).replace(/'/g,"\\'")}';loadVideoLib()">🏪 ${escapeHtml(nicheCleanShop(s.shop))} <b>${s.total}</b>${s.generating ? ` · <span style="color:#8b5cf6;">${s.generating}⏳</span>` : ""}${s.error ? ` · <span style="color:var(--danger);">${s.error}❌</span>` : ""}</button>`).join("")}</div></div>` : ""}
+    </div>`;
+}
+
+async function loadVideoLib() {
+  const shop = $("#videoShopFilter")?.value || "";
+  try {
+    const d = await (await fetch(`/admin/api/videos?limit=200${shop ? "&shop=" + encodeURIComponent(shop) : ""}`)).json();
+    const vids = d.videos || [];
+    $("#videoLibGrid").innerHTML = vids.length ? `
+      <div style="display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:12px;">
+        ${vids.map((v) => `
+          <div style="border:1px solid var(--border); border-radius:10px; overflow:hidden; background:var(--bg-card);">
+            ${v.status === "ready" || v.status === "posted"
+              ? `<video src="/admin/api/videos/file/${v.id}" controls preload="metadata" style="width:100%; aspect-ratio:9/16; object-fit:cover; background:#000;"></video>`
+              : `<div style="width:100%; aspect-ratio:9/16; display:flex; align-items:center; justify-content:center; background:var(--bg-elev); color:var(--text-mute); font-size:0.8rem; text-align:center; padding:8px;">${v.status === "error" ? "❌ " + escapeHtml((v.error || "").slice(0, 80)) : "⏳ đang render…"}</div>`}
+            <div style="padding:8px;">
+              <div style="font-size:0.7rem;color:var(--text-mute);margin-bottom:3px;">🏪 ${escapeHtml(nicheCleanShop(v.shop))}</div>
+              <div style="font-size:0.76rem; line-height:1.3; height:2.6em; overflow:hidden;" title="${escapeHtml(v.title)}">${escapeHtml(v.title)}</div>
+              <div style="font-size:0.75rem; margin:5px 0;">${VSTATUS[v.status] || v.status}</div>
+              <div style="display:flex; gap:5px;">
+                ${v.status === "ready" || v.status === "posted" ? `<a class="btn btn-ghost" style="padding:3px 8px; font-size:0.74rem;" href="/admin/api/videos/file/${v.id}" download="video_${v.id}.mp4">⬇</a>` : ""}
+                ${v.status === "ready" ? `<button class="btn btn-ghost" style="padding:3px 8px; font-size:0.74rem;" onclick="markVideoPosted(${v.id})">📤</button>` : ""}
+                <button class="btn btn-ghost" style="padding:3px 8px; font-size:0.74rem; color:#ef4444;" onclick="deleteVideo(${v.id})">🗑</button>
+              </div>
+            </div>
+          </div>`).join("")}
+      </div>` : '<div class="empty">Chưa có video. Bấm "🎬 Tạo video" để bắt đầu.</div>';
+    const pending = vids.some((v) => v.status === "generating" || v.status === "queued");
+    if (_vidLibTimer) { clearInterval(_vidLibTimer); _vidLibTimer = null; }
+    if (pending && document.getElementById("view-video")?.classList.contains("active")) _vidLibTimer = setInterval(loadVideo, 6000);
+  } catch (err) { $("#videoLibGrid").innerHTML = `<div class="empty">Lỗi: ${escapeHtml(err.message)}</div>`; }
+}
+
+// ─── Modal Gen video: chọn shop → chọn listing → gen ───
+let _genSel = new Set();
+async function openVideoGen() {
+  _genSel = new Set();
+  $("#modalTitle").textContent = "🎬 Tạo video — chọn shop & listing";
+  $("#modalBody").innerHTML = `
+    <label class="field" style="margin-bottom:12px;"><span>1. Chọn shop</span>
+      <select id="genShop" onchange="loadGenListings(this.value)"><option value="">— Chọn shop —</option></select>
+    </label>
+    <div id="genListings" style="max-height:52vh; overflow:auto;"><div class="empty">Chọn shop để xem listing.</div></div>
+    <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; margin-top:14px;">
+      <span id="genCount" style="font-size:0.84rem; color:var(--text-mute);"></span>
+      <div style="display:flex; gap:8px;">
+        <button class="btn btn-ghost" onclick="closeModal()">Hủy</button>
+        <button class="btn btn-primary" id="genBtn" onclick="submitGenVideos()" disabled>🎬 Gen video</button>
+      </div>
+    </div>`;
+  $("#modalBg").classList.add("show");
+  // load danh sách shop
+  try {
+    const d = await (await fetch("/admin/api/listings/shops?all=1")).json();
+    const shops = (d.shops || []).map((s) => s.folder).sort();
+    $("#genShop").innerHTML = '<option value="">— Chọn shop —</option>' + shops.map((s) => `<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`).join("");
+  } catch { /* ignore */ }
+}
+
+async function loadGenListings(shop) {
+  _genSel = new Set(); updateGenCount();
+  if (!shop) { $("#genListings").innerHTML = '<div class="empty">Chọn shop để xem listing.</div>'; return; }
+  $("#genListings").innerHTML = '<div class="empty">Đang tải listing…</div>';
+  try {
+    const d = await (await fetch(`/admin/api/listings?folder=${encodeURIComponent(shop)}`)).json();
+    const items = (d.items || []).filter((i) => i.image); // cần có ảnh mới gen được
+    if (!items.length) { $("#genListings").innerHTML = '<div class="empty">Shop này chưa có listing (có ảnh) để gen.</div>'; return; }
+    $("#genListings").innerHTML = `
+      <div style="margin-bottom:8px;"><button class="btn btn-ghost" style="padding:4px 10px;font-size:0.8rem;" onclick="genSelectAll(${items.length})">☑ Chọn tất cả (${items.length})</button></div>
+      <div style="display:grid; grid-template-columns:repeat(auto-fill,minmax(120px,1fr)); gap:10px;">
+        ${items.map((it) => `
+          <div class="gen-card" data-id="${escapeHtml(it.id)}" onclick="toggleGen('${escapeHtml(it.id).replace(/'/g,"\\'")}',this)" style="border:2px solid var(--border); border-radius:8px; overflow:hidden; cursor:pointer;">
+            <div style="aspect-ratio:1; background:#000 center/cover no-repeat; background-image:url('${escapeHtml(it.image)}');"></div>
+            <div style="padding:5px; font-size:0.7rem; line-height:1.25; height:2.5em; overflow:hidden;" title="${escapeHtml(it.title)}">${escapeHtml(it.title)}</div>
+          </div>`).join("")}
+      </div>`;
+  } catch (err) { $("#genListings").innerHTML = `<div class="empty">Lỗi: ${escapeHtml(err.message)}</div>`; }
+}
+function toggleGen(id, el) {
+  if (_genSel.has(id)) { _genSel.delete(id); el.style.borderColor = "var(--border)"; }
+  else { _genSel.add(id); el.style.borderColor = "var(--accent)"; }
+  updateGenCount();
+}
+function genSelectAll(n) {
+  document.querySelectorAll("#genListings .gen-card").forEach((el) => { _genSel.add(el.dataset.id); el.style.borderColor = "var(--accent)"; });
+  updateGenCount();
+}
+function updateGenCount() {
+  $("#genCount").textContent = _genSel.size ? `Đã chọn ${_genSel.size} listing` : "";
+  const b = $("#genBtn"); if (b) b.disabled = _genSel.size === 0;
+}
+async function submitGenVideos() {
+  const ids = [..._genSel];
+  if (!ids.length) return;
+  const b = $("#genBtn"); b.disabled = true; b.textContent = "Đang gửi…";
+  try {
+    const res = await fetch("/admin/api/videos/from-listings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids }) });
+    const d = await res.json();
+    if (!res.ok) throw new Error(d.error);
+    const skip = (d.skipped || []).length;
+    toast(`🎬 Đã gửi ${d.created.length} video render${skip ? ` · ${skip} bỏ (thiếu ảnh)` : ""}`);
+    closeModal();
+    loadVideo();
+  } catch (err) { toast(err.message, "error"); b.disabled = false; b.textContent = "🎬 Gen video"; }
 }
 
 function listHubToShops() {

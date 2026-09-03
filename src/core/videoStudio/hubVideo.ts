@@ -81,6 +81,26 @@ export interface CreateHubVideoResult {
   skipped: { file: string; reason: string }[];
 }
 
+/** Số ảnh tối thiểu để gen video (export cho endpoint). */
+export const VIDEO_MIN_IMAGES = MIN_IMAGES;
+export { priceOf };
+
+/**
+ * CORE: từ 1 sản phẩm (đã có ảnh) → submit job render + ghi videoDb + track. Trả videoId.
+ * Dùng chung cho Hub lẫn listing theo shop. Throw nếu submit lỗi.
+ */
+export async function enqueueVideo(
+  db: VideoDb,
+  item: { shop: string; productId: string; title: string; images: string[]; price?: number }
+): Promise<number> {
+  const ref = await submitVideoJob({ title: item.title, images: item.images, price: item.price });
+  const id = db.create({ shop: item.shop, productId: item.productId, listingId: "", title: item.title, seed: ref.jobId });
+  db.setStatus(id, { status: "generating", step: "remote" });
+  db.setJobId(id, ref.jobId);
+  void trackJob(id, ref.jobId);
+  return id;
+}
+
 /** Tạo video cho các file Hub đã chọn. Trả rows đã enqueue + list bị bỏ (thiếu ảnh...). */
 export async function createHubVideos(files: string[]): Promise<CreateHubVideoResult> {
   const db = new VideoDb();
@@ -95,20 +115,12 @@ export async function createHubVideos(files: string[]): Promise<CreateHubVideoRe
       const images = hubImageUrls(d);
       if (images.length < MIN_IMAGES) { skipped.push({ file, reason: `chỉ ${images.length} ảnh, cần ≥${MIN_IMAGES}` }); continue; }
       const title = String(d?.product_name || "").slice(0, 200) || "SHEIN product";
-      const input: SubmitJobInput = { title, images, price: priceOf(d) };
-      let jobId: string;
       try {
-        const ref = await submitVideoJob(input);
-        jobId = ref.jobId;
+        const id = await enqueueVideo(db, { shop: "hub", productId: productIdOf(d) || file, title, images, price: priceOf(d) });
+        created.push({ id, file, title });
       } catch (e: any) {
         skipped.push({ file, reason: `submit lỗi: ${String(e?.message ?? e).slice(0, 120)}` });
-        continue;
       }
-      const id = db.create({ shop: "hub", productId: productIdOf(d) || file, listingId: "", title, seed: jobId });
-      db.setStatus(id, { status: "generating", step: "remote" });
-      db.setJobId(id, jobId);
-      void trackJob(id, jobId);
-      created.push({ id, file, title });
     }
   } finally {
     db.close();
@@ -116,13 +128,13 @@ export async function createHubVideos(files: string[]): Promise<CreateHubVideoRe
   return { created, skipped };
 }
 
-/** Sau restart: nối lại poll cho các job Hub còn dở (generating + job_id). */
+/** Sau restart: nối lại poll cho MỌI job video còn dở (generating + job_id) — Hub lẫn shop. */
 export function resumePendingHubJobs(): void {
   try {
     const db = new VideoDb();
-    const rows = db.pendingRemote().filter((r) => r.shop === "hub");
+    const rows = db.pendingRemote();
     db.close();
     for (const r of rows) if (r.job_id) void trackJob(r.id, r.job_id);
-    if (rows.length) console.log(`🎬 Resume ${rows.length} job video Hub đang render…`);
+    if (rows.length) console.log(`🎬 Resume ${rows.length} job video đang render…`);
   } catch { /* best-effort */ }
 }

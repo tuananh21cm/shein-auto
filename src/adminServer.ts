@@ -2248,6 +2248,64 @@ export const startAdminServer = async () => {
     }
   });
 
+  // Gen video từ LISTING của 1 shop (chọn listing theo shop ở route Video). ids = listing card id.
+  app.post("/admin/api/videos/from-listings", async (req, res) => {
+    try {
+      const sessionUser = (req.session as any).user as SessionUser;
+      if (sessionUser.role === "viewer") return res.status(403).json({ error: "Viewer không thể tạo video" });
+      const { ids } = req.body as { ids?: string[] };
+      if (!Array.isArray(ids) || !ids.length) return res.status(400).json({ error: "Chọn ít nhất 1 listing" });
+      if (!process.env.VIDEO_RENDER_URL) return res.status(400).json({ error: "Chưa cấu hình VIDEO_RENDER_URL trong .env" });
+      const { VideoDb } = await import("./state/videoDb");
+      const { enqueueVideo, hubImageUrls, priceOf, VIDEO_MIN_IMAGES } = await import("./core/videoStudio/hubVideo");
+      const db = new VideoDb();
+      const created: { id: number; title: string }[] = [];
+      const skipped: { id: string; reason: string }[] = [];
+      try {
+        for (const id of ids.slice(0, 50)) {
+          const resolved = await resolveListingPath(id);
+          if (!resolved || !(await fs.pathExists(resolved.full))) { skipped.push({ id, reason: "file không tồn tại" }); continue; }
+          if (sessionUser.role !== "admin" && !resolved.owner.split(",").includes(sessionUser.username)) { skipped.push({ id, reason: "không có quyền" }); continue; }
+          let d: any;
+          try { d = await fs.readJson(resolved.full); } catch { skipped.push({ id, reason: "không đọc được" }); continue; }
+          const images = hubImageUrls(d);
+          if (images.length < VIDEO_MIN_IMAGES) { skipped.push({ id, reason: `chỉ ${images.length} ảnh, cần ≥${VIDEO_MIN_IMAGES}` }); continue; }
+          const title = String(d?.product_name || "").slice(0, 200) || "product";
+          const pid = (String(d?.url || "").match(/-p-(\d+)\.html/) || [])[1] || resolved.file;
+          try {
+            const vid = await enqueueVideo(db, { shop: resolved.folder, productId: pid, title, images, price: priceOf(d) });
+            created.push({ id: vid, title });
+          } catch (e: any) { skipped.push({ id, reason: `submit lỗi: ${String(e?.message ?? e).slice(0, 100)}` }); }
+        }
+      } finally { db.close(); }
+      res.json({ ok: true, created, skipped });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? "Lỗi tạo video" });
+    }
+  });
+
+  // Thống kê video theo shop (dashboard route Video).
+  app.get("/admin/api/videos/by-shop", async (_req, res) => {
+    try {
+      const { VideoDb } = await import("./state/videoDb");
+      const db = new VideoDb();
+      const rows = db.list({ limit: 10000 });
+      db.close();
+      const byShop = new Map<string, any>();
+      const totals = { total: 0, ready: 0, generating: 0, error: 0, posted: 0, queued: 0 };
+      for (const r of rows) {
+        totals.total++; (totals as any)[r.status] = ((totals as any)[r.status] || 0) + 1;
+        let s = byShop.get(r.shop);
+        if (!s) { s = { shop: r.shop, total: 0, ready: 0, generating: 0, error: 0, posted: 0, queued: 0, lastAt: 0 }; byShop.set(r.shop, s); }
+        s.total++; s[r.status] = (s[r.status] || 0) + 1; s.lastAt = Math.max(s.lastAt, r.updated_at || 0);
+      }
+      const shops = [...byShop.values()].sort((a, b) => b.lastAt - a.lastAt);
+      res.json({ totals, shops });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? "Lỗi thống kê video" });
+    }
+  });
+
   app.get("/admin/api/videos", async (req, res) => {
     try {
       const { VideoDb } = await import("./state/videoDb");

@@ -17,6 +17,7 @@ import {
 } from "./adminConfig";
 import { config } from "./config";
 import { workerState } from "./state/workerState";
+import { SwrCache } from "./utils/swrCache";
 import { refreshQueueSnapshot } from "./state/queueState";
 import { historyStore } from "./state/historyStore";
 import { scanListings, scanShopsSummary, resolveListingPath, scanHub, resolveHubFile, recordHubListings, removeHubMeta, isHubMetaFile, ListingStatus } from "./state/listingScan";
@@ -534,11 +535,9 @@ export const startAdminServer = async () => {
   };
 
   // Cache số listing LIVE (active) thật từ 4Seller — gộp MỌI tài khoản. Key cache cố định.
-  const liveCountCache = new Map<string, { ts: number; byShop: Record<string, number> }>();
   /** Map shopName(lowercase) → activeCount thật trên TikTok (qua 4Seller). Best-effort, cache 5p. */
-  async function fetchLiveCounts(username: string): Promise<Record<string, number>> {
-    const cached = liveCountCache.get("__all__");
-    if (cached && Date.now() - cached.ts < SHOP_CACHE_TTL) return cached.byShop;
+  const liveSwr = new SwrCache<Record<string, number>>("live-counts", SHOP_CACHE_TTL);
+  async function computeLiveCounts(username: string): Promise<Record<string, number>> {
     const byShop: Record<string, number> = {};
     for (const principal of await fsPrincipals(username)) {
       try {
@@ -554,16 +553,15 @@ export const startAdminServer = async () => {
         );
       } catch { /* 1 tài khoản lỗi cookie → bỏ qua, tài khoản khác vẫn lấy được */ }
     }
-    liveCountCache.set("__all__", { ts: Date.now(), byShop });
     return byShop;
   }
+  // stale-while-revalidate: trả cache ngay (kể cả cũ), refresh nền → user không đợi 4Seller.
+  const fetchLiveCounts = (username: string) => liveSwr.getOrRefresh("__all__", () => computeLiveCounts(username));
 
   // Ảnh ĐẠI DIỆN theo shop = ảnh 1 listing active (mainImage[0]). Cache DÀI 30p (ảnh ít đổi).
   const SHOP_IMG_TTL = 30 * 60_000;
-  const shopImgCache = new Map<string, { ts: number; byShop: Record<string, string> }>();
-  async function fetchShopImages(username: string): Promise<Record<string, string>> {
-    const cached = shopImgCache.get("__all__");
-    if (cached && Date.now() - cached.ts < SHOP_IMG_TTL) return cached.byShop;
+  const shopImgSwr = new SwrCache<Record<string, string>>("shop-images", SHOP_IMG_TTL);
+  async function computeShopImages(username: string): Promise<Record<string, string>> {
     const byShop: Record<string, string> = {};
     for (const principal of await fsPrincipals(username)) {
       try {
@@ -581,16 +579,13 @@ export const startAdminServer = async () => {
         );
       } catch { /* 1 tài khoản lỗi → bỏ qua */ }
     }
-    shopImgCache.set("__all__", { ts: Date.now(), byShop });
     return byShop;
   }
+  const fetchShopImages = (username: string) => shopImgSwr.getOrRefresh("__all__", () => computeShopImages(username));
 
   // Cache số ĐƠN theo shop (4Seller Report → Sales by shop), cửa sổ 7 ngày, gộp mọi tài khoản.
-  const ordersCache = new Map<string, { ts: number; byShop: Record<string, number> }>();
-  /** Map shopName(lowercase) → totalOrders 7 ngày gần nhất. Shop không có đơn → không có key (=0). */
-  async function fetchOrdersByShop(username: string): Promise<Record<string, number>> {
-    const cached = ordersCache.get("__all__");
-    if (cached && Date.now() - cached.ts < SHOP_CACHE_TTL) return cached.byShop;
+  const ordersSwr = new SwrCache<Record<string, number>>("orders-by-shop", SHOP_CACHE_TTL);
+  async function computeOrdersByShop(username: string): Promise<Record<string, number>> {
     const byShop: Record<string, number> = {};
     for (const principal of await fsPrincipals(username)) {
       try {
@@ -605,9 +600,10 @@ export const startAdminServer = async () => {
         }
       } catch { /* 1 tài khoản lỗi → bỏ qua */ }
     }
-    ordersCache.set("__all__", { ts: Date.now(), byShop });
     return byShop;
   }
+  /** Map shopName(lowercase) → totalOrders 7 ngày gần nhất (SWR, không block). */
+  const fetchOrdersByShop = (username: string) => ordersSwr.getOrRefresh("__all__", () => computeOrdersByShop(username));
 
   /** Nguồn shop: ưu tiên SYNC TỪ 4SELLER (gộp mọi tài khoản) → profiles explicit → auto-scan folder. */
   async function resolveUserShops(user: AdminUser): Promise<{ shops: string[]; source: string }> {
@@ -690,11 +686,8 @@ export const startAdminServer = async () => {
   });
 
   // ── Dashboard OVERVIEW (port từ main): live/đơn/doanh thu + Δ hôm qua, promotion, sparkline ──
-  const dayOrdersCache = new Map<string, { ts: number; byShop: Record<string, { orders: number; revenue: number }> }>();
-  /** Đơn + doanh thu của 1 NGÀY (YYYY-MM-DD) per shop, gộp mọi tài khoản. Cache 5p. */
-  async function fetchDaySales(day: string, legacyUser: string): Promise<Record<string, { orders: number; revenue: number }>> {
-    const cached = dayOrdersCache.get(day);
-    if (cached && Date.now() - cached.ts < SHOP_CACHE_TTL) return cached.byShop;
+  const daySalesSwr = new SwrCache<Record<string, { orders: number; revenue: number }>>("day-sales", SHOP_CACHE_TTL);
+  async function computeDaySales(day: string, legacyUser: string): Promise<Record<string, { orders: number; revenue: number }>> {
     const byShop: Record<string, { orders: number; revenue: number }> = {};
     for (const principal of await fsPrincipals(legacyUser)) {
       try {
@@ -712,9 +705,10 @@ export const startAdminServer = async () => {
         }
       } catch { /* 1 tài khoản lỗi → bỏ qua */ }
     }
-    dayOrdersCache.set(day, { ts: Date.now(), byShop });
     return byShop;
   }
+  /** Đơn + doanh thu 1 NGÀY per shop (SWR, không block). */
+  const fetchDaySales = (day: string, legacyUser: string) => daySalesSwr.getOrRefresh(day, () => computeDaySales(day, legacyUser));
 
   // ── Sales trend 30 ngày (clone chart 4Seller): daily revenue+orders GỘP mọi shop/account ──
   // Nguồn = 4Seller getSalesByShop per-day (dashboard_snapshot cũ thưa/không đủ). Persist vào
@@ -2308,8 +2302,8 @@ export const startAdminServer = async () => {
       const { account, shopSyncError } = await saveAccountCookie(body.cookie, body.targetUid ? { targetUid: body.targetUid } : undefined);
       // Đổi cookie / thêm shop → xoá cache để UI phản ánh ngay
       shopListCache.clear();
-      liveCountCache.clear();
-      ordersCache.clear();
+      liveSwr.clear();
+      ordersSwr.clear();
       res.json({
         ok: true,
         uid: account.uid,
@@ -2356,8 +2350,8 @@ export const startAdminServer = async () => {
       const { uid } = req.body as { uid: string };
       await fsDeleteAccount(uid);
       shopListCache.clear();
-      liveCountCache.clear();
-      ordersCache.clear();
+      liveSwr.clear();
+      ordersSwr.clear();
       res.json({ ok: true });
     } catch (err: any) {
       res.status(400).json({ error: err?.message ?? "Lỗi xoá tài khoản" });
@@ -2429,7 +2423,7 @@ export const startAdminServer = async () => {
       if (!process.env.CAPSOLVER_API_KEY) return res.status(400).json({ error: "Chưa cấu hình CAPSOLVER_API_KEY trong .env" });
       const { loginAndSaveCookie } = await import("./services/fourseller/autoLogin");
       const r = await loginAndSaveCookie(username.trim(), password, { headless: !headed, remember: remember !== false });
-      shopListCache.clear(); liveCountCache.clear(); ordersCache.clear();
+      shopListCache.clear(); liveSwr.clear(); ordersSwr.clear();
       res.json({ ok: true, ...r });
     } catch (err: any) {
       res.status(400).json({ error: err?.message ?? "Đăng nhập thất bại" });
@@ -2445,7 +2439,7 @@ export const startAdminServer = async () => {
       if (!uid) return res.status(400).json({ error: "Thiếu uid" });
       const { ensureFreshCookie } = await import("./services/fourseller/autoRefresh");
       const r = await ensureFreshCookie(uid);
-      shopListCache.clear(); liveCountCache.clear(); ordersCache.clear();
+      shopListCache.clear(); liveSwr.clear(); ordersSwr.clear();
       res.json({ ok: true, ...r });
     } catch (err: any) {
       res.status(400).json({ error: err?.message ?? "Lỗi re-login" });
@@ -2503,6 +2497,31 @@ export const startAdminServer = async () => {
 
   // Nối lại poll cho video Hub đang render dở (sau restart) — best-effort.
   import("./core/videoStudio/hubVideo").then((m) => m.resumePendingHubJobs()).catch(() => {});
+
+  // ── Warm cache dashboard nền: giữ live/orders/ảnh shop luôn TƯƠI → user vào route
+  //    đọc cache tức thì, không bao giờ trigger 4Seller storm. Tắt qua DISABLE_DASH_WARM=1.
+  const warmDashboardCaches = async (opts?: { images?: boolean }) => {
+    try {
+      const cfg = await loadAdminConfig();
+      const admin = cfg.users.find((u) => u.role === "admin") || cfg.users[0];
+      if (!admin) return;
+      const u = admin.username;
+      const vnDay = (off: number) => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Ho_Chi_Minh" }).format(new Date(Date.now() - off * 864e5));
+      await Promise.all([
+        liveSwr.forceRefresh("__all__", () => computeLiveCounts(u)),
+        ordersSwr.forceRefresh("__all__", () => computeOrdersByShop(u)),
+        daySalesSwr.forceRefresh(vnDay(0), () => computeDaySales(vnDay(0), u)),   // hôm nay
+        daySalesSwr.forceRefresh(vnDay(1), () => computeDaySales(vnDay(1), u)),   // hôm qua
+        ...(opts?.images ? [shopImgSwr.forceRefresh("__all__", () => computeShopImages(u))] : []),
+      ]);
+    } catch { /* best-effort */ }
+  };
+  if (process.env.DISABLE_DASH_WARM !== "1") {
+    setTimeout(() => warmDashboardCaches({ images: true }), 8000);   // warm ngay sau boot
+    setInterval(() => warmDashboardCaches(), 5 * 60_000);            // live/orders mỗi 5p
+    setInterval(() => warmDashboardCaches({ images: true }), 30 * 60_000); // + ảnh shop mỗi 30p
+    console.log("🔥 Warm cache dashboard: BẬT (live/orders 5p · ảnh shop 30p)");
+  }
 
   const port = Number(process.env.ADMIN_PORT ?? 3000);
   // Bind port là "single-instance guard": nếu instance khác đã chiếm port →

@@ -1387,6 +1387,24 @@ async function loadShops() {
   }
 }
 
+// Chạy lại các listing fail của RIÊNG shop đang xem (dùng retry-batch với ids fail hiện tại).
+async function retryFailsThisShop(count) {
+  const ids = (state.listings.items || []).filter((i) => i.status === "fail").map((i) => i.id);
+  if (!ids.length) return;
+  if (!confirm(`Chạy lại ${count} listing fail của shop "${state.listings.selectedShop}"?\nĐưa về pending → cron tự chạy lại.`)) return;
+  try {
+    const res = await fetch("/admin/api/listings/retry-batch", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids }),
+    });
+    const d = await res.json();
+    if (!res.ok) throw new Error(d.error);
+    const skip = (d.skipped || []).length;
+    toast(`↻ Đã đưa ${(d.moved || []).length} listing về queue${skip ? ` · ${skip} bỏ` : ""} — cron chạy lại`);
+    loadListings();
+  } catch (err) { toast(err.message, "error"); }
+}
+
 // Chạy lại HẾT listing fail (mọi shop) → đưa về pending cho cron chạy lại.
 async function retryAllFails(count) {
   if (!confirm(`Chạy lại HẾT ${count} listing fail?\nMọi file trong Fail/ của tất cả shop sẽ được đưa về pending → cron tự chạy lại (concurrency 6, nhỏ giọt).`)) return;
@@ -1649,6 +1667,7 @@ function renderListings() {
     <div style="display:flex; align-items:center; gap:10px; margin-bottom: 12px; padding: 10px 14px; background: var(--bg-elev); border-radius: 8px; font-size: 0.85rem;">
       <button class="btn btn-ghost" onclick="selectAllVisible()" style="padding: 5px 12px;">☑ Chọn tất cả (${selectableCount})</button>
       <button class="btn btn-ghost" onclick="clearListingSelect()" style="padding: 5px 12px;">Bỏ chọn</button>
+      ${grouped.fail > 0 ? `<button class="btn btn-danger" style="padding: 5px 12px;" onclick="retryFailsThisShop(${grouped.fail})">↻ Chạy lại ${grouped.fail} fail shop này</button>` : ""}
       <span style="color: var(--text-mute);">Tick checkbox góc trái card · pending → Run · fail → Retry · success → Clone</span>
     </div>` : '';
 

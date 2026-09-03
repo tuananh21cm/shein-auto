@@ -1434,6 +1434,42 @@ export const startAdminServer = async () => {
     }
   });
 
+  // Retry TẤT CẢ listing fail (mọi shop) — quét mọi folder Fail/ → move về pending cho cron chạy lại.
+  app.post("/admin/api/listings/retry-all-fails", async (req, res) => {
+    try {
+      const sessionUser = (req.session as any).user as SessionUser;
+      if (sessionUser.role === "viewer") return res.status(403).json({ error: "Viewer không thể retry" });
+      const { getAllUserDirs } = await import("./state/userDirs");
+      const dirs = await getAllUserDirs();
+      const scope = ownerScope(req); // undefined = admin (mọi folder); ngược lại = folder của user
+      let moved = 0, errors = 0;
+      const shops = new Set<string>();
+      for (const d of dirs) {
+        if (scope && !d.username.split(",").includes(scope)) continue;
+        if (!(await fs.pathExists(d.baseSheinAutoDir))) continue;
+        const folders = (await fs.readdir(d.baseSheinAutoDir)).filter((n) => !n.startsWith(".") && n !== "Success" && n !== "Fail");
+        for (const folder of folders) {
+          const failDir = path.join(d.baseSheinAutoDir, folder, "Fail");
+          if (!(await fs.pathExists(failDir))) continue;
+          const files = (await fs.readdir(failDir)).filter((f) => f.toLowerCase().endsWith(".json"));
+          for (const f of files) {
+            try {
+              const src = path.join(failDir, f);
+              await fs.move(src, path.join(d.baseSheinAutoDir, folder, f), { overwrite: true });
+              const errLog = `${src}.error.log`;
+              if (await fs.pathExists(errLog)) await fs.remove(errLog).catch(() => {});
+              moved++; shops.add(folder);
+            } catch { errors++; }
+          }
+        }
+      }
+      refreshQueueSnapshot().catch(() => {});
+      res.json({ ok: true, moved, errors, shops: shops.size });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? "Lỗi retry-all-fails" });
+    }
+  });
+
   // Run nhiều listing pending cùng lúc, mỗi file chạy trên shop hiện tại
   // (không broadcast). Spawn parallel — lock per (baseDir, folder) đảm bảo
   // không 2 file cùng shop chạy đồng thời.

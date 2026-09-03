@@ -1387,6 +1387,18 @@ async function loadShops() {
   }
 }
 
+// Chạy lại HẾT listing fail (mọi shop) → đưa về pending cho cron chạy lại.
+async function retryAllFails(count) {
+  if (!confirm(`Chạy lại HẾT ${count} listing fail?\nMọi file trong Fail/ của tất cả shop sẽ được đưa về pending → cron tự chạy lại (concurrency 6, nhỏ giọt).`)) return;
+  try {
+    const res = await fetch("/admin/api/listings/retry-all-fails", { method: "POST" });
+    const d = await res.json();
+    if (!res.ok) throw new Error(d.error);
+    toast(`↻ Đã đưa ${d.moved} listing về queue (${d.shops} shop)${d.errors ? ` · ${d.errors} lỗi` : ""} — cron sẽ chạy lại`);
+    loadShops(); // refresh KPI + cards
+  } catch (err) { toast(err.message, "error"); }
+}
+
 // ── Queue progress: tổng quan listing đang chạy / chờ (realtime qua SSE) ──
 let _qpTick = null;
 function loadQueueProgress() {
@@ -1462,6 +1474,7 @@ function renderListingProgress() {
   const done = rows.filter((s) => s.cnt >= LP_TARGET).length;
   const pendingSum = rows.reduce((a, s) => a + (s.pending || 0), 0);
   const todaySum = rows.reduce((a, s) => a + (s.todayCount || 0), 0);
+  const failSum = rows.reduce((a, s) => a + (s.fail || 0), 0);
   const overallPct = Math.min(100, Math.round(totalCnt / totalTarget * 100));
   const barColor = (c) => c >= LP_TARGET ? "#22c55e" : c >= 50 ? "#3b82f6" : c >= 1 ? "#f59e0b" : "var(--text-mute)";
   // Chưa đạt & tụt nhất lên đầu; shop đã đạt xuống cuối (mờ)
@@ -1476,13 +1489,17 @@ function renderListingProgress() {
     <div class="card" style="margin-bottom:14px;">
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; gap:12px; flex-wrap:wrap;">
         <h3 style="margin:0;">📊 Tiến độ đăng — target ${LP_TARGET} listing/shop</h3>
-        <label style="font-size:0.8rem; display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" ${state.lpHideDone ? "checked" : ""} onchange="state.lpHideDone=this.checked; renderListingProgress()"> Ẩn shop đã đạt (${done})</label>
+        <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+          ${failSum ? `<button class="btn btn-danger" style="padding:5px 12px;" onclick="retryAllFails(${failSum})">↻ Chạy lại hết fail (${failSum})</button>` : ""}
+          <label style="font-size:0.8rem; display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" ${state.lpHideDone ? "checked" : ""} onchange="state.lpHideDone=this.checked; renderListingProgress()"> Ẩn shop đã đạt (${done})</label>
+        </div>
       </div>
       <div class="lp-kpis">
         <div class="lp-kpi"><div class="lp-kpi-k">Tổng listing</div><div class="lp-kpi-v">${totalCnt}<span style="font-size:0.9rem; color:var(--text-mute); font-weight:600;">/${totalTarget}</span></div></div>
         <div class="lp-kpi"><div class="lp-kpi-k">Hoàn thành</div><div class="lp-kpi-v" style="color:${overallPct >= 100 ? "var(--success)" : "var(--accent)"};">${overallPct}%</div></div>
         <div class="lp-kpi"><div class="lp-kpi-k">Shop đạt target</div><div class="lp-kpi-v">${done}<span style="font-size:0.9rem; color:var(--text-mute); font-weight:600;">/${rows.length}</span></div></div>
         <div class="lp-kpi"><div class="lp-kpi-k">Đang chờ đăng</div><div class="lp-kpi-v" style="color:var(--warn);">${pendingSum}</div></div>
+        <div class="lp-kpi"><div class="lp-kpi-k">❌ Fail</div><div class="lp-kpi-v" style="color:${failSum ? "var(--danger)" : "var(--text-mute)"};">${failSum}</div></div>
         <div class="lp-kpi"><div class="lp-kpi-k">Đăng hôm nay</div><div class="lp-kpi-v" style="color:var(--success);">+${todaySum}</div></div>
       </div>
       <div class="lp-obar"><i style="width:${overallPct}%;"></i></div>

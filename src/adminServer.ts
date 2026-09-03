@@ -1133,10 +1133,29 @@ export const startAdminServer = async () => {
 
   app.get("/admin/api/listings/shops", async (req, res) => {
     try {
+      const sessionUser = (req.session as any).user as SessionUser;
       const shops = await scanShopsSummary({
         username: ownerScope(req),
         includeEmptyProfiles: req.query.all === "1",
       });
+      // all=1 (picker "List → shop"): bổ sung MỌI shop từ tài khoản 4Seller (cookie),
+      // không chỉ profiles allowlist → list được tới toàn bộ ~30 shop, không phải 6.
+      if (req.query.all === "1") {
+        const seen = new Set(shops.map((s) => s.folder.toLowerCase()));
+        const accounts = await fsAccounts().catch(() => [] as any[]);
+        for (const acc of accounts) {
+          for (const name of (acc.shops || [])) {
+            const lc = String(name).toLowerCase();
+            if (seen.has(lc)) continue;
+            seen.add(lc);
+            shops.push({
+              owner: sessionUser.username, folder: name,
+              pending: 0, success: 0, fail: 0, total: 0,
+              lastActivityMs: 0, cover: null, todayCount: 0, yesterdayCount: 0,
+            });
+          }
+        }
+      }
       res.json({ shops });
     } catch (err: any) {
       res.status(500).json({ error: err?.message ?? "Lỗi scan shops" });

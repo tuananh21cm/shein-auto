@@ -65,6 +65,8 @@ async function trackJob(id: number, jobId: string): Promise<void> {
         await fs.ensureDir(OUT_DIR);
         const file = path.join(OUT_DIR, `hub_${id}.mp4`);
         await fs.writeFile(file, buf);
+        // Lưu caption/hashtag/title do render server trả về (để hiện + copy khi đăng).
+        if (st.content) { try { db.setScript(id, JSON.stringify(st.content)); } catch { /* ignore */ } }
         db.setStatus(id, { status: "ready", step: "done", file, error: null });
         return;
       }

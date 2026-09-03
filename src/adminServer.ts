@@ -2316,7 +2316,17 @@ export const startAdminServer = async () => {
         limit: Math.min(500, Number(req.query.limit) || 200),
       });
       db.close();
-      res.json({ videos: rows.map((r) => ({ id: r.id, shop: r.shop, title: r.title, status: r.status, step: r.step, error: r.error, hasFile: !!r.file, createdAt: r.created_at, updatedAt: r.updated_at, postedAt: r.posted_at })) });
+      res.json({ videos: rows.map((r) => {
+        let content: any = null;
+        try { content = r.script_json ? JSON.parse(r.script_json) : null; } catch { /* ignore */ }
+        return {
+          id: r.id, shop: r.shop, title: r.title, status: r.status, step: r.step, error: r.error,
+          hasFile: !!r.file, productId: r.product_id || null,
+          caption: content?.caption || content?.description || null,
+          hashtags: Array.isArray(content?.hashtags) ? content.hashtags : null,
+          createdAt: r.created_at, updatedAt: r.updated_at, postedAt: r.posted_at,
+        };
+      }) });
     } catch (err: any) {
       res.status(500).json({ error: err?.message ?? "Lỗi list video" });
     }

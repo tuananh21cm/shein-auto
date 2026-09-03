@@ -1518,7 +1518,7 @@ function renderListingProgress() {
         <div class="lp-bar" style="height:9px;"><i style="width:${pct}%; background:${barColor(s.cnt)};"></i></div>
         <div style="display:flex; justify-content:space-between; align-items:center; font-size:0.82rem;">
           <span><b style="font-size:1.05rem;">${s.cnt}</b><span style="color:var(--text-mute);">/${LP_TARGET}</span> ${s.cnt >= LP_TARGET ? '<span style="color:var(--success); font-weight:700;">✓ đạt</span>' : `<span style="color:var(--text-mute);">còn ${rem}</span>`}</span>
-          <span>${s.pending ? `<span class="lp-badge" style="background:rgba(245,158,11,.15); color:var(--warn);">⏳${s.pending}</span>` : ""}${s.fail ? `<span class="lp-badge" style="background:rgba(239,68,68,.15); color:var(--danger);">✕${s.fail}</span>` : ""}${s.todayCount ? `<span class="lp-badge" style="background:rgba(34,197,94,.15); color:var(--success);">+${s.todayCount}</span>` : ""}</span>
+          <span>${s.pending ? `<span class="lp-badge" style="background:rgba(245,158,11,.15); color:var(--warn);">⏳${s.pending}</span>` : ""}${s.fail ? `<span class="lp-badge" style="background:rgba(239,68,68,.15); color:var(--danger);">fail : ${s.fail}</span>` : ""}${s.todayCount ? `<span class="lp-badge" style="background:rgba(34,197,94,.15); color:var(--success);">+${s.todayCount}</span>` : ""}</span>
         </div>
       </div>
     </div>`;

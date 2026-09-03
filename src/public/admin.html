@@ -413,6 +413,20 @@
     .qp-pbar > span { display: block; height: 100%; background: linear-gradient(90deg, #f59e0b, #fbbf24); border-radius: 5px; }
     .qp-prow b { width: 32px; text-align: right; font-variant-numeric: tabular-nums; }
     @media (max-width: 640px) { .qp-kpis { grid-template-columns: 1fr 1fr; } }
+    /* Help FAB + panel */
+    #helpFab { position: fixed; right: 22px; bottom: 22px; z-index: 99990; width: 46px; height: 46px; border-radius: 50%; border: none; background: var(--accent); color: #fff; font-size: 1.5rem; font-weight: 700; cursor: pointer; box-shadow: 0 4px 16px rgba(0,0,0,.35); transition: transform .15s; }
+    #helpFab:hover { transform: scale(1.08); }
+    #helpPanel { position: fixed; inset: 0; z-index: 99991; display: none; align-items: center; justify-content: center; background: rgba(0,0,0,.5); }
+    #helpPanel.show { display: flex; }
+    .help-box { background: var(--bg-card); border: 1px solid var(--border); border-radius: 14px; width: min(520px, 92vw); max-height: 82vh; overflow: auto; box-shadow: 0 12px 40px rgba(0,0,0,.4); }
+    .help-head { position: sticky; top: 0; background: var(--bg-card); display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-bottom: 1px solid var(--border); }
+    .help-head h3 { margin: 0; font-size: 1.05rem; }
+    .help-x { background: none; border: none; color: var(--text-mute); font-size: 1.1rem; cursor: pointer; }
+    .help-x:hover { color: var(--text); }
+    .help-body { padding: 16px 20px; font-size: 0.9rem; line-height: 1.6; }
+    .help-body p { margin: 0 0 10px; color: var(--text-mute); }
+    .help-body ul { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 7px; }
+    .help-body b { color: var(--text); }
     .mf.bad { color: var(--danger); } .mf.warn { color: var(--warn); }
     /* toggle switch (modal cấu hình shop) */
     .sw { position: relative; width: 42px; height: 23px; flex: none; display: inline-block; }
@@ -429,6 +443,13 @@
 </head>
 <body>
 <div id="loadingOverlay"><div class="spin"></div><div class="txt">Đang tải…</div></div>
+<button id="helpFab" onclick="openHelp()" title="Hướng dẫn màn này">?</button>
+<div id="helpPanel" onclick="if(event.target===this)closeHelp()">
+  <div class="help-box">
+    <div class="help-head"><h3 id="helpTitle">Hướng dẫn</h3><button class="help-x" onclick="closeHelp()">✕</button></div>
+    <div id="helpBody" class="help-body"></div>
+  </div>
+</div>
 <div class="app">
   <aside class="sidebar">
     <div class="brand"><span class="dot"></span>Homie</div>
@@ -918,6 +939,7 @@ setTheme(localStorage.getItem("theme") || "dark");
 document.querySelectorAll(".nav-item").forEach((item) => {
   item.onclick = () => {
     const view = item.dataset.view;
+    window._view = view;
     document.querySelectorAll(".nav-item").forEach((i) => i.classList.remove("active"));
     document.querySelectorAll(".view").forEach((v) => v.classList.remove("active"));
     // Dọn các bulk bar nổi khi rời view
@@ -934,6 +956,67 @@ document.querySelectorAll(".nav-item").forEach((item) => {
     if (view === "cookie") loadCookieStatus();
   };
 });
+
+// ── Hướng dẫn theo màn (nút ? float góc phải dưới) ──
+const HELP = {
+  dashboard: { title: "📊 Dashboard — Tổng quan", html: `
+    <p>Tổng quan hiệu năng shop, <b>gộp tất cả tài khoản 4Seller</b>.</p>
+    <ul>
+      <li><b>Chart 30 ngày</b>: doanh thu (xanh dương) + đơn (xanh lá), cộng gộp mọi account.</li>
+      <li><b>Thanh Worker</b>: số luồng đang list · pending · xong gần nhất.</li>
+      <li><b>Card từng shop</b>: live listing, đơn hôm nay (Δ so hôm qua), doanh thu, cảnh báo promotion.</li>
+      <li>Vào nhanh nhờ cache SWR; bấm <b>Refresh</b> để tải mới.</li>
+    </ul>` },
+  listings: { title: "📦 Listings", html: `
+    <p>Quản lý listing theo shop — target <b>100 listing/shop</b>.</p>
+    <ul>
+      <li><b>Queue listing</b> (đầu màn): đang list / chờ / shop còn hàng — realtime.</li>
+      <li><b>Tiến độ đăng</b>: KPI tổng + ô <b>❌ Fail</b>. Nút <b>↻ Chạy lại hết fail</b> đẩy mọi fail về queue.</li>
+      <li>Click <b>card shop</b> → chi tiết. Lọc status (pending/success/fail), tìm tên.</li>
+      <li>Trong shop: tick card → Run/Retry/Clone; nút <b>↻ Chạy lại N fail shop này</b>.</li>
+    </ul>` },
+  hub: { title: "🗂️ Hub sản phẩm", html: `
+    <p>Kho sản phẩm <b>chung cả đội</b> (share qua LAN). Lấy sp của nhau về list bằng config của mình.</p>
+    <ul>
+      <li><b>Dashboard ngách</b> + chip ngách: lọc theo ngành.</li>
+      <li><b>Lọc</b>: đã đẩy/chưa đẩy · người cào · 📅 ngày thêm · tìm tên.</li>
+      <li>Tick card → <b>📤 List lên shop</b> (dùng giá/brand/cookie của bạn) hoặc <b>🎬 Tạo video</b>.</li>
+      <li><b>Thư viện video</b>: xem/tải video đã gen.</li>
+    </ul>` },
+  niche: { title: "🎯 Ngách", html: `
+    <p>Thống kê sản phẩm theo <b>ngách</b> (suy từ category) — không cần crawler.</p>
+    <ul>
+      <li><b>Theo ngách</b>: ngách nào nhiều sp + top sản phẩm.</li>
+      <li><b>Theo shop</b>: shop nào đang chơi ngách gì (từ sp đã list).</li>
+      <li>Bấm 1 ngách để xem chi tiết + sản phẩm.</li>
+    </ul>` },
+  settings: { title: "⚙️ Settings", html: `
+    <p>Cấu hình <b>riêng máy bạn</b> (không share đội).</p>
+    <ul>
+      <li><b>Cấu hình listing theo shop</b>: bật/tắt tính năng từng shop. Thẻ <b>⭐ Mặc định chung</b> → shop mới tự ăn theo.</li>
+      <li><b>Brand</b>: brand mặc định + theo shop. Nút <b>✨ Gợi ý tên</b> để AI đặt tên brand.</li>
+      <li><b>Pricing</b>: công thức giá · <b>imgbb</b>: pool key ảnh.</li>
+    </ul>` },
+  promotions: { title: "🏷️ Promotions", html: `
+    <p>Theo dõi khuyến mãi 4Seller (cron cào mỗi 2 giờ).</p>
+    <ul><li>Sản phẩm <b>hết flash</b> · <b>chưa có discount</b> theo shop.</li></ul>` },
+  cookie: { title: "🔑 Cookie 4Seller", html: `
+    <p>Quản lý đa tài khoản 4Seller.</p>
+    <ul>
+      <li><b>🔐 Tự đăng nhập</b>: nhập email + mật khẩu → tự login (giải captcha) + lưu cookie. Tích "Nhớ" để tự login lại khi hết hạn.</li>
+      <li>Hoặc <b>kéo/paste</b> file cookie export (Cookie-Editor).</li>
+      <li>Cookie hết hạn → nút <b>🔄 Thay cookie</b> trên đúng card (không tạo account trùng).</li>
+      <li>✏️ đổi tên · ↺ sync shop · 🗑 xoá.</li>
+    </ul>` },
+};
+function openHelp() {
+  const v = window._view || "dashboard";
+  const h = HELP[v] || HELP.dashboard;
+  $("#helpTitle").textContent = h.title;
+  $("#helpBody").innerHTML = h.html;
+  $("#helpPanel").classList.add("show");
+}
+function closeHelp() { $("#helpPanel").classList.remove("show"); }
 
 // ─── Auth & boot ──────────────────────────────────────
 const logout = () => fetch("/admin/logout").then(() => location.href = "/admin/login");

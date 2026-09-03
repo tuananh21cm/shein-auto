@@ -1,6 +1,6 @@
 import { chromium, type Page } from "playwright-core";
 import { solveImageCaptcha } from "../captcha/capsolver";
-import { saveAccountCookie } from "../../state/fourSellerAccounts";
+import { saveAccountCookie, setAccountEmail } from "../../state/fourSellerAccounts";
 import { saveCred } from "../../state/fourSellerCreds";
 
 /**
@@ -93,6 +93,7 @@ export async function loginAndSaveCookie(
         await page.waitForTimeout(1500);
         const cookies = (await context.cookies()).filter((c) => (c.domain || "").includes("4seller.com"));
         const { account, shopSyncError } = await saveAccountCookie(cookies);
+        await setAccountEmail(account.uid, username); // gán email (=username) làm nhãn dễ nhìn
         if (opts.remember) await saveCred({ username, password, uid: account.uid, label: account.label });
         console.log(`✅ [login ${username}] OK → ${account.label} (${account.shops.length} shop)${shopSyncError ? " ⚠️ " + shopSyncError : ""}`);
         return { uid: account.uid, label: account.label, shopCount: account.shops.length, attempts: attempt };

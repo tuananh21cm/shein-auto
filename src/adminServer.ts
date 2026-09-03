@@ -2276,17 +2276,18 @@ export const startAdminServer = async () => {
   app.get("/admin/api/cookie/status", async (_req, res) => {
     try {
       const accounts = await fsAccounts();
-      res.json({
-        accounts: accounts.map((a) => ({
-          uid: a.uid,
-          label: a.label,
-          shops: a.shops,
-          shopCount: a.shops.length,
-          cookieCount: a.cookieCount,
-          cookieUpdatedAt: a.cookieUpdatedAt,
-          shopsUpdatedAt: a.shopsUpdatedAt,
-        })),
-      });
+      const { getCredByUid } = await import("./state/fourSellerCreds");
+      const withEmail = await Promise.all(accounts.map(async (a) => ({
+        uid: a.uid,
+        label: a.label,
+        email: a.email || (await getCredByUid(a.uid).catch(() => null))?.username || null,
+        shops: a.shops,
+        shopCount: a.shops.length,
+        cookieCount: a.cookieCount,
+        cookieUpdatedAt: a.cookieUpdatedAt,
+        shopsUpdatedAt: a.shopsUpdatedAt,
+      })));
+      res.json({ accounts: withEmail });
     } catch (err: any) {
       res.status(500).json({ error: err?.message ?? "Lỗi đọc status cookie" });
     }

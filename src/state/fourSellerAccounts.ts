@@ -23,6 +23,8 @@ export interface FourSellerAccount {
   uid: string;
   /** Nhãn hiển thị: "Tài khoản 1", "Tài khoản 2"... (đổi được). */
   label: string;
+  /** Email 4Seller — có khi đăng nhập qua auto-login (user gõ). Dễ nhận biết hơn label. */
+  email?: string;
   /** Danh sách shopName thật từ 4Seller (sync qua get-tidy-list). */
   shops: string[];
   cookieCount: number;
@@ -168,6 +170,18 @@ export const setAccountLabel = async (uid: string, label: string): Promise<void>
   const acc = idx.accounts.find((a) => a.uid === uid);
   if (!acc) throw new Error(`Không có tài khoản uid=${uid}`);
   acc.label = label.trim() || acc.label;
+  await writeIndex(idx);
+};
+
+/** Gán email cho tài khoản (auto-login biết email). Nếu label vẫn mặc định "Tài khoản N" → đổi luôn thành email cho dễ nhìn. */
+export const setAccountEmail = async (uid: string, email: string): Promise<void> => {
+  const e = (email || "").trim();
+  if (!e) return;
+  const idx = await readIndex();
+  const acc = idx.accounts.find((a) => a.uid === uid);
+  if (!acc) return;
+  acc.email = e;
+  if (/^Tài khoản \d+$/.test(acc.label || "")) acc.label = e;
   await writeIndex(idx);
 };
 

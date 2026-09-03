@@ -3741,7 +3741,8 @@ async function loadCookieStatus() {
         <div class="card ck-acc" data-uid="${escapeHtml(a.uid)}" style="margin-bottom: 10px;">
           <div style="display:flex; align-items:center; gap: 10px; flex-wrap: wrap;">
             <span class="ck-health badge" style="background:var(--bg-elev); color:var(--text-mute);">⏳ kiểm tra…</span>
-            <div style="font-weight: 700; font-size: 1.02rem;">🔑 ${escapeHtml(a.label)}</div>
+            <div style="font-weight: 700; font-size: 1.02rem;">${a.email ? "📧" : "🔑"} ${escapeHtml(a.label)}</div>
+            ${a.email && a.email !== a.label ? `<span style="color: var(--accent); font-size: 0.84rem;">📧 ${escapeHtml(a.email)}</span>` : ""}
             <span style="color: var(--text-mute); font-size: 0.82rem;">uid ${escapeHtml(a.uid)}</span>
             <span class="badge ${a.shopCount > 0 ? "badge-success" : "badge-warn"}">${a.shopCount} shop</span>
             <span style="color: ${stale ? "var(--warn)" : "var(--text-mute)"}; font-size: 0.84rem;">${a.cookieCount} cookies · cập nhật ${relTime(a.cookieUpdatedAt)}${stale ? " ⚠️" : ""}</span>

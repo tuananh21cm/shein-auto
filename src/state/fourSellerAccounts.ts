@@ -110,14 +110,26 @@ export const refreshAccountShops = async (uid: string): Promise<string[]> => {
  * → sync shop list. Trả về account (kể cả khi sync shop lỗi — cookie vẫn được lưu).
  */
 export const saveAccountCookie = async (
-  parsed: any
+  parsed: any,
+  opts?: { targetUid?: string }
 ): Promise<{ account: FourSellerAccount; shopSyncError?: string }> => {
   const cookies = normalizeCookieArray(parsed);
   if (cookies.length === 0) throw new Error("File cookie rỗng hoặc sai format (cần array cookie export)");
   const hasFourSeller = cookies.some((c) => String(c?.domain || "").includes("4seller.com"));
   if (!hasFourSeller) throw new Error("Không thấy cookie domain 4seller.com trong file");
-  const uid = extractAccountUid(cookies);
-  if (!uid) throw new Error("Không detect được tài khoản: file thiếu cookie `uid` lẫn `userToken`");
+
+  // targetUid: nút "Thay cookie" cho 1 tài khoản CỤ THỂ → ép cookie mới vào đúng tài khoản đó,
+  // KỂ CẢ khi cookie mới thiếu `uid` hoặc userToken đổi (session mới) → tránh tạo tài khoản trùng.
+  const detected = extractAccountUid(cookies);
+  const uid = opts?.targetUid || detected;
+  if (!uid) throw new Error("Không detect được tài khoản (thiếu cookie `uid`/`userToken`). Bấm '🔄 Thay cookie' trên đúng tài khoản để gán thẳng.");
+
+  // Đảm bảo file có cookie `uid` = uid tài khoản (API cần). Khi ép targetUid → override luôn
+  // để nhất quán (cookie session mới có thể thiếu uid hoặc mang uid khác).
+  const dom = cookies.find((c) => String(c?.domain || "").includes("4seller.com"))?.domain || ".4seller.com";
+  const uidCookie = cookies.find((c) => c?.name === "uid");
+  if (uidCookie) { if (opts?.targetUid) uidCookie.value = String(uid); }
+  else cookies.push({ name: "uid", value: String(uid), domain: dom, path: "/" });
 
   await fs.ensureDir(ACCOUNTS_DIR);
   await fs.writeFile(accountCookiePath(uid), JSON.stringify(cookies, null, 2), "utf-8");

@@ -2304,8 +2304,8 @@ export const startAdminServer = async () => {
       const sessionUser = (req.session as any).user as SessionUser;
       if (sessionUser.role === "viewer") return res.status(403).json({ error: "Viewer không thể upload cookie" });
 
-      const body = req.body as { cookie: any };
-      const { account, shopSyncError } = await saveAccountCookie(body.cookie);
+      const body = req.body as { cookie: any; targetUid?: string };
+      const { account, shopSyncError } = await saveAccountCookie(body.cookie, body.targetUid ? { targetUid: body.targetUid } : undefined);
       // Đổi cookie / thêm shop → xoá cache để UI phản ánh ngay
       shopListCache.clear();
       liveCountCache.clear();

@@ -3786,8 +3786,10 @@ async function loadCookieStatus() {
 
 // Thay cookie 1 chạm: mở file picker → upload → server tự upsert theo uid (thay cái cũ)
 let _ckReplaceLabel = "";
+let _ckReplaceUid = "";
 function replaceCookie(uid, label) {
   _ckReplaceLabel = label || uid;
+  _ckReplaceUid = uid;   // ép cookie mới vào ĐÚNG tài khoản này (kể cả cookie thiếu uid / session mới)
   const inp = $("#ckReplaceInput"); if (inp) { inp.value = ""; inp.click(); }
 }
 async function onReplaceCookieFile(input) {
@@ -3795,7 +3797,7 @@ async function onReplaceCookieFile(input) {
   if (!f) return;
   try {
     const parsed = JSON.parse(await f.text());
-    await uploadCookieArray(parsed, `Thay cookie "${_ckReplaceLabel}"`);
+    await uploadCookieArray(parsed, `Thay cookie "${_ckReplaceLabel}"`, _ckReplaceUid);
   } catch (err) {
     toast(err.message, "error");
   }
@@ -3908,12 +3910,12 @@ function exitNicheDetail() {
   if (dt) dt.style.display = "none";
 }
 
-// Upload 1 mảng cookie (1 file export) — server tự detect tài khoản qua uid.
-async function uploadCookieArray(arr, sourceLabel) {
+// Upload 1 mảng cookie (1 file export). targetUid: ép vào 1 tài khoản cụ thể (nút Thay cookie).
+async function uploadCookieArray(arr, sourceLabel, targetUid) {
   const res = await fetch("/admin/api/cookie", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ cookie: arr }),
+    body: JSON.stringify({ cookie: arr, ...(targetUid ? { targetUid } : {}) }),
   });
   const data = await res.json();
   if (!res.ok) throw new Error(`${sourceLabel}: ${data.error}`);

@@ -2370,14 +2370,20 @@ function renderHubNicheStrip() {
   for (const it of items) { if (it.niche) counts[it.niche] = (counts[it.niche] || 0) + 1; else noNiche++; }
   const niches = Object.entries(counts).sort((a, b) => b[1] - a[1]);
   const active = state.hubNiche || "";
+  const open = !!state.hubNicheOpen;
   const chip = (val, label, count, color) =>
     `<span onclick="setHubNiche('${val}')" style="cursor:pointer; user-select:none; font-size:0.8rem; font-weight:600; padding:5px 12px; border-radius:20px; border:1px solid ${active === val ? "var(--accent)" : "var(--border)"}; background:${active === val ? "var(--accent)" : "var(--bg-elev)"}; color:${active === val ? "#fff" : (color || "var(--text)")};">${label} <b>${count}</b></span>`;
-  el.innerHTML = `<div style="display:flex; gap:7px; flex-wrap:wrap; align-items:center;">
-    <span style="font-size:0.82rem; color:var(--text-mute); margin-right:2px;">🎯 Ngách:</span>
-    ${chip("", "Tất cả", items.length)}
-    ${niches.map(([n, c]) => chip(n, escapeHtml(n.replace(/-/g, " ")), c)).join("")}
-    ${noNiche ? chip("__none", "Chưa rõ ngách", noNiche, "var(--text-mute)") : ""}
-  </div>`;
+  const toggle = `<span onclick="state.hubNicheOpen=!state.hubNicheOpen; renderHubNicheStrip()" style="cursor:pointer; user-select:none; font-size:0.82rem; font-weight:600; padding:5px 12px; border-radius:20px; border:1px solid var(--border); background:var(--bg-elev); color:var(--text);">🎯 Ngách (${niches.length}) ${open ? "▾ Thu gọn" : "▸ Xổ ra"}</span>`;
+  let html = `<div style="display:flex; gap:7px; flex-wrap:wrap; align-items:center;">${toggle}`;
+  if (!open) {
+    // Ẩn: chỉ hiện chip ĐANG LỌC (nếu có) để biết filter, còn lại giấu.
+    if (active) html += chip(active, active === "__none" ? "Chưa rõ ngách" : escapeHtml(active.replace(/-/g, " ")), active === "__none" ? noNiche : (counts[active] || 0));
+  } else {
+    html += chip("", "Tất cả", items.length);
+    html += niches.map(([n, c]) => chip(n, escapeHtml(n.replace(/-/g, " ")), c)).join("");
+    if (noNiche) html += chip("__none", "Chưa rõ ngách", noNiche, "var(--text-mute)");
+  }
+  el.innerHTML = html + `</div>`;
 }
 function setHubNiche(n) { state.hubNiche = (state.hubNiche === n) ? "" : n; renderHub(); }
 

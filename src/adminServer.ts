@@ -33,6 +33,7 @@ import {
   setAccountLabel,
   deleteAccount as fsDeleteAccount,
   bootstrapLegacyCookies,
+  normShopName,
 } from "./state/fourSellerAccounts";
 import {
   getShopList as fsGetShopList,
@@ -843,7 +844,7 @@ export const startAdminServer = async () => {
       }
 
       const accounts = await fsAccounts().catch(() => []);
-      const normShop = (x: string) => (x || "").toLowerCase().replace(/[\s—–-]+/g, "");
+      const normShop = normShopName; // dùng chung: bỏ đuôi _US + space/gạch → khớp dù lệch đuôi
       const accountByShop = new Map<string, string>();
       for (const a of accounts) for (const s of a.shops) accountByShop.set(normShop(s), a.label);
 

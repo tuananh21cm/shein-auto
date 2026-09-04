@@ -36,9 +36,13 @@ interface AccountsIndex {
   accounts: FourSellerAccount[];
 }
 
-/** Chuẩn hoá tên shop để match folder ↔ shopName 4Seller (bỏ space + mọi loại gạch, lowercase). */
+/**
+ * Chuẩn hoá tên shop để match folder ↔ shopName 4Seller.
+ * Bỏ đuôi thị trường `_US`/`_DE`/`_UK`… (nguồn gây "không thấy shop" khi 1 bên có đuôi,
+ * bên kia không) + bỏ space & mọi loại gạch + lowercase → 2 tên khác đuôi vẫn khớp.
+ */
 export const normShopName = (s: string): string =>
-  (s || "").toLowerCase().replace(/[\s—–-]+/g, "");
+  (s || "").toLowerCase().trim().replace(/_[a-z]{2}$/, "").replace(/[\s—–-]+/g, "");
 
 const readIndex = async (): Promise<AccountsIndex> => {
   try {

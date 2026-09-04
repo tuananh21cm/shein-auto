@@ -1797,7 +1797,11 @@ export const startAdminServer = async () => {
   // Liệt kê sản phẩm trong Hub.
   // ── Toggle kết nối Hub TỔNG (shared LAN) ↔ LOCAL (đỡ lag/rối). Persist + áp runtime. ──
   const HUB_MODE_FILE = path.join(process.cwd(), "data", "hub-mode.json");
-  const readHubMode = (): boolean => { try { return !!fs.readJsonSync(HUB_MODE_FILE).local; } catch { return false; } };
+  // Mặc định: TẮT hub tổng nếu hub chung là đường MẠNG (UNC \\..) → máy đồng nghiệp không tự
+  // quét SMB cho đỡ lag. Hub chung là ổ local (máy trung tâm) → mặc định BẬT (giữ full data).
+  // Đã lưu file (user tự toggle) thì luôn theo file.
+  const defaultLocal = /^\\\\/.test(config.hubDirShared);
+  const readHubMode = (): boolean => { try { return !!fs.readJsonSync(HUB_MODE_FILE).local; } catch { return defaultLocal; } };
   const applyHubMode = (local: boolean) => { config.hubDir = local ? config.hubDirLocal : config.hubDirShared; };
   const hasSharedHub = config.hubDirShared !== config.hubDirLocal;
   applyHubMode(readHubMode()); // boot: áp mode đã lưu

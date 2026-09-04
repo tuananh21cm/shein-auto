@@ -755,14 +755,14 @@
           <h1>Settings</h1>
           <div class="subtitle">Cấu hình worker (config/worker.json)</div>
         </div>
-        <button class="btn btn-primary" onclick="saveSettings()">Lưu</button>
+        <span id="setSaveStatus" style="font-size:0.82rem; color:var(--text-mute);">💾 Tự lưu khi sửa</span>
       </div>
       <div class="card">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; gap:12px; flex-wrap:wrap;">
           <h3 style="margin:0;">🏪 Cấu hình listing theo shop <span id="shopCardsCount" style="color:var(--text-mute); font-weight:400; font-size:0.85rem;"></span></h3>
           <div style="display:flex; gap:8px; align-items:center;">
             <input id="brandDefault" placeholder="Brand mặc định (VYNCE)" style="width:200px;" title="Brand dùng cho shop không set brand riêng" />
-            <button class="btn btn-primary" onclick="saveBrands()">Lưu brand mặc định</button>
+            <span id="brandSaveStatus" style="font-size:0.8rem; color:var(--text-mute); white-space:nowrap;">💾 Tự lưu</span>
           </div>
         </div>
         <div id="shopCardsWrap"><div class="empty">Đang tải…</div></div>
@@ -839,7 +839,7 @@
         <div class="card">
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
             <h3 style="margin:0;">💰 Công thức giá bán</h3>
-            <button class="btn btn-primary" onclick="savePricing()">Lưu giá</button>
+            <span id="priceSaveStatus" style="font-size:0.82rem; color:var(--text-mute);">💾 Tự lưu khi sửa</span>
           </div>
           <div style="padding: 10px 14px; background: var(--bg-elev); border-radius: 8px; margin-bottom: 14px; font-size: 0.9rem;">
             Giá bán = ( <b>giá SHEIN</b> + <b style="color:var(--accent);">phí ship</b> ) × <b style="color:var(--accent);">hệ số</b> + <b style="color:var(--accent);">cộng thêm</b>
@@ -3765,6 +3765,18 @@ async function copyMyToken() {
 }
 
 // ─── Settings ─────────────────────────────────────────
+// Auto-save: sửa input / toggle là lưu luôn (debounce), khỏi bấm nút Lưu.
+const _saveTimers = {};
+function autoSave(key, fn, ms = 600) {
+  clearTimeout(_saveTimers[key]);
+  _saveTimers[key] = setTimeout(fn, ms);
+}
+function flashSaved(elId, msg) {
+  const el = document.getElementById(elId); if (!el) return;
+  el.textContent = "✓ Đã lưu"; el.style.color = "var(--success)";
+  clearTimeout(el._t); el._t = setTimeout(() => { el.textContent = msg || "💾 Tự lưu khi sửa"; el.style.color = "var(--text-mute)"; }, 1600);
+}
+
 async function loadSettings() {
   try {
     const res = await fetch("/admin/api/settings");
@@ -3774,7 +3786,13 @@ async function loadSettings() {
     $("#setAutoCronLabel").textContent = data.autoCron ? "🟢 BẬT" : "🔴 TẮT";
     $("#setAutoCron").onchange = (e) => {
       $("#setAutoCronLabel").textContent = e.target.checked ? "🟢 BẬT" : "🔴 TẮT";
+      saveSettings(); // toggle → lưu ngay
     };
+    // Sửa input/select "Máy đăng hàng" → tự lưu (debounce)
+    if (state.user.role === "admin") {
+      ["setConcurrency","setHeadless","setCronFileRouter","setCronQueueManager","setImgWait","setImgMax","setDescImg","setDescAttr"]
+        .forEach((id) => { const el = $("#" + id); if (el) el.onchange = () => autoSave("settings", saveSettings); });
+    }
     // Dropdown: nếu giá trị hiện tại không có trong list (config tay) → thêm option "Tùy chỉnh" để không mất
     const setSelect = (id, val, labelPrefix) => {
       const sel = $(id);
@@ -3828,7 +3846,7 @@ async function saveSettings() {
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error);
-    toast("Đã lưu settings. Cron schedule có thể cần restart để áp dụng.");
+    flashSaved("setSaveStatus");
   } catch (err) {
     toast(err.message, "error");
   }
@@ -3847,6 +3865,10 @@ async function loadPricing() {
     $("#setMultiplier").value = data.multiplier;
     $("#setExtraAdd").value = data.extraAdd;
     previewPrice();
+    if (state.user.role === "admin") {
+      ["setShipFee","setMultiplier","setExtraAdd"]
+        .forEach((id) => { const el = $("#" + id); if (el) el.oninput = () => { previewPrice(); autoSave("pricing", savePricing); }; });
+    }
   } catch (err) {
     toast("Không tải được pricing: " + err.message, "error");
   }
@@ -3892,7 +3914,7 @@ async function savePricing() {
     const data = await res.json();
     if (!res.ok) throw new Error(data.error);
     state.pricing = data;
-    toast(`✓ Đã lưu pricing: ship=${data.shipFee} mult=${data.multiplier} extra=${data.extraAdd}`);
+    flashSaved("priceSaveStatus");
   } catch (err) {
     toast(err.message, "error");
   }
@@ -3908,6 +3930,7 @@ async function loadBrands() {
     if (!res.ok) throw new Error(data.error);
     state.brands = { default: data.default, profiles: data.profiles || {} };
     $("#brandDefault").value = state.brands.default;
+    if (state.user.role === "admin") { const bd = $("#brandDefault"); if (bd) bd.oninput = () => autoSave("brands", saveBrands); }
     renderBrands();
   } catch (err) {
     toast("Không tải được brands: " + err.message, "error");
@@ -4157,7 +4180,7 @@ async function saveBrands() {
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error);
-    toast(`Đã lưu ${Object.keys(state.brands.profiles).length} mapping + default ${data.default || "(no brand)"}`);
+    flashSaved("brandSaveStatus", "💾 Tự lưu");
   } catch (err) {
     toast(err.message, "error");
   }

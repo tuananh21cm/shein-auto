@@ -531,6 +531,9 @@
     <div class="nav-item" data-view="video">
       <span class="ico">🎬</span><span>Video</span>
     </div>
+    <div class="nav-item" data-view="domain" data-admin-only="1">
+      <span class="ico">🌐</span><span>Domain</span>
+    </div>
     <div class="nav-item" data-view="cookie">
       <span class="ico">🍪</span><span>Cookie 4Seller</span>
     </div>
@@ -888,6 +891,33 @@
     </section>
 
     <!-- ───── COOKIE (đa tài khoản 4Seller — port từ main) ───── -->
+    <!-- ───── DOMAIN (Cloudflare Tunnel) ───── -->
+    <section class="view" id="view-domain">
+      <div class="page-head">
+        <div>
+          <h1>🌐 Public Domain</h1>
+          <div class="subtitle">Expose 1 cổng local ra internet qua <code>tooltik.app</code> (Cloudflare Tunnel)</div>
+        </div>
+        <button class="btn btn-ghost" onclick="loadTunnels()">Refresh</button>
+      </div>
+      <div class="card" style="margin-bottom:14px;">
+        <h3 style="margin:0 0 4px;">➕ Tạo public domain</h3>
+        <div style="color:var(--text-mute); font-size:0.84rem; margin-bottom:12px;">Nhập tên (subdomain) + cổng local → tạo tunnel + DNS + chạy. URL công khai = <code>https://&lt;tên&gt;.tooltik.app</code>.</div>
+        <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end;">
+          <label class="field" style="margin:0; flex:1; min-width:140px;"><span>Subdomain</span>
+            <div style="display:flex; align-items:center; gap:4px;"><input id="tunSub" placeholder="vd: myapp" style="flex:1;" /><span style="color:var(--text-mute); font-size:0.85rem;">.tooltik.app</span></div>
+          </label>
+          <label class="field" style="margin:0; width:120px;"><span>Cổng local</span><input id="tunPort" type="number" placeholder="3000" value="3000" /></label>
+          <button class="btn btn-primary" id="tunBtn" onclick="createTunnel()">🌐 Public</button>
+        </div>
+        <div id="tunResult" style="margin-top:10px;"></div>
+      </div>
+      <div class="card">
+        <h3 style="margin:0 0 12px;">Domain đang có</h3>
+        <div id="tunList"><div class="empty">Đang tải…</div></div>
+      </div>
+    </section>
+
     <section class="view" id="view-cookie">
       <div class="page-head">
         <div>
@@ -1045,6 +1075,7 @@ document.querySelectorAll(".nav-item").forEach((item) => {
     if (view === "listings") loadShopsOrListings();
     if (view === "hub") loadHub();
     if (view === "video") loadVideo();
+    if (view === "domain") loadTunnels();
     if (view === "niche") loadNiche();
     if (view === "users") renderUsers();
     if (view === "settings") { loadSettings(); loadBrands(); loadPricing(); loadImgbbStatus(); }
@@ -1053,6 +1084,63 @@ document.querySelectorAll(".nav-item").forEach((item) => {
     closeNav(); // đóng drawer sau khi chọn (mobile)
   };
 });
+
+// ── Public domain (Cloudflare Tunnel) ──
+async function loadTunnels() {
+  try {
+    const d = await (await fetch("/admin/api/tunnels")).json();
+    if (d.error) throw new Error(d.error);
+    const ts = d.tunnels || [];
+    $("#tunList").innerHTML = ts.length ? `
+      <div style="display:flex; flex-direction:column; gap:8px;">
+        ${ts.map((t) => `
+          <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap; padding:10px 12px; background:var(--bg-elev); border:1px solid var(--border); border-radius:10px;">
+            <span style="width:9px; height:9px; border-radius:50%; background:${t.running ? "var(--success)" : "var(--text-mute)"}; flex:none;" title="${t.running ? "đang chạy" : "tắt"}"></span>
+            <div style="flex:1; min-width:160px;">
+              <a href="${escapeHtml(t.url)}" target="_blank" style="color:var(--accent); font-weight:600; text-decoration:none;">${escapeHtml(t.hostname)}</a>
+              <div style="font-size:0.78rem; color:var(--text-mute);">→ ${escapeHtml(t.service)} · ${t.running ? "🟢 chạy" : "⚪ tắt"}</div>
+            </div>
+            ${t.running
+              ? `<button class="btn btn-ghost" style="padding:4px 12px;" onclick="tunAction('${escapeHtml(t.name)}','stop')">⏹ Dừng</button>`
+              : `<button class="btn btn-primary" style="padding:4px 12px;" onclick="tunAction('${escapeHtml(t.name)}','start')">▶ Chạy</button>`}
+            <button class="btn btn-ghost" style="padding:4px 10px; color:var(--danger);" onclick="deleteTunnel('${escapeHtml(t.name)}')">🗑</button>
+          </div>`).join("")}
+      </div>` : '<div class="empty">Chưa có domain nào. Tạo ở trên.</div>';
+  } catch (err) { $("#tunList").innerHTML = `<div class="empty">Lỗi: ${escapeHtml(err.message)}</div>`; }
+}
+async function createTunnel() {
+  const sub = $("#tunSub").value.trim(); const port = Number($("#tunPort").value);
+  if (!sub || !port) return toast("Nhập subdomain + cổng", "error");
+  const btn = $("#tunBtn"), out = $("#tunResult");
+  btn.disabled = true; btn.textContent = "Đang tạo…";
+  out.innerHTML = '<span style="color:var(--text-mute); font-size:0.85rem;">⏳ Tạo tunnel + DNS + chạy… (~10-20s)</span>';
+  try {
+    const res = await fetch("/admin/api/tunnels", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sub, port }) });
+    const d = await res.json();
+    if (!res.ok) throw new Error(d.error);
+    out.innerHTML = `<span style="color:var(--success);font-weight:600;">✅ Public: <a href="${escapeHtml(d.tunnel.url)}" target="_blank" style="color:var(--accent);">${escapeHtml(d.tunnel.url)}</a> → localhost:${d.tunnel.port}</span>`;
+    $("#tunSub").value = "";
+    loadTunnels();
+  } catch (err) { out.innerHTML = `<span style="color:#ef4444; font-size:0.85rem;">❌ ${escapeHtml(err.message)}</span>`; }
+  finally { btn.disabled = false; btn.textContent = "🌐 Public"; }
+}
+async function tunAction(name, action) {
+  try {
+    const res = await fetch(`/admin/api/tunnels/${encodeURIComponent(name)}/${action}`, { method: "POST" });
+    const d = await res.json(); if (!res.ok) throw new Error(d.error);
+    toast(action === "start" ? "▶ Đã chạy" : "⏹ Đã dừng");
+    setTimeout(loadTunnels, 1500);
+  } catch (err) { toast(err.message, "error"); }
+}
+async function deleteTunnel(name) {
+  if (!confirm(`Xoá domain "${name}"? Sẽ dừng tunnel + xoá DNS + xoá tunnel.`)) return;
+  try {
+    const res = await fetch(`/admin/api/tunnels/${encodeURIComponent(name)}`, { method: "DELETE" });
+    const d = await res.json(); if (!res.ok) throw new Error(d.error);
+    toast("🗑 Đã xoá domain");
+    loadTunnels();
+  } catch (err) { toast(err.message, "error"); }
+}
 
 // ── Mobile nav drawer ──
 function toggleNav() {

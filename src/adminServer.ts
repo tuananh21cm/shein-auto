@@ -2645,6 +2645,45 @@ export const startAdminServer = async () => {
 
   // Chuyển đổi mượt: import cookie legacy (data/cookies/<user>.json) vào registry
   // tài khoản 1 lần khi start (file có uid/userToken mới import được).
+  // ── Public domain (Cloudflare Tunnel + tooltik.app) — expose local port ra internet ──
+  app.get("/admin/api/tunnels", async (_req, res) => {
+    try {
+      const { listTunnels } = await import("./services/tunnel/cloudflare");
+      res.json({ tunnels: await listTunnels() });
+    } catch (err: any) { res.status(500).json({ error: err?.message ?? "Lỗi list tunnel" }); }
+  });
+  app.post("/admin/api/tunnels", async (req, res) => {
+    try {
+      const sessionUser = (req.session as any).user as SessionUser;
+      if (sessionUser.role !== "admin") return res.status(403).json({ error: "Chỉ admin" });
+      const { sub, port } = req.body as { sub?: string; port?: number };
+      if (!sub || !port) return res.status(400).json({ error: "Nhập subdomain + port" });
+      const { createTunnel } = await import("./services/tunnel/cloudflare");
+      res.json({ ok: true, tunnel: await createTunnel(String(sub), Number(port)) });
+    } catch (err: any) { res.status(400).json({ error: err?.message ?? "Lỗi tạo tunnel" }); }
+  });
+  app.post("/admin/api/tunnels/:name/:action", async (req, res) => {
+    try {
+      const sessionUser = (req.session as any).user as SessionUser;
+      if (sessionUser.role !== "admin") return res.status(403).json({ error: "Chỉ admin" });
+      const name = String(req.params.name), action = req.params.action;
+      const t = await import("./services/tunnel/cloudflare");
+      if (action === "start") t.startTunnel(name);
+      else if (action === "stop") await t.stopTunnel(name);
+      else return res.status(400).json({ error: "action không hợp lệ" });
+      res.json({ ok: true });
+    } catch (err: any) { res.status(400).json({ error: err?.message ?? "Lỗi" }); }
+  });
+  app.delete("/admin/api/tunnels/:name", async (req, res) => {
+    try {
+      const sessionUser = (req.session as any).user as SessionUser;
+      if (sessionUser.role !== "admin") return res.status(403).json({ error: "Chỉ admin" });
+      const { deleteTunnel } = await import("./services/tunnel/cloudflare");
+      await deleteTunnel(String(req.params.name));
+      res.json({ ok: true });
+    } catch (err: any) { res.status(400).json({ error: err?.message ?? "Lỗi xoá tunnel" }); }
+  });
+
   bootstrapLegacyCookies().catch(() => {});
 
   // Nối lại poll cho video Hub đang render dở (sau restart) — best-effort.

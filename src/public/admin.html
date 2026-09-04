@@ -2039,6 +2039,9 @@ function renderListings() {
   const search = ($("#listSearch").value || "").toLowerCase().trim();
   let items = state.listings.items;
   if (search) items = items.filter((it) => (it.title || "").toLowerCase().includes(search));
+  // Ưu tiên hiển thị: pending (còn chờ đăng) → fail → success
+  const stRank = { pending: 0, fail: 1, success: 2 };
+  items = items.slice().sort((a, b) => (stRank[a.status] ?? 3) - (stRank[b.status] ?? 3));
 
   const grouped = {
     pending: items.filter((i) => i.status === "pending").length,

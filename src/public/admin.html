@@ -95,15 +95,30 @@
       .sidebar.open { transform: translateX(0); box-shadow: 8px 0 30px rgba(0,0,0,.45); }
       #navBackdrop { position: fixed; inset: 0; background: rgba(0,0,0,.55); z-index: 250; }
       #navBackdrop.show { display: block; }
-      .main { padding: 14px; }
-      .page-head { margin-bottom: 16px; gap: 10px; }
-      .page-head h1 { font-size: 1.25rem; }
-      .card { padding: 14px; border-radius: 12px; }
-      /* Grid ảnh gọn 2 cột trên phone */
-      .sov-minigrid, .listings-grid, .prod-grid, .niche-grid, .snc-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; gap: 10px !important; }
+      .main { padding: 10px; }
+      .page-head { margin-bottom: 12px; gap: 8px; }
+      .page-head h1 { font-size: 1.2rem; }
+      .page-head .subtitle { font-size: 0.8rem; }
+      .card { padding: 11px; border-radius: 11px; margin-bottom: 10px !important; }
+      /* Card ảnh NHỎ hơn → nhiều/màn. Card thuần ảnh (niche/top sp) 3 cột; card có nút 2 cột. */
+      .prod-grid, .niche-grid { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; gap: 7px !important; }
+      .listings-grid, .sov-minigrid, .snc-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; gap: 8px !important; }
+      /* KPI dày: 3 cột, tile nhỏ gọn → thống kê nhiều hơn 1 màn */
+      .kpis, .lp-kpis, .qp-kpis { grid-template-columns: repeat(3, 1fr) !important; gap: 6px !important; margin-bottom: 10px !important; }
+      .kpi, .lp-kpi, .qp-kpi { padding: 8px 7px !important; min-width: 0 !important; border-radius: 9px !important; }
+      .kpi-v, .lp-kpi-v, .qp-v { font-size: 1.15rem !important; }
+      .kpi-k, .lp-kpi-k, .qp-k { font-size: 0.62rem !important; margin-top: 2px !important; }
+      /* Shop card gọn: ảnh thấp, padding nhỏ, số nhỏ */
+      .shop-card .body { padding: 9px !important; gap: 7px !important; }
+      .shop-card .name { font-size: 0.82rem !important; }
+      .shop-card .counter { padding: 5px 2px !important; }
+      .shop-card .counter .val { font-size: 0.92rem !important; }
+      .shop-card { contain-intrinsic-size: auto 240px; }
+      /* Card listing thấp lại (grid 3 cột) */
+      .listing-card .body { padding: 7px 8px 9px !important; gap: 4px !important; font-size: 0.72rem; }
+      .listing-card .img-wrap { aspect-ratio: 1 / 1; }
       /* Bộ lọc / toolbar: xuống hàng, select rộng */
       #view-hub select, #view-hub input, #view-listings select, #view-video select { min-width: 0 !important; }
-      .lp-kpis, .qp-kpis { grid-template-columns: 1fr 1fr; }
       /* Modal / help / picker full màn */
       .modal, .help-box, .shop-picker { width: 96vw !important; max-width: 96vw !important; }
       #helpFab { right: 14px; bottom: 14px; width: 42px; height: 42px; }

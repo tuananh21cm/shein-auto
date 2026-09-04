@@ -78,10 +78,36 @@
     .grid-stats { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
     .grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    /* Mobile topbar + drawer — ẩn ở desktop */
+    #mobileTopbar { display: none; }
+    #navBackdrop { display: none; }
     @media (max-width: 900px) {
-      .app { grid-template-columns: 1fr; }
-      .sidebar { position: relative; height: auto; }
       .grid-2, .grid-3 { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 768px) {
+      /* Topbar sticky + hamburger */
+      #mobileTopbar { display: flex; align-items: center; gap: 12px; position: sticky; top: 0; z-index: 220; background: var(--bg-elev); border-bottom: 1px solid var(--border); padding: 10px 14px; }
+      #navToggle { background: none; border: 1px solid var(--border); color: var(--text); font-size: 1.2rem; line-height: 1; padding: 5px 11px; border-radius: 9px; cursor: pointer; }
+      .mt-brand { font-weight: 800; font-size: 1.05rem; display: flex; align-items: center; gap: 8px; }
+      /* App full width, sidebar thành drawer trượt */
+      .app { display: block; min-height: auto; }
+      .sidebar { position: fixed; top: 0; left: 0; width: 252px; max-width: 82vw; height: 100vh; z-index: 300; transform: translateX(-100%); transition: transform .25s ease; box-shadow: 0 0 0 rgba(0,0,0,0); overflow-y: auto; }
+      .sidebar.open { transform: translateX(0); box-shadow: 8px 0 30px rgba(0,0,0,.45); }
+      #navBackdrop { position: fixed; inset: 0; background: rgba(0,0,0,.55); z-index: 250; }
+      #navBackdrop.show { display: block; }
+      .main { padding: 14px; }
+      .page-head { margin-bottom: 16px; gap: 10px; }
+      .page-head h1 { font-size: 1.25rem; }
+      .card { padding: 14px; border-radius: 12px; }
+      /* Grid ảnh gọn 2 cột trên phone */
+      .sov-minigrid, .listings-grid, .prod-grid, .niche-grid, .snc-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; gap: 10px !important; }
+      /* Bộ lọc / toolbar: xuống hàng, select rộng */
+      #view-hub select, #view-hub input, #view-listings select, #view-video select { min-width: 0 !important; }
+      .lp-kpis, .qp-kpis { grid-template-columns: 1fr 1fr; }
+      /* Modal / help / picker full màn */
+      .modal, .help-box, .shop-picker { width: 96vw !important; max-width: 96vw !important; }
+      #helpFab { right: 14px; bottom: 14px; width: 42px; height: 42px; }
+      table { font-size: 0.82rem; }
     }
 
     .card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 14px; padding: 20px; }
@@ -467,6 +493,11 @@
     <div id="helpBody" class="help-body"></div>
   </div>
 </div>
+<div id="mobileTopbar">
+  <button id="navToggle" onclick="toggleNav()" aria-label="Menu">☰</button>
+  <span class="mt-brand"><span class="dot"></span>Homie</span>
+</div>
+<div id="navBackdrop" onclick="closeNav()"></div>
 <div class="app">
   <aside class="sidebar">
     <div class="brand"><span class="dot"></span>Homie</div>
@@ -1010,8 +1041,19 @@ document.querySelectorAll(".nav-item").forEach((item) => {
     if (view === "settings") { loadSettings(); loadBrands(); loadPricing(); loadImgbbStatus(); }
     if (view === "promotions") loadPromotions();
     if (view === "cookie") loadCookieStatus();
+    closeNav(); // đóng drawer sau khi chọn (mobile)
   };
 });
+
+// ── Mobile nav drawer ──
+function toggleNav() {
+  const open = document.querySelector(".sidebar")?.classList.toggle("open");
+  document.getElementById("navBackdrop")?.classList.toggle("show", open);
+}
+function closeNav() {
+  document.querySelector(".sidebar")?.classList.remove("open");
+  document.getElementById("navBackdrop")?.classList.remove("show");
+}
 
 // ── Hướng dẫn theo màn (nút ? float góc phải dưới) ──
 const HELP = {

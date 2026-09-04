@@ -875,6 +875,20 @@
         </p>
       </div>
 
+      <div class="card" style="margin-top:18px; border-left: 4px solid var(--accent);">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; gap:12px; flex-wrap:wrap;">
+          <h3 style="margin:0;">🔑 API Token <span style="color:var(--text-mute); font-weight:400; font-size:0.85rem;">— dán vào Tampermonkey scraper (SHEIN → Hub)</span></h3>
+          <div style="display:flex; gap:8px;">
+            <button class="btn btn-ghost" onclick="copyMyToken()">📋 Copy</button>
+            <button class="btn btn-ghost" onclick="regenMyToken()">🔄 Tạo / đổi token</button>
+          </div>
+        </div>
+        <input id="myApiToken" readonly value="" placeholder="(chưa tải…)" style="font-family:'JetBrains Mono', monospace; font-size:0.8rem; width:100%;" onclick="this.select()" />
+        <p style="color: var(--text-mute); font-size: 0.8rem; margin-top: 10px;">
+          ⓘ Token gắn với tài khoản đang đăng nhập (<code id="tokUser">—</code>). Trong Tampermonkey → menu <b>⚙ Cấu hình Hub</b> → dán Server (<code>http://localhost:3000</code> hoặc domain của bạn) + token này. Bấm <b>🔄 Tạo/đổi</b> = token cũ ngừng hoạt động, phải dán lại.
+        </p>
+      </div>
+
       <div class="card" style="margin-top:18px;">
         <h3>Cấu hình runtime (read-only)</h3>
         <table>
@@ -1096,7 +1110,7 @@ function goToView(view, push) {
   if (view === "domain") loadTunnels();
   if (view === "niche") loadNiche();
   if (view === "users") renderUsers();
-  if (view === "settings") { loadSettings(); loadBrands(); loadPricing(); loadImgbbStatus(); }
+  if (view === "settings") { loadSettings(); loadBrands(); loadPricing(); loadImgbbStatus(); loadMyToken(); }
   if (view === "promotions") loadPromotions();
   if (view === "cookie") loadCookieStatus();
   closeNav(); // đóng drawer sau khi chọn (mobile)
@@ -3727,6 +3741,7 @@ async function saveConfig(autoSave = false) {
 async function loadMyToken() {
   const el = document.getElementById("myApiToken");
   if (!el) return;
+  const uEl = document.getElementById("tokUser"); if (uEl) uEl.textContent = state.user?.username || "—";
   try {
     const res = await fetch("/admin/api/me/token");
     const data = await res.json();

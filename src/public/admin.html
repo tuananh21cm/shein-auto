@@ -1898,9 +1898,14 @@ function renderListingProgress() {
   const failSum = rows.reduce((a, s) => a + (s.fail || 0), 0);
   const overallPct = Math.min(100, Math.round(totalCnt / totalTarget * 100));
   const barColor = (c) => c >= LP_TARGET ? "#22c55e" : c >= 50 ? "#3b82f6" : c >= 1 ? "#f59e0b" : "var(--text-mute)";
-  // Chưa đạt & tụt nhất lên đầu; shop đã đạt xuống cuối (mờ)
-  const sorted = rows.slice().sort((a, b) => (a.cnt >= LP_TARGET) - (b.cnt >= LP_TARGET) || a.cnt - b.cnt);
-  const view = state.lpHideDone ? sorted.filter((s) => s.cnt < LP_TARGET) : sorted;
+  // Shop CÒN HÀNG CHỜ ĐĂNG lên đầu (còn việc phải publish); rồi chưa đạt & tụt nhất; đã đạt xuống cuối.
+  const sorted = rows.slice().sort((a, b) =>
+    (((b.pending || 0) > 0) - ((a.pending || 0) > 0))
+    || ((a.cnt >= LP_TARGET) - (b.cnt >= LP_TARGET))
+    || a.cnt - b.cnt);
+  const pendingShops = rows.filter((s) => (s.pending || 0) > 0).length;
+  let view = state.lpHideDone ? sorted.filter((s) => s.cnt < LP_TARGET) : sorted;
+  if (state.lpOnlyPending) view = view.filter((s) => (s.pending || 0) > 0);
 
   const sub = $("#listingsSubtitle");
   if (sub) sub.innerHTML = `${rows.length} shop &nbsp;·&nbsp; <b>${totalCnt}</b>/${totalTarget} listing (${overallPct}%) &nbsp;·&nbsp; <span style="color:var(--success);">✅ ${done} đạt target</span> &nbsp;·&nbsp; <span style="color:var(--warn);">⏳ ${pendingSum} chờ</span>`;
@@ -1912,6 +1917,7 @@ function renderListingProgress() {
         <h3 style="margin:0;">📊 Tiến độ đăng — target ${LP_TARGET} listing/shop</h3>
         <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
           ${failSum ? `<button class="btn btn-danger" style="padding:5px 12px;" onclick="retryAllFails(${failSum})">↻ Chạy lại hết fail (${failSum})</button>` : ""}
+          ${pendingShops ? `<label style="font-size:0.8rem; display:flex; align-items:center; gap:6px; cursor:pointer; color:var(--warn);"><input type="checkbox" ${state.lpOnlyPending ? "checked" : ""} onchange="state.lpOnlyPending=this.checked; renderListingProgress()"> ⏳ Chỉ shop còn chờ đăng (${pendingShops})</label>` : ""}
           <label style="font-size:0.8rem; display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" ${state.lpHideDone ? "checked" : ""} onchange="state.lpHideDone=this.checked; renderListingProgress()"> Ẩn shop đã đạt (${done})</label>
         </div>
       </div>
@@ -2068,10 +2074,11 @@ function renderListings() {
   const selectableCount = items.length;
   const toolbar = selectableCount > 0 && canEdit ? `
     <div class="list-toolbar" style="display:flex; align-items:center; gap:10px; margin-bottom: 12px; padding: 10px 14px; background: var(--bg-elev); border-radius: 8px; font-size: 0.85rem; flex-wrap: wrap;">
+      ${grouped.pending > 0 ? `<button class="btn btn-primary" style="padding: 5px 12px; white-space:nowrap;" onclick="publishAllPending()">🚀 Publish tất cả ${grouped.pending} chờ đăng</button>` : ""}
       <button class="btn btn-ghost" onclick="selectAllVisible()" style="padding: 5px 12px; white-space:nowrap;">☑ Chọn tất cả (${selectableCount})</button>
       <button class="btn btn-ghost" onclick="clearListingSelect()" style="padding: 5px 12px; white-space:nowrap;">Bỏ chọn</button>
       ${grouped.fail > 0 ? `<button class="btn btn-danger" style="padding: 5px 12px; white-space:nowrap;" onclick="retryFailsThisShop(${grouped.fail})">↻ Chạy lại ${grouped.fail} fail</button>` : ""}
-      <span class="lt-hint" style="color: var(--text-mute);">Tick checkbox góc trái card · pending → Run · fail → Retry · success → Clone</span>
+      <span class="lt-hint" style="color: var(--text-mute);">Tick checkbox góc trái card · pending → Publish · fail → Retry · success → Clone</span>
     </div>` : '';
 
   $("#listingsGrid").innerHTML =
@@ -2113,7 +2120,7 @@ function renderListings() {
           </div>
           <div class="actions">
             <button onclick="viewListing('${idEnc}')">View</button>
-            ${it.status === "pending" && canEdit ? `<button class="retry" onclick="openRunNow('${idEnc}')">▶ Run</button>` : ""}
+            ${it.status === "pending" && canEdit ? `<button class="retry" onclick="openRunNow('${idEnc}')">🚀 Publish</button>` : ""}
             ${it.status === "fail" && canEdit ? `<button class="retry" onclick="retryListing('${idEnc}')">↻ Retry</button>` : ""}
             ${isAdmin ? `<button class="delete" onclick="deleteListing('${idEnc}')">🗑</button>` : ""}
           </div>
@@ -2236,7 +2243,7 @@ function renderBulkBar() {
   }
   bar.innerHTML = `
     <span class="count">✓ ${n} đã chọn</span>
-    ${pend > 0 ? `<button class="btn btn-primary" onclick="runBatch()">▶ Run ${pend} pending</button>` : ''}
+    ${pend > 0 ? `<button class="btn btn-primary" onclick="runBatch()">🚀 Publish ${pend} pending</button>` : ''}
     ${fail > 0 ? `<button class="btn btn-primary" onclick="retryBatch()">↻ Retry ${fail} fail</button>` : ''}
     ${succ > 0 ? `<button class="btn btn-primary" onclick="openCloneModal()">⧉ Clone ${succ} → shop</button>` : ''}
     <button class="btn btn-ghost" onclick="addToHub()">🗂️ Thêm ${n} vào Hub</button>
@@ -2269,10 +2276,30 @@ async function addToHub() {
   }
 }
 
+// Publish HẾT listing pending của shop đang xem (không cần tick tay) → run-batch.
+async function publishAllPending() {
+  const ids = (state.listings.items || []).filter((i) => i.status === "pending").map((i) => i.id);
+  if (!ids.length) return toast("Không có listing nào đang chờ đăng", "error");
+  if (!confirm(`Publish ${ids.length} listing đang chờ đăng của shop "${state.listings.selectedShop}"?\nMỗi listing spawn worker đăng lên 4Seller ngay (không đợi cron).`)) return;
+  try {
+    const res = await fetch("/admin/api/listings/run-batch", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+    const skipMsg = data.skipped?.length ? ` (bỏ qua ${data.skipped.length})` : '';
+    toast(`🚀 Đang publish ${data.spawned.length} listing${skipMsg}`);
+    state.listings.selected = new Set();
+    renderBulkBar();
+    setTimeout(loadShopsOrListings, 1500);
+  } catch (err) { toast(err.message, "error"); }
+}
+
 async function runBatch() {
   const ids = Array.from(state.listings.selected || []);
   if (ids.length === 0) return;
-  if (!confirm(`Chạy worker cho ${ids.length} listing pending? Mỗi file chạy trên shop hiện tại của nó.`)) return;
+  if (!confirm(`Publish ${ids.length} listing pending? Mỗi file spawn worker đăng lên shop hiện tại của nó.`)) return;
   try {
     const res = await fetch("/admin/api/listings/run-batch", {
       method: "POST",

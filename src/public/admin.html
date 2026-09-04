@@ -438,6 +438,12 @@
     .help-steps li::before { content: counter(hs); position: absolute; left: 0; top: 0; width: 20px; height: 20px; border-radius: 50%; background: var(--accent); color: #fff; font-size: 0.72rem; font-weight: 700; display: flex; align-items: center; justify-content: center; }
     .cp { cursor: pointer; opacity: .45; font-size: 0.72rem; flex-shrink: 0; user-select: none; transition: opacity .12s; }
     .cp:hover { opacity: 1; }
+    /* Skeleton loaders — ảnh card pulse trong lúc tải (image paint đè lên khi xong). Chỉ chạy card đang hiện nhờ content-visibility. */
+    @keyframes skelPulse { 0%, 100% { background-color: var(--bg-elev); } 50% { background-color: rgba(140, 140, 160, .16); } }
+    .pimg, .sov-mav, .niche-prev > div, .img-wrap, .shop-card .cover, .vshop-thumb { animation: skelPulse 1.5s ease-in-out infinite; }
+    /* Chart skeleton — shimmer chạy nền trong khi fetch doanh thu 30 ngày */
+    @keyframes chartShim { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+    .chart-skel { height: 250px; border-radius: 8px; background: linear-gradient(90deg, var(--bg-elev) 25%, rgba(140,140,160,.13) 50%, var(--bg-elev) 75%); background-size: 200% 100%; animation: chartShim 1.5s linear infinite; }
     .mf.bad { color: var(--danger); } .mf.warn { color: var(--warn); }
     /* toggle switch (modal cấu hình shop) */
     .sw { position: relative; width: 42px; height: 23px; flex: none; display: inline-block; }
@@ -522,7 +528,7 @@
             <span><span class="st-dot" style="background:#22c55e;"></span> Đơn</span>
           </div>
         </div>
-        <div id="stChart" style="margin-top:14px; position:relative;"><div class="empty">Đang tải doanh thu 30 ngày… (lần đầu hơi lâu — gọi 4Seller)</div></div>
+        <div id="stChart" style="margin-top:14px; position:relative;"><div class="chart-skel"></div></div>
       </div>
       <div id="dashOverview"><div class="empty">Đang tải tổng quan shop…</div></div>
 
@@ -1199,6 +1205,7 @@ async function refreshDashboard() {
 
 // ── Chart doanh thu + đơn 30 ngày (clone 4Seller) ──
 function loadSalesTrend() {
+  const _sk = $("#stChart"); if (_sk && !_sk.querySelector("svg")) _sk.innerHTML = '<div class="chart-skel"></div>';
   fetch("/admin/api/dashboard/sales-trend?days=30")
     .then((r) => r.json())
     .then((d) => { if (d.error) throw new Error(d.error); renderSalesTrend(d); })
@@ -2786,7 +2793,7 @@ function renderVideoShopGrid(shops) {
     ${shops.map((s) => {
       const img = (state.videoShopImg || {})[String(s.shop).toLowerCase()];
       return `<div class="shop-card" onclick="openShopVideos('${escapeHtml(s.shop).replace(/'/g,"\\'")}')" style="cursor:pointer;">
-        <div style="aspect-ratio:16/10; background:var(--bg-elev) center/cover no-repeat; ${img ? `background-image:url('${escapeHtml(img)}');` : ""} display:flex; align-items:center; justify-content:center; font-size:1.8rem;">${img ? "" : "🎬"}</div>
+        <div class="vshop-thumb" style="aspect-ratio:16/10; background:center/cover no-repeat; ${img ? `background-image:url('${escapeHtml(img)}');` : ""} display:flex; align-items:center; justify-content:center; font-size:1.8rem;">${img ? "" : "🎬"}</div>
         <div style="padding:9px 11px;">
           <div style="font-weight:600; font-size:0.82rem; line-height:1.3; height:2.1em; overflow:hidden;" title="${escapeHtml(s.shop)}">${escapeHtml(nicheCleanShop(s.shop))}</div>
           <div style="font-size:0.76rem; color:var(--text-mute); margin-top:5px;">🎬 <b style="color:var(--text);">${s.total}</b> video · <span style="color:var(--success);">${s.ready + s.posted} xong</span>${s.generating ? ` · <span style="color:#8b5cf6;">${s.generating}⏳</span>` : ""}${s.error ? ` · <span style="color:var(--danger);">${s.error}❌</span>` : ""}</div>

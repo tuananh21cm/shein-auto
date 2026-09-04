@@ -115,6 +115,14 @@ export const startAdminServer = async () => {
     return res.redirect("/admin/login");
   });
 
+  // Route theo màn: /admin/video, /admin/hub... → cùng SPA admin.html (deep-link + refresh giữ màn).
+  const SPA_VIEWS = new Set(["dashboard", "listings", "hub", "video", "niche", "settings", "promotions", "cookie", "domain"]);
+  app.get("/admin/:view", (req, res, next) => {
+    if (!SPA_VIEWS.has(req.params.view)) return next();
+    if (req.session && (req.session as any).user) return res.sendFile(path.join(__dirname, "public", "admin.html"));
+    return res.redirect("/admin/login");
+  });
+
   // ── Auth ──────────────────────────────────────────────────
   app.post("/admin/api/auth/login", async (req, res) => {
     try {

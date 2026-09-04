@@ -1061,29 +1061,44 @@ $("#themeToggle").onclick = () => setTheme(document.documentElement.dataset.them
 setTheme(localStorage.getItem("theme") || "dark");
 
 // ─── Navigation ───────────────────────────────────────
+// Chuyển màn + cập nhật URL /admin/<view>. push=true → thêm history (bấm nav); false → boot/back.
+function goToView(view, push) {
+  const item = document.querySelector(`.nav-item[data-view="${view}"]`);
+  if (!item) { view = "dashboard"; }
+  window._view = view;
+  document.querySelectorAll(".nav-item").forEach((i) => i.classList.remove("active"));
+  document.querySelectorAll(".view").forEach((v) => v.classList.remove("active"));
+  document.getElementById('bulkBar')?.remove();
+  document.getElementById('hubBulkBar')?.remove();
+  document.querySelector(`.nav-item[data-view="${view}"]`)?.classList.add("active");
+  $(`#view-${view}`)?.classList.add("active");
+  const url = `/admin/${view}`;
+  if (push) { if (location.pathname !== url) history.pushState({ view }, "", url); }
+  else if (location.pathname !== url) history.replaceState({ view }, "", url);
+  if (view === "listings") loadShopsOrListings();
+  if (view === "hub") loadHub();
+  if (view === "video") loadVideo();
+  if (view === "domain") loadTunnels();
+  if (view === "niche") loadNiche();
+  if (view === "users") renderUsers();
+  if (view === "settings") { loadSettings(); loadBrands(); loadPricing(); loadImgbbStatus(); }
+  if (view === "promotions") loadPromotions();
+  if (view === "cookie") loadCookieStatus();
+  closeNav(); // đóng drawer sau khi chọn (mobile)
+}
 document.querySelectorAll(".nav-item").forEach((item) => {
-  item.onclick = () => {
-    const view = item.dataset.view;
-    window._view = view;
-    document.querySelectorAll(".nav-item").forEach((i) => i.classList.remove("active"));
-    document.querySelectorAll(".view").forEach((v) => v.classList.remove("active"));
-    // Dọn các bulk bar nổi khi rời view
-    document.getElementById('bulkBar')?.remove();
-    document.getElementById('hubBulkBar')?.remove();
-    item.classList.add("active");
-    $(`#view-${view}`).classList.add("active");
-    if (view === "listings") loadShopsOrListings();
-    if (view === "hub") loadHub();
-    if (view === "video") loadVideo();
-    if (view === "domain") loadTunnels();
-    if (view === "niche") loadNiche();
-    if (view === "users") renderUsers();
-    if (view === "settings") { loadSettings(); loadBrands(); loadPricing(); loadImgbbStatus(); }
-    if (view === "promotions") loadPromotions();
-    if (view === "cookie") loadCookieStatus();
-    closeNav(); // đóng drawer sau khi chọn (mobile)
-  };
+  item.onclick = () => goToView(item.dataset.view, true);
 });
+// Back/forward trình duyệt
+window.addEventListener("popstate", (e) => {
+  const view = (e.state && e.state.view) || (location.pathname.match(/^\/admin\/([a-z]+)/) || [])[1] || "dashboard";
+  goToView(view, false);
+});
+// Boot: mở đúng màn theo URL (/admin/video → view video). Chỉ khi khác dashboard mặc định.
+function routeFromUrl() {
+  const view = (location.pathname.match(/^\/admin\/([a-z]+)/) || [])[1];
+  if (view && document.querySelector(`.nav-item[data-view="${view}"]`)) goToView(view, false);
+}
 
 // ── Public domain (Cloudflare Tunnel) ──
 async function loadTunnels() {
@@ -1316,6 +1331,7 @@ async function bootstrap() {
 
     await Promise.all([refreshDashboard(), loadConfig()]);
     connectSSE();
+    routeFromUrl(); // /admin/<view> → mở đúng màn (deep-link/refresh)
   } catch (err) {
     console.error(err);
   }

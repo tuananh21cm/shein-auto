@@ -1795,12 +1795,36 @@ export const startAdminServer = async () => {
   });
 
   // Liệt kê sản phẩm trong Hub.
+  // ── Toggle kết nối Hub TỔNG (shared LAN) ↔ LOCAL (đỡ lag/rối). Persist + áp runtime. ──
+  const HUB_MODE_FILE = path.join(process.cwd(), "data", "hub-mode.json");
+  const readHubMode = (): boolean => { try { return !!fs.readJsonSync(HUB_MODE_FILE).local; } catch { return false; } };
+  const applyHubMode = (local: boolean) => { config.hubDir = local ? config.hubDirLocal : config.hubDirShared; };
+  const hasSharedHub = config.hubDirShared !== config.hubDirLocal;
+  applyHubMode(readHubMode()); // boot: áp mode đã lưu
+  if (config.hubDir === config.hubDirLocal && hasSharedHub) console.log(`🔌 Hub tổng: TẮT — đọc local (${config.hubDirLocal})`);
+
+  const hubModeInfo = () => ({ local: config.hubDir === config.hubDirLocal, hasShared: hasSharedHub, shared: config.hubDirShared, localDir: config.hubDirLocal });
+
   app.get("/admin/api/hub", async (_req, res) => {
     try {
       const items = await scanHub();
-      res.json({ items });
+      res.json({ items, hubMode: hubModeInfo() });
     } catch (err: any) {
       res.status(500).json({ error: err?.message ?? "Lỗi scan hub" });
+    }
+  });
+
+  // Bật/tắt kết nối Hub tổng. { local: true } = TẮT hub tổng, chỉ đọc local.
+  app.post("/admin/api/hub/mode", async (req, res) => {
+    try {
+      const sessionUser = (req.session as any).user as SessionUser;
+      if (sessionUser.role === "viewer") return res.status(403).json({ error: "Viewer không thể đổi" });
+      const local = !!(req.body as any)?.local;
+      applyHubMode(local);
+      await fs.writeJson(HUB_MODE_FILE, { local }).catch(() => {});
+      res.json({ ok: true, ...hubModeInfo() });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? "Lỗi đổi hub mode" });
     }
   });
 

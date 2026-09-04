@@ -584,7 +584,10 @@
           <h1>Hub sản phẩm</h1>
           <div class="subtitle" id="hubSubtitle">Kho chung — kéo sản phẩm về đây rồi list lên nhiều shop</div>
         </div>
-        <button class="btn btn-ghost" onclick="loadHub()">Refresh</button>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <button class="btn btn-ghost" id="hubModeBtn" onclick="toggleHubMode()" style="display:none;"></button>
+          <button class="btn btn-ghost" onclick="loadHub()">Refresh</button>
+        </div>
       </div>
       <div id="hubNicheDash"></div>
       <div class="card">
@@ -2288,6 +2291,7 @@ async function loadHub() {
     const data = await res.json();
     if (!res.ok) throw new Error(data.error);
     state.hub.items = data.items || [];
+    renderHubModeBtn(data.hubMode);
     const valid = new Set(state.hub.items.map((i) => i.id));
     for (const k of [...state.hub.selected]) if (!valid.has(k)) state.hub.selected.delete(k);
     renderHub();
@@ -2295,6 +2299,27 @@ async function loadHub() {
     toast("Không tải được Hub: " + err.message, "error");
     $("#hubGrid").innerHTML = '<div class="empty">Lỗi tải dữ liệu</div>';
   }
+}
+
+// Toggle kết nối Hub tổng (chỉ hiện khi có hub chung LAN khác local).
+let _hubModeLocal = false;
+function renderHubModeBtn(mode) {
+  const btn = $("#hubModeBtn"); if (!btn) return;
+  if (!mode || !mode.hasShared) { btn.style.display = "none"; return; }
+  _hubModeLocal = !!mode.local;
+  btn.style.display = "";
+  btn.innerHTML = _hubModeLocal ? "🔌 Hub tổng: TẮT" : "🌐 Hub tổng: BẬT";
+  btn.title = _hubModeLocal ? "Đang chỉ đọc data LOCAL — bấm để BẬT lại hub chung (LAN)" : "Đang đọc hub chung (LAN) — bấm TẮT để chỉ xem local cho đỡ lag/rối";
+  btn.style.color = _hubModeLocal ? "var(--warn)" : "";
+}
+async function toggleHubMode() {
+  try {
+    const res = await fetch("/admin/api/hub/mode", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ local: !_hubModeLocal }) });
+    const d = await res.json();
+    if (!res.ok) throw new Error(d.error);
+    toast(d.local ? "🔌 Đã TẮT hub tổng — chỉ xem data local" : "🌐 Đã BẬT hub tổng (LAN)");
+    loadHub();
+  } catch (err) { toast(err.message, "error"); }
 }
 
 // Dashboard ngách ở đầu Hub — DONUT chart (top-6 + Khác) + legend click-lọc. Palette categorical đã validate (dataviz).

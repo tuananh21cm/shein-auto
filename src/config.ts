@@ -25,8 +25,12 @@ export const config = {
   downloadDir: envDownload ? path.normalize(envDownload) : "",
   /** Default fallback cho user không cấu hình baseSheinAutoDir riêng. Rỗng = user bắt buộc tự set. */
   baseSheinAutoDir: envBase ? path.normalize(envBase) : "",
-  /** Hub sản phẩm — kho chung toàn hệ thống, NẰM NGOÀI baseDir user nên cron không quét. */
+  /** Hub sản phẩm ĐANG DÙNG (có thể đổi runtime giữa shared/local qua toggle UI). */
   hubDir: envHub ? path.normalize(envHub) : path.join(__dirname, "..", "data", "hub"),
+  /** Nguồn Hub CHUNG (LAN) — dùng khi BẬT kết nối hub tổng. */
+  hubDirShared: envHub ? path.normalize(envHub) : path.join(__dirname, "..", "data", "hub"),
+  /** Hub LOCAL (chỉ máy này) — TẮT kết nối hub tổng → đọc data local cho đỡ lag/rối. */
+  hubDirLocal: path.join(__dirname, "..", "data", "hub"),
   cronFileRouter: process.env.CRON_FILE_ROUTER || worker.fileRouterCron,
   cronQueueManager: process.env.CRON_QUEUE_MANAGER || worker.queueManagerCron,
   cookieFile: path.join(__dirname, "cookies", "listing4sellerCookie.json"),

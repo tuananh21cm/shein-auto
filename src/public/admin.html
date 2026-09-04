@@ -108,6 +108,15 @@
       .modal, .help-box, .shop-picker { width: 96vw !important; max-width: 96vw !important; }
       #helpFab { right: 14px; bottom: 14px; width: 42px; height: 42px; }
       table { font-size: 0.82rem; }
+      /* Toolbar Listings: ẩn helper dài, nút chia đều 1 hàng gọn */
+      .list-toolbar .lt-hint { display: none; }
+      .list-toolbar { gap: 8px !important; }
+      .list-toolbar button { flex: 1 1 auto; }
+      /* Back-bar shop detail: xuống hàng gọn, tên shop 1 dòng, search rộng */
+      .back-bar { flex-wrap: wrap; gap: 8px; padding: 10px 12px; }
+      .back-bar .crumb { flex: 1 1 auto; min-width: 0; }
+      #listStatus { min-width: 110px !important; width: auto !important; }
+      #listSearch { flex: 1 1 140px; width: auto !important; min-width: 0 !important; }
     }
 
     .card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 14px; padding: 20px; }
@@ -1939,11 +1948,11 @@ function renderListings() {
 
   const selectableCount = items.length;
   const toolbar = selectableCount > 0 && canEdit ? `
-    <div style="display:flex; align-items:center; gap:10px; margin-bottom: 12px; padding: 10px 14px; background: var(--bg-elev); border-radius: 8px; font-size: 0.85rem;">
-      <button class="btn btn-ghost" onclick="selectAllVisible()" style="padding: 5px 12px;">☑ Chọn tất cả (${selectableCount})</button>
-      <button class="btn btn-ghost" onclick="clearListingSelect()" style="padding: 5px 12px;">Bỏ chọn</button>
-      ${grouped.fail > 0 ? `<button class="btn btn-danger" style="padding: 5px 12px;" onclick="retryFailsThisShop(${grouped.fail})">↻ Chạy lại ${grouped.fail} fail shop này</button>` : ""}
-      <span style="color: var(--text-mute);">Tick checkbox góc trái card · pending → Run · fail → Retry · success → Clone</span>
+    <div class="list-toolbar" style="display:flex; align-items:center; gap:10px; margin-bottom: 12px; padding: 10px 14px; background: var(--bg-elev); border-radius: 8px; font-size: 0.85rem; flex-wrap: wrap;">
+      <button class="btn btn-ghost" onclick="selectAllVisible()" style="padding: 5px 12px; white-space:nowrap;">☑ Chọn tất cả (${selectableCount})</button>
+      <button class="btn btn-ghost" onclick="clearListingSelect()" style="padding: 5px 12px; white-space:nowrap;">Bỏ chọn</button>
+      ${grouped.fail > 0 ? `<button class="btn btn-danger" style="padding: 5px 12px; white-space:nowrap;" onclick="retryFailsThisShop(${grouped.fail})">↻ Chạy lại ${grouped.fail} fail</button>` : ""}
+      <span class="lt-hint" style="color: var(--text-mute);">Tick checkbox góc trái card · pending → Run · fail → Retry · success → Clone</span>
     </div>` : '';
 
   $("#listingsGrid").innerHTML =

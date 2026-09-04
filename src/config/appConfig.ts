@@ -80,6 +80,15 @@ export const pricing = (): PricingFile =>
 export const workerConfig = (): WorkerFile =>
   (_worker ??= readJson<WorkerFile>("worker.json"));
 
+/**
+ * Đọc autoCron TƯƠI từ worker.json (KHÔNG qua cache _worker). Master-switch của cron
+ * phải luôn tôn trọng giá trị mới nhất trên đĩa — kể cả khi file bị đổi ngoài UI hoặc
+ * cache chưa reload — để tắt auto-publish là dừng trong 1 tick, khỏi cần restart.
+ */
+export const isAutoCronOn = (): boolean => {
+  try { return !!readJson<WorkerFile>("worker.json").autoCron; } catch { return false; }
+};
+
 export const sizeMap = (): Record<string, string> =>
   (_sizeMap ??= readJson<SizeMapFile>("size-map.json")).map;
 

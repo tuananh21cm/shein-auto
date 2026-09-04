@@ -1,6 +1,6 @@
 import * as fs from "fs-extra";
 import * as path from "path";
-import { workerConfig } from "../config/appConfig";
+import { workerConfig, isAutoCronOn } from "../config/appConfig";
 import { listing4sellerShein } from "../core/listing4sellerShein";
 import { getProfileNameFromFolder } from "../core/steps/randomUtils";
 import { workerState } from "../state/workerState";
@@ -299,7 +299,7 @@ const tickForUser = async (dirs: UserDirs, slotsAvailable: number): Promise<numb
 };
 
 export const runQueueManagerOnce = async (): Promise<void> => {
-  if (!workerConfig().autoCron) return; // user đã tắt auto cron
+  if (!isAutoCronOn()) return; // master-switch đọc tươi từ file (tắt là dừng ngay tick sau)
 
   const concurrency = Math.max(1, workerConfig().concurrency);
   if (runningCount >= concurrency) {

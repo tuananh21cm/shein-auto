@@ -1,7 +1,7 @@
 import * as fs from "fs-extra";
 import * as path from "path";
 import { getAllUsersForCron, getEffectiveSettings } from "../state/userDirs";
-import { workerConfig } from "../config/appConfig";
+import { workerConfig, isAutoCronOn } from "../config/appConfig";
 
 const FILE_PATTERN = /^(P\d-\d{3}(?:_[A-Z]{2})?).*\.json$/i;
 
@@ -12,7 +12,7 @@ const FILE_PATTERN = /^(P\d-\d{3}(?:_[A-Z]{2})?).*\.json$/i;
  * Nếu file thuộc 1 shop trong profiles của user → move. Nếu profiles rỗng → move tất cả.
  */
 export async function runFileRouterOnce(): Promise<void> {
-  if (!workerConfig().autoCron) return; // user đã tắt auto cron
+  if (!isAutoCronOn()) return; // master-switch đọc tươi từ file (tắt là dừng ngay)
   try {
     console.log(`\n--- [${new Date().toLocaleTimeString()}] QUÉT FILE DOWNLOADS SHEIN ---`);
 

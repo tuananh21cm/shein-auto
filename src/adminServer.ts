@@ -2321,27 +2321,68 @@ export const startAdminServer = async () => {
     }
   });
 
-  // ── Tạo video từ COOKIE TEAM KHÁC (ephemeral) ──────────────────────────────
-  // Cookie + shop/listing chỉ nằm trong RAM 1 request, KHÔNG ghi file/DB. Chỉ video
-  // OUTPUT (từ enqueueVideo) được lưu để tải về. Key ngẫu nhiên/req → không đụng account thật.
+  // ── Tạo video từ COOKIE TEAM KHÁC (cookie LƯU LẠI, tách riêng account thật) ───────
+  // Cookie 4Seller team khác được lưu ở data/video-ext-accounts.json (gitignore) để
+  // reload không mất + dropdown chọn account hiện lại shop lần trước. KHÔNG đụng routing/
+  // listing của tool. Key RAM ngẫu nhiên/req chỉ để truyền cookie xuống 4Seller client.
   const extKey = async () => "vidext-" + (await import("crypto")).randomUUID();
+  // Lấy cookie thô: ưu tiên accountId đã lưu, fallback cookie dán trực tiếp.
+  const resolveExtRawCookie = async (body: any): Promise<string> => {
+    if (body?.accountId) {
+      const { getVideoExtAccount } = await import("./state/videoExtAccounts");
+      const acc = await getVideoExtAccount(String(body.accountId));
+      if (!acc) throw new Error("Account đã bị xoá — thêm lại cookie");
+      return acc.cookie;
+    }
+    if (body?.cookie?.trim()) return body.cookie;
+    throw new Error("Thiếu account/cookie");
+  };
 
-  app.post("/admin/api/video/ext/shops", async (req, res) => {
+  // Danh sách account đã lưu (KHÔNG trả cookie ra ngoài).
+  app.get("/admin/api/video/ext/accounts", async (_req, res) => {
+    try {
+      const { listVideoExtAccounts } = await import("./state/videoExtAccounts");
+      const accs = await listVideoExtAccounts();
+      res.json({ ok: true, accounts: accs.map((a) => ({ id: a.id, label: a.label, shops: a.shops, updatedAt: a.updatedAt })) });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? "Lỗi đọc account" });
+    }
+  });
+
+  // Thêm/cập nhật 1 account: validate cookie bằng getShopList → lưu cookie + shop list.
+  app.post("/admin/api/video/ext/accounts", async (req, res) => {
     const key = await extKey();
     try {
       const sessionUser = (req.session as any).user as SessionUser;
       if (sessionUser.role === "viewer") return res.status(403).json({ error: "Viewer không thể tạo video" });
-      const { cookie } = req.body as { cookie?: string };
+      const { cookie, label, id } = req.body as { cookie?: string; label?: string; id?: string };
       if (!cookie?.trim()) return res.status(400).json({ error: "Dán cookie 4Seller của team khác" });
       const { setExtCookie, clearExtCookie } = await import("./services/fourseller/client");
+      const { upsertVideoExtAccount } = await import("./state/videoExtAccounts");
       setExtCookie(key, cookie);
       try {
         const list = await fsGetShopList(`ext:${key}`);
-        const shops = (list?.records ?? []).map((s: any) => ({ id: s.id, name: s.shopName, platform: s.platform }));
-        res.json({ ok: true, shops });
+        const shops = (list?.records ?? []).map((s: any) => ({ id: s.id, name: s.shopName }));
+        if (!shops.length) return res.status(400).json({ error: "Cookie không thấy shop nào (sai/hết hạn?)" });
+        // Label mặc định: rút gọn từ shop đầu (bỏ số/đuôi) hoặc theo số lượng shop.
+        const autoLabel = (shops[0]?.name || "").split(/[-_]/).slice(0, 2).join("-") || `Team (${shops.length} shop)`;
+        const acc = await upsertVideoExtAccount({ id, label: (label?.trim() || autoLabel), cookie, shops });
+        res.json({ ok: true, account: { id: acc.id, label: acc.label, shops: acc.shops, updatedAt: acc.updatedAt } });
       } finally { clearExtCookie(key); }
     } catch (err: any) {
       res.status(400).json({ error: err?.message ?? "Cookie không hợp lệ / hết hạn" });
+    }
+  });
+
+  app.delete("/admin/api/video/ext/accounts/:id", async (req, res) => {
+    try {
+      const sessionUser = (req.session as any).user as SessionUser;
+      if (sessionUser.role === "viewer") return res.status(403).json({ error: "Viewer không thể xoá" });
+      const { deleteVideoExtAccount } = await import("./state/videoExtAccounts");
+      await deleteVideoExtAccount(String(req.params.id));
+      res.json({ ok: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? "Lỗi xoá account" });
     }
   });
 
@@ -2350,9 +2391,9 @@ export const startAdminServer = async () => {
     try {
       const sessionUser = (req.session as any).user as SessionUser;
       if (sessionUser.role === "viewer") return res.status(403).json({ error: "Viewer không thể tạo video" });
-      const { cookie, shopId } = req.body as { cookie?: string; shopId?: string | number };
-      if (!cookie?.trim()) return res.status(400).json({ error: "Thiếu cookie" });
+      const { shopId } = req.body as { shopId?: string | number };
       if (!shopId && shopId !== 0) return res.status(400).json({ error: "Chọn shop" });
+      const cookie = await resolveExtRawCookie(req.body);
       const { setExtCookie, clearExtCookie } = await import("./services/fourseller/client");
       setExtCookie(key, cookie);
       try {
@@ -2383,12 +2424,12 @@ export const startAdminServer = async () => {
       const sessionUser = (req.session as any).user as SessionUser;
       if (sessionUser.role === "viewer") return res.status(403).json({ error: "Viewer không thể tạo video" });
       if (!process.env.VIDEO_RENDER_URL) return res.status(400).json({ error: "Chưa cấu hình VIDEO_RENDER_URL trong .env" });
-      const { cookie, shopName, items } = req.body as {
-        cookie?: string; shopName?: string;
+      const { shopName, items } = req.body as {
+        shopName?: string;
         items?: { listingId: string; title?: string; mainImage?: string; productId?: string }[];
       };
-      if (!cookie?.trim()) return res.status(400).json({ error: "Thiếu cookie" });
       if (!Array.isArray(items) || !items.length) return res.status(400).json({ error: "Chọn ít nhất 1 listing" });
+      const cookie = await resolveExtRawCookie(req.body);
       const { setExtCookie, clearExtCookie, getListingDetail } = await import("./services/fourseller/client");
       const { extractImageUrls } = await import("./core/videoStudio/fetchImages");
       const { VideoDb } = await import("./state/videoDb");

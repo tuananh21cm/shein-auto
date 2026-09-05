@@ -3060,10 +3060,14 @@ async function extVidGen() {
   try {
     const res = await fetch("/admin/api/video/ext/gen", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ cookie: extVidCookie(), shopName: extVid.shopName, items }) });
     const d = await res.json(); if (!res.ok) throw new Error(d.error);
-    const skip = (d.skipped || []).length;
-    toast(`🎬 Đã gửi ${d.created.length} video${skip ? ` · bỏ ${skip} (thiếu ảnh)` : ''} — xem tiến trình ở thư viện dưới`);
-    extVid.selected = new Set(); renderExtVidGrid();
-    setTimeout(loadVideo, 1500);
+    const skip = d.skipped || [];
+    if (!d.created.length) {
+      toast(`❌ Không tạo được video. Lý do: ${skip[0]?.reason || 'không rõ'}`, "error", 7000);
+    } else {
+      toast(`🎬 Đã gửi ${d.created.length} video${skip.length ? ` · bỏ ${skip.length}: ${skip[0]?.reason || ''}` : ''} — xem ở thư viện dưới`);
+      extVid.selected = new Set(); renderExtVidGrid();
+      setTimeout(loadVideo, 1500);
+    }
   } catch (e) { toast(e.message, "error"); }
 }
 

@@ -2321,6 +2321,100 @@ export const startAdminServer = async () => {
     }
   });
 
+  // ── Tạo video từ COOKIE TEAM KHÁC (ephemeral) ──────────────────────────────
+  // Cookie + shop/listing chỉ nằm trong RAM 1 request, KHÔNG ghi file/DB. Chỉ video
+  // OUTPUT (từ enqueueVideo) được lưu để tải về. Key ngẫu nhiên/req → không đụng account thật.
+  const extKey = async () => "vidext-" + (await import("crypto")).randomUUID();
+
+  app.post("/admin/api/video/ext/shops", async (req, res) => {
+    const key = await extKey();
+    try {
+      const sessionUser = (req.session as any).user as SessionUser;
+      if (sessionUser.role === "viewer") return res.status(403).json({ error: "Viewer không thể tạo video" });
+      const { cookie } = req.body as { cookie?: string };
+      if (!cookie?.trim()) return res.status(400).json({ error: "Dán cookie 4Seller của team khác" });
+      const { setExtCookie, clearExtCookie } = await import("./services/fourseller/client");
+      setExtCookie(key, cookie);
+      try {
+        const list = await fsGetShopList(`ext:${key}`);
+        const shops = (list?.records ?? []).map((s: any) => ({ id: s.id, name: s.shopName, platform: s.platform }));
+        res.json({ ok: true, shops });
+      } finally { clearExtCookie(key); }
+    } catch (err: any) {
+      res.status(400).json({ error: err?.message ?? "Cookie không hợp lệ / hết hạn" });
+    }
+  });
+
+  app.post("/admin/api/video/ext/listings", async (req, res) => {
+    const key = await extKey();
+    try {
+      const sessionUser = (req.session as any).user as SessionUser;
+      if (sessionUser.role === "viewer") return res.status(403).json({ error: "Viewer không thể tạo video" });
+      const { cookie, shopId } = req.body as { cookie?: string; shopId?: string | number };
+      if (!cookie?.trim()) return res.status(400).json({ error: "Thiếu cookie" });
+      if (!shopId && shopId !== 0) return res.status(400).json({ error: "Chọn shop" });
+      const { setExtCookie, clearExtCookie } = await import("./services/fourseller/client");
+      setExtCookie(key, cookie);
+      try {
+        const listings: any[] = [];
+        for (let page = 1; page <= 10; page++) {
+          const r = await fsGetListingPage(`ext:${key}`, { shopId, status: "active", pageCurrent: page, pageSize: 100 });
+          for (const rec of r.records ?? []) {
+            listings.push({
+              listingId: String(rec.id),
+              productId: String((rec as any).productId ?? ""),
+              title: String((rec as any).title ?? (rec as any).productName ?? ""),
+              mainImage: String((rec as any).mainImage ?? ""),
+              image: String((rec as any).mainImage ?? "").split("|")[0] || "",
+            });
+          }
+          if ((r.records?.length ?? 0) < 100 || listings.length >= (r.total ?? 0)) break;
+        }
+        res.json({ ok: true, listings });
+      } finally { clearExtCookie(key); }
+    } catch (err: any) {
+      res.status(400).json({ error: err?.message ?? "Không lấy được listing" });
+    }
+  });
+
+  app.post("/admin/api/video/ext/gen", async (req, res) => {
+    const key = await extKey();
+    try {
+      const sessionUser = (req.session as any).user as SessionUser;
+      if (sessionUser.role === "viewer") return res.status(403).json({ error: "Viewer không thể tạo video" });
+      if (!process.env.VIDEO_RENDER_URL) return res.status(400).json({ error: "Chưa cấu hình VIDEO_RENDER_URL trong .env" });
+      const { cookie, shopName, items } = req.body as {
+        cookie?: string; shopName?: string;
+        items?: { listingId: string; title?: string; mainImage?: string; productId?: string }[];
+      };
+      if (!cookie?.trim()) return res.status(400).json({ error: "Thiếu cookie" });
+      if (!Array.isArray(items) || !items.length) return res.status(400).json({ error: "Chọn ít nhất 1 listing" });
+      const { setExtCookie, clearExtCookie, getListingDetail } = await import("./services/fourseller/client");
+      const { extractImageUrls } = await import("./core/videoStudio/fetchImages");
+      const { VideoDb } = await import("./state/videoDb");
+      const { enqueueVideo, VIDEO_MIN_IMAGES } = await import("./core/videoStudio/hubVideo");
+      setExtCookie(key, cookie);
+      const db = new VideoDb();
+      const created: { id: number; title: string }[] = [];
+      const skipped: { listingId: string; reason: string }[] = [];
+      try {
+        for (const it of items.slice(0, 50)) {
+          try {
+            const detail = await getListingDetail(`ext:${key}`, it.listingId).catch(() => null);
+            const images = extractImageUrls(detail, it.mainImage).slice(0, 12);
+            if (images.length < VIDEO_MIN_IMAGES) { skipped.push({ listingId: it.listingId, reason: `chỉ ${images.length} ảnh, cần ≥${VIDEO_MIN_IMAGES}` }); continue; }
+            const title = String(it.title || "product").slice(0, 200);
+            const vid = await enqueueVideo(db, { shop: shopName ? `ext:${shopName}` : "ext", productId: it.productId || it.listingId, title, images });
+            created.push({ id: vid, title });
+          } catch (e: any) { skipped.push({ listingId: it.listingId, reason: String(e?.message ?? e).slice(0, 100) }); }
+        }
+      } finally { db.close(); clearExtCookie(key); }
+      res.json({ ok: true, created, skipped });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? "Lỗi tạo video" });
+    }
+  });
+
   // Thống kê video theo shop (dashboard route Video).
   app.get("/admin/api/videos/by-shop", async (_req, res) => {
     try {

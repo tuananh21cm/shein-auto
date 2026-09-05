@@ -701,6 +701,27 @@
         </div>
       </div>
       <div id="videoDash"></div>
+
+      <!-- 🌐 Tạo video từ COOKIE TEAM KHÁC — cookie & data chỉ nằm ở màn này, không lưu -->
+      <div class="card" id="extVidCard" style="margin-bottom:16px; border-left:4px solid var(--accent);">
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; cursor:pointer;" onclick="toggleExtVid()">
+          <h3 style="margin:0;">🌐 Tạo video từ cookie team khác <span style="color:var(--text-mute); font-weight:400; font-size:0.82rem;">— cookie & data chỉ nằm ở màn này, không lưu vào tool</span></h3>
+          <span id="extVidCaret" style="color:var(--text-mute);">▸ Mở</span>
+        </div>
+        <div id="extVidBody" style="display:none; margin-top:14px;">
+          <label class="field"><span>Cookie 4Seller của team khác <span style="color:var(--text-mute);">(JSON export hoặc chuỗi <code>key=val; key2=val2</code>)</span></span>
+            <textarea id="extVidCookie" rows="3" placeholder='[{"domain":".4seller.com","name":"...","value":"..."}]   —hoặc—   key=val; key2=val2' style="width:100%; font-family:'JetBrains Mono',monospace; font-size:0.76rem;"></textarea>
+          </label>
+          <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-top:8px;">
+            <button class="btn btn-primary" onclick="extVidLoadShops()">📥 Kéo shop</button>
+            <select id="extVidShop" onchange="extVidLoadListings(this.value)" style="min-width:220px; display:none;"></select>
+            <span id="extVidHint" style="color:var(--text-mute); font-size:0.82rem;"></span>
+          </div>
+          <div id="extVidToolbar" style="display:none; margin-top:12px; gap:10px; align-items:center; flex-wrap:wrap;"></div>
+          <div id="extVidGrid" style="margin-top:12px;"></div>
+        </div>
+      </div>
+
       <!-- Grid shop (mặc định) — click shop mới hiện video, tránh lag -->
       <div id="videoShopView">
         <div class="card">
@@ -2967,6 +2988,85 @@ const VSTATUS = { ready: '<span style="color:var(--success);">✅ xong</span>', 
 let _vidLibTimer = null;
 
 let _videoShop = null; // shop đang xem chi tiết (null = đang ở grid shop)
+// ─── Tạo video từ cookie team khác (ephemeral, chỉ ở màn Video) ─────────────
+const extVid = { shops: [], shopId: "", shopName: "", listings: [], selected: new Set() };
+function toggleExtVid() {
+  const b = $("#extVidBody"), c = $("#extVidCaret");
+  const open = b.style.display === "none";
+  b.style.display = open ? "" : "none";
+  c.textContent = open ? "▾ Đóng" : "▸ Mở";
+}
+const extVidCookie = () => ($("#extVidCookie").value || "").trim();
+
+async function extVidLoadShops() {
+  const cookie = extVidCookie();
+  if (!cookie) return toast("Dán cookie 4Seller của team khác vào ô trên", "error");
+  $("#extVidHint").textContent = "⏳ Đang kéo shop…";
+  try {
+    const res = await fetch("/admin/api/video/ext/shops", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ cookie }) });
+    const d = await res.json(); if (!res.ok) throw new Error(d.error);
+    extVid.shops = d.shops || [];
+    const sel = $("#extVidShop");
+    sel.innerHTML = `<option value="">— Chọn shop (${extVid.shops.length}) —</option>` + extVid.shops.map((s) => `<option value="${escapeHtml(String(s.id))}">${escapeHtml(s.name)}</option>`).join("");
+    sel.style.display = extVid.shops.length ? "" : "none";
+    $("#extVidHint").textContent = extVid.shops.length ? `✓ ${extVid.shops.length} shop — chọn 1 shop để xem listing` : "Không có shop nào (cookie sai/hết hạn?)";
+    $("#extVidGrid").innerHTML = ""; $("#extVidToolbar").style.display = "none";
+  } catch (e) { $("#extVidHint").textContent = ""; toast(e.message, "error"); }
+}
+
+async function extVidLoadListings(shopId) {
+  extVid.selected = new Set();
+  if (!shopId) { $("#extVidGrid").innerHTML = ""; $("#extVidToolbar").style.display = "none"; return; }
+  extVid.shopId = shopId;
+  extVid.shopName = (extVid.shops.find((s) => String(s.id) === String(shopId)) || {}).name || "";
+  $("#extVidGrid").innerHTML = '<div class="empty">⏳ Đang kéo listing…</div>';
+  try {
+    const res = await fetch("/admin/api/video/ext/listings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ cookie: extVidCookie(), shopId }) });
+    const d = await res.json(); if (!res.ok) throw new Error(d.error);
+    extVid.listings = d.listings || [];
+    renderExtVidGrid();
+  } catch (e) { $("#extVidGrid").innerHTML = '<div class="empty">Lỗi: ' + escapeHtml(e.message) + '</div>'; }
+}
+
+function renderExtVidGrid() {
+  const items = extVid.listings;
+  const tb = $("#extVidToolbar");
+  if (!items.length) { $("#extVidGrid").innerHTML = '<div class="empty">Shop này không có listing active</div>'; tb.style.display = "none"; return; }
+  const n = extVid.selected.size;
+  tb.style.display = "flex";
+  tb.innerHTML = `
+    <button class="btn btn-ghost" onclick="extVidSelectAll()">☑ Chọn tất cả (${items.length})</button>
+    <button class="btn btn-ghost" onclick="extVidClear()">Bỏ chọn</button>
+    <button class="btn btn-primary" onclick="extVidGen()" ${n ? "" : "disabled"}>🎬 Tạo video (${n})</button>
+    <span style="color:var(--text-mute); font-size:0.8rem;">Video xong nằm ở shop <code>ext:${escapeHtml(extVid.shopName)}</code> trong thư viện dưới.</span>`;
+  $("#extVidGrid").innerHTML = '<div class="listings-grid">' + items.map((it) => {
+    const sel = extVid.selected.has(it.listingId);
+    return `<div class="listing-card selectable${sel ? ' selected' : ''}" onclick="extVidToggle('${escapeHtml(it.listingId)}')">
+      <input type="checkbox" class="select-cb" ${sel ? 'checked' : ''} onclick="event.stopPropagation(); extVidToggle('${escapeHtml(it.listingId)}')" />
+      <div class="img-wrap">${it.image ? `<img src="${escapeHtml(it.image)}" loading="lazy" decoding="async" onerror="this.parentElement.innerHTML='<div class=&quot;placeholder&quot;>(no img)</div>'"/>` : '<div class="placeholder">(no img)</div>'}</div>
+      <div class="body"><div class="title" title="${escapeHtml(it.title)}">${escapeHtml(it.title || '(no title)')}</div></div>
+    </div>`;
+  }).join("") + '</div>';
+}
+function extVidToggle(id) { if (extVid.selected.has(id)) extVid.selected.delete(id); else extVid.selected.add(id); renderExtVidGrid(); }
+function extVidSelectAll() { extVid.listings.forEach((it) => extVid.selected.add(it.listingId)); renderExtVidGrid(); }
+function extVidClear() { extVid.selected = new Set(); renderExtVidGrid(); }
+
+async function extVidGen() {
+  const items = extVid.listings.filter((it) => extVid.selected.has(it.listingId))
+    .map((it) => ({ listingId: it.listingId, title: it.title, mainImage: it.mainImage, productId: it.productId }));
+  if (!items.length) return;
+  if (!confirm(`Tạo ${items.length} video từ shop "${extVid.shopName}" (team khác)?\nCookie chỉ dùng lúc này, không lưu.`)) return;
+  try {
+    const res = await fetch("/admin/api/video/ext/gen", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ cookie: extVidCookie(), shopName: extVid.shopName, items }) });
+    const d = await res.json(); if (!res.ok) throw new Error(d.error);
+    const skip = (d.skipped || []).length;
+    toast(`🎬 Đã gửi ${d.created.length} video${skip ? ` · bỏ ${skip} (thiếu ảnh)` : ''} — xem tiến trình ở thư viện dưới`);
+    extVid.selected = new Set(); renderExtVidGrid();
+    setTimeout(loadVideo, 1500);
+  } catch (e) { toast(e.message, "error"); }
+}
+
 async function loadVideo() {
   try {
     const [byShop, imgs] = await Promise.all([

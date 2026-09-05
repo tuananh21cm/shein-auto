@@ -20,7 +20,43 @@ const PER_USER_COOKIE_DIR = path.resolve(process.cwd(), "data", "cookies");
  *  - "acct:<uid>"  → cookie của TÀI KHOẢN 4Seller (data/cookies/accounts/<uid>.json) — cơ chế mới
  *  - "<username>"  → cookie legacy theo login user (data/cookies/<username>.json)
  */
+/** Cookies[] (JSON export) → Cookie header, chỉ giữ domain 4seller.com. */
+function cookiesToHeader(cookies: any[]): string {
+  const relevant = (cookies || []).filter((c) => String(c?.domain || "").includes("4seller.com"));
+  const src = relevant.length ? relevant : cookies || []; // fallback: header thô không có domain
+  return src.map((c) => `${c.name}=${c.value}`).join("; ");
+}
+
+/** Parse chuỗi cookie user dán: JSON array/{cookies:[]} export, hoặc header thô "k=v; k=v". */
+export function parseRawCookieToHeader(raw: string): string {
+  const s = (raw || "").trim();
+  if (!s) throw new Error("Cookie rỗng");
+  if (s.startsWith("[") || s.startsWith("{")) {
+    const parsed = JSON.parse(s);
+    const arr = Array.isArray(parsed) ? parsed : Array.isArray(parsed?.cookies) ? parsed.cookies : [];
+    const header = cookiesToHeader(arr);
+    if (!header) throw new Error("Không tìm thấy cookie 4seller.com trong JSON");
+    return header;
+  }
+  if (!s.includes("=")) throw new Error("Cookie không hợp lệ (cần JSON export hoặc chuỗi k=v; k=v)");
+  return s;
+}
+
+/** Cookie TẠM (luồng tạo video từ cookie team khác) — chỉ trong RAM, KHÔNG ghi file. */
+const _extCookies = new Map<string, string>();
+export function setExtCookie(key: string, rawCookie: string): void {
+  _extCookies.set(key, parseRawCookieToHeader(rawCookie));
+}
+export function clearExtCookie(key: string): void {
+  _extCookies.delete(key);
+}
+
 async function getCookieHeader(principal: string): Promise<string> {
+  if (principal.startsWith("ext:")) {
+    const h = _extCookies.get(principal.slice(4));
+    if (!h) throw new Error("Cookie tạm đã hết phiên — nhập lại cookie ở màn Video.");
+    return h;
+  }
   let file: string;
   if (principal.startsWith("acct:")) {
     const uid = principal.slice(5).replace(/[^a-zA-Z0-9_-]/g, "");
@@ -41,14 +77,7 @@ async function getCookieHeader(principal: string): Promise<string> {
     : Array.isArray(parsed?.cookies)
     ? parsed.cookies
     : [];
-
-  // Chỉ pick cookies thuộc domain 4seller.com
-  const relevant = cookies.filter((c) => {
-    const domain = String(c.domain || "");
-    return domain.includes("4seller.com");
-  });
-
-  return relevant.map((c) => `${c.name}=${c.value}`).join("; ");
+  return cookiesToHeader(cookies);
 }
 
 const COMMON_HEADERS = {

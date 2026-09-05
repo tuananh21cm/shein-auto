@@ -95,6 +95,11 @@ export async function verifyImageUrl(url: string): Promise<boolean> {
 }
 
 export async function uploadToImgbb(filePath: string): Promise<string | null> {
+  // R2 trước (không rate limit, không cần giãn nhịp) — lỗi/chưa config mới rơi về imgbb.
+  const { uploadToR2 } = await import("./uploadToR2");
+  const r2Url = await uploadToR2(filePath).catch(() => null);
+  if (r2Url) return r2Url;
+
   const keys = config.imgbbApiKeys;
   if (!keys.length) {
     console.warn("⚠️ IMGBB_API_KEY(S) chưa set — bỏ qua upload.");

@@ -21,6 +21,13 @@ export const config = {
         .filter(Boolean)
     )
   ),
+  /** Cloudflare R2 — host ảnh chính (không rate limit); thiếu bất kỳ giá trị nào → dùng imgbb như cũ. */
+  r2AccountId: process.env.R2_ACCOUNT_ID?.trim() ?? "",
+  r2AccessKey: process.env.R2_ACCESS_KEY_ID?.trim() ?? "",
+  r2SecretKey: process.env.R2_SECRET_ACCESS_KEY?.trim() ?? "",
+  r2Bucket: process.env.R2_BUCKET?.trim() ?? "",
+  /** Base URL public (r2.dev hoặc custom domain), KHÔNG có / cuối. */
+  r2PublicBase: (process.env.R2_PUBLIC_BASE?.trim() ?? "").replace(/\/+$/, ""),
   /** Default fallback cho user không cấu hình downloadDir riêng. Rỗng = user bắt buộc tự set. */
   downloadDir: envDownload ? path.normalize(envDownload) : "",
   /** Default fallback cho user không cấu hình baseSheinAutoDir riêng. Rỗng = user bắt buộc tự set. */

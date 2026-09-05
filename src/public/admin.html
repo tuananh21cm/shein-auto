@@ -729,6 +729,7 @@
 
           <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-top:12px;">
             <select id="extVidShop" onchange="extVidLoadListings(this.value)" style="min-width:240px; display:none;"></select>
+            <input id="extVidSearch" placeholder="🔍 Tìm theo productID / tên…" oninput="renderExtVidGrid()" style="min-width:220px; display:none;" />
           </div>
           <div id="extVidToolbar" style="display:none; margin-top:12px; gap:10px; align-items:center; flex-wrap:wrap;"></div>
           <div id="extVidGrid" style="margin-top:12px;"></div>
@@ -3061,6 +3062,7 @@ function extVidSelectAccount(id) {
   extVid.accountId = id;
   extVid.selected = new Set(); extVid.listings = [];
   $("#extVidGrid").innerHTML = ""; $("#extVidToolbar").style.display = "none";
+  const sb = $("#extVidSearch"); if (sb) { sb.value = ""; sb.style.display = "none"; }
   const acc = extVid.accounts.find((a) => a.id === id);
   $("#extVidDelBtn").style.display = id ? "" : "none";
   const shopSel = $("#extVidShop");
@@ -3074,6 +3076,7 @@ function extVidSelectAccount(id) {
 
 async function extVidLoadListings(shopId) {
   extVid.selected = new Set();
+  const sb = $("#extVidSearch"); if (sb) { sb.value = ""; sb.style.display = "none"; }
   if (!shopId) { $("#extVidGrid").innerHTML = ""; $("#extVidToolbar").style.display = "none"; return; }
   extVid.shopId = shopId;
   extVid.shopName = (extVid.shops.find((s) => String(s.id) === String(shopId)) || {}).name || "";
@@ -3086,28 +3089,46 @@ async function extVidLoadListings(shopId) {
   } catch (e) { $("#extVidGrid").innerHTML = '<div class="empty">Lỗi: ' + escapeHtml(e.message) + '</div>'; }
 }
 
+// Lọc listing theo ô search (productID hoặc tên).
+function extVidFiltered() {
+  const q = ($("#extVidSearch").value || "").toLowerCase().trim();
+  if (!q) return extVid.listings;
+  return extVid.listings.filter((it) =>
+    String(it.productId || "").toLowerCase().includes(q) ||
+    String(it.title || "").toLowerCase().includes(q));
+}
+
 function renderExtVidGrid() {
-  const items = extVid.listings;
+  const all = extVid.listings;
   const tb = $("#extVidToolbar");
-  if (!items.length) { $("#extVidGrid").innerHTML = '<div class="empty">Shop này không có listing active</div>'; tb.style.display = "none"; return; }
+  const search = $("#extVidSearch");
+  if (!all.length) { $("#extVidGrid").innerHTML = '<div class="empty">Shop này không có listing active</div>'; tb.style.display = "none"; if (search) search.style.display = "none"; return; }
+  if (search) search.style.display = "";
+  const items = extVidFiltered();
   const n = extVid.selected.size;
   tb.style.display = "flex";
   tb.innerHTML = `
     <button class="btn btn-ghost" onclick="extVidSelectAll()">☑ Chọn tất cả (${items.length})</button>
     <button class="btn btn-ghost" onclick="extVidClear()">Bỏ chọn</button>
     <button class="btn btn-primary" onclick="extVidGen()" ${n ? "" : "disabled"}>🎬 Tạo video (${n})</button>
-    <span style="color:var(--text-mute); font-size:0.8rem;">Video xong nằm ở shop <code>ext:${escapeHtml(extVid.shopName)}</code> trong thư viện dưới.</span>`;
+    <span style="color:var(--text-mute); font-size:0.8rem;">${items.length}/${all.length} listing · video xong nằm ở shop <code>ext:${escapeHtml(extVid.shopName)}</code>.</span>`;
+  if (!items.length) { $("#extVidGrid").innerHTML = '<div class="empty">Không có listing khớp "' + escapeHtml(($("#extVidSearch").value || "").trim()) + '"</div>'; return; }
   $("#extVidGrid").innerHTML = '<div class="listings-grid">' + items.map((it) => {
     const sel = extVid.selected.has(it.listingId);
+    const pid = String(it.productId || "");
     return `<div class="listing-card selectable${sel ? ' selected' : ''}" onclick="extVidToggle('${escapeHtml(it.listingId)}')">
       <input type="checkbox" class="select-cb" ${sel ? 'checked' : ''} onclick="event.stopPropagation(); extVidToggle('${escapeHtml(it.listingId)}')" />
       <div class="img-wrap">${it.image ? `<img src="${escapeHtml(it.image)}" loading="lazy" decoding="async" onerror="this.parentElement.innerHTML='<div class=&quot;placeholder&quot;>(no img)</div>'"/>` : '<div class="placeholder">(no img)</div>'}</div>
-      <div class="body"><div class="title" title="${escapeHtml(it.title)}">${escapeHtml(it.title || '(no title)')}</div></div>
+      <div class="body">
+        <div class="title" title="${escapeHtml(it.title)}">${escapeHtml(it.title || '(no title)')}</div>
+        ${pid ? `<div class="meta"><span class="pill" title="Click để copy productID" onclick="event.stopPropagation(); extVidCopyPid('${escapeHtml(pid)}')" style="cursor:pointer;">🆔 ${escapeHtml(pid)} 📋</span></div>` : ''}
+      </div>
     </div>`;
   }).join("") + '</div>';
 }
+function extVidCopyPid(pid) { navigator.clipboard?.writeText(pid).then(() => toast("Đã copy productID: " + pid)).catch(() => {}); }
 function extVidToggle(id) { if (extVid.selected.has(id)) extVid.selected.delete(id); else extVid.selected.add(id); renderExtVidGrid(); }
-function extVidSelectAll() { extVid.listings.forEach((it) => extVid.selected.add(it.listingId)); renderExtVidGrid(); }
+function extVidSelectAll() { extVidFiltered().forEach((it) => extVid.selected.add(it.listingId)); renderExtVidGrid(); }
 function extVidClear() { extVid.selected = new Set(); renderExtVidGrid(); }
 
 async function extVidGen() {

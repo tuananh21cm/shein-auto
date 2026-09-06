@@ -231,6 +231,14 @@ export const startAdminServer = async () => {
     next();
   };
 
+  // Tool LOCAL: gọi từ localhost thì khỏi cần token (addon đỡ 1 bước cấu hình).
+  // Server public qua tunnel → request đến từ IP ngoài → vẫn bắt token như thường.
+  const localOrToken: express.RequestHandler = (req, res, next) => {
+    const ip = String(req.ip || "").replace(/^::ffff:/, "");
+    if (ip === "127.0.0.1" || ip === "::1" || req.hostname === "localhost") return next();
+    return ingestAuth(req, res, next);
+  };
+
   ingestRouter.get("/profiles", ingestAuth, async (req, res) => {
     try {
       const user = (req as any).tokenUser as AdminUser;
@@ -384,7 +392,7 @@ export const startAdminServer = async () => {
   });
 
   // ── Video cho addon Content Hub (Bearer): list video ready + serve mp4 ──
-  ingestRouter.get("/videos", ingestAuth, async (req, res) => {
+  ingestRouter.get("/videos", localOrToken, async (req, res) => {
     try {
       const { VideoDb } = await import("./state/videoDb");
       const db = new VideoDb();
@@ -410,7 +418,7 @@ export const startAdminServer = async () => {
     }
   });
 
-  ingestRouter.get("/videos/:id/file", ingestAuth, async (req, res) => {
+  ingestRouter.get("/videos/:id/file", localOrToken, async (req, res) => {
     try {
       const { VideoDb } = await import("./state/videoDb");
       const db = new VideoDb();

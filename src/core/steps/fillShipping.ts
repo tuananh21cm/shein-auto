@@ -34,7 +34,9 @@ export const fillShippingAndCertification = async (page: any): Promise<void> => 
 
     for (const labelText of CERT_FIELDS) {
       const formItem = page.locator(".el-form-item").filter({ hasText: labelText });
-      const targetInput = formItem.locator("input.el-input__inner");
+      // "Dangerous Goods" có 2 input trong 1 form-item: ô select chính + ô phụ
+      // "Select Other dangerous goods..." → loại ô "Other", lấy ô chính (tránh strict-mode).
+      const targetInput = formItem.locator('input.el-input__inner:not([placeholder*="Other" i])').first();
 
       if (await targetInput.isVisible()) {
         console.log(`🔎 Đang xử lý trường: ${labelText}`);

@@ -383,6 +383,46 @@ export const startAdminServer = async () => {
     });
   });
 
+  // ── Video cho addon Content Hub (Bearer): list video ready + serve mp4 ──
+  ingestRouter.get("/videos", ingestAuth, async (req, res) => {
+    try {
+      const { VideoDb } = await import("./state/videoDb");
+      const db = new VideoDb();
+      const rows = db.list({
+        shop: (req.query.shop as string) || undefined,
+        status: (req.query.status as string) || "ready",
+        limit: Math.min(200, Number(req.query.limit) || 100),
+      });
+      db.close();
+      res.json({
+        videos: rows.filter((r) => r.file).map((r) => {
+          let content: any = null;
+          try { content = r.script_json ? JSON.parse(r.script_json) : null; } catch { /* ignore */ }
+          return {
+            id: r.id, shop: r.shop, title: r.title, status: r.status, productId: r.product_id || null,
+            caption: content?.caption || content?.description || null,
+            hashtags: Array.isArray(content?.hashtags) ? content.hashtags : null,
+          };
+        }),
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? "Lỗi list video" });
+    }
+  });
+
+  ingestRouter.get("/videos/:id/file", ingestAuth, async (req, res) => {
+    try {
+      const { VideoDb } = await import("./state/videoDb");
+      const db = new VideoDb();
+      const row = db.get(Number(req.params.id));
+      db.close();
+      if (!row?.file || !(await fs.pathExists(row.file))) return res.status(404).json({ error: "Chưa có file mp4" });
+      res.sendFile(path.resolve(row.file));
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? "Lỗi file" });
+    }
+  });
+
   app.use("/admin/api/ingest", ingestRouter);
 
   // ── Path validator ─────────────────────────────────────

@@ -608,7 +608,7 @@
         </div>
         <div style="display: flex; gap: 8px;">
           <button class="btn btn-primary" id="createShopBtn" onclick="openCreateShop()">+ Tạo shop</button>
-          <button class="btn btn-ghost" id="listingsRefreshBtn" onclick="loadShopsOrListings()">Refresh</button>
+          <button class="btn btn-ghost" id="listingsRefreshBtn" onclick="refreshListings()">Refresh</button>
         </div>
       </div>
 
@@ -1824,15 +1824,21 @@ state.listings = {
 };
 
 const loadShopsOrListings = () => state.listings.selectedShop ? loadListings() : loadShops();
+// Nút Refresh: ép fetch mới (bỏ qua cache 60s của P2).
+const refreshListings = () => state.listings.selectedShop ? loadListings() : loadShops(true);
 
-async function loadShops() {
+async function loadShops(force = false) {
+  // P2: data shop còn mới (<60s) + đã render → dùng lại, KHỎI fetch/re-render (tránh load
+  // thừa khi back/đổi view/vào lại route). Nút Refresh hoặc data cũ mới fetch thật.
+  if (!force && state.listings.shops.length && (Date.now() - (state.listings.shopsLoadedAt || 0) < 60000)) return;
   try {
     const res = await fetch("/admin/api/listings/shops");
     const data = await res.json();
     if (!res.ok) throw new Error(data.error);
     state.listings.shops = data.shops || [];
+    state.listings.shopsLoadedAt = Date.now();
     loadListingProgress(); // render KPI + card (kèm progress bar) cho TẤT CẢ shop
-    loadQueueProgress();   // panel queue live (đang list / chờ) đầu màn
+    loadQueueProgress();   // P3: /dashboard chỉ gọi khi thật sự fetch (không phải mỗi back)
   } catch (err) {
     toast("Không tải được shops: " + err.message, "error");
     $("#shopsGrid").innerHTML = '<div class="empty">Lỗi tải dữ liệu</div>';
@@ -1865,7 +1871,7 @@ async function retryAllFails(count) {
     const d = await res.json();
     if (!res.ok) throw new Error(d.error);
     toast(`↻ Đã đưa ${d.moved} listing về queue (${d.shops} shop)${d.errors ? ` · ${d.errors} lỗi` : ""} — cron sẽ chạy lại`);
-    loadShops(); // refresh KPI + cards
+    loadShops(true); // refresh KPI + cards (ép, vì vừa đổi trạng thái)
   } catch (err) { toast(err.message, "error"); }
 }
 
@@ -2046,6 +2052,7 @@ function renderShops() {
 }
 
 function enterShopDetail(folder, owner) {
+  state.listings.scrollY = window.scrollY; // P1: nhớ vị trí cuộn để back về đúng chỗ
   state.listings.selectedShop = folder;
   state.listings.selectedOwner = owner || null;
   $("#shopsView").style.display = "none";
@@ -2063,7 +2070,9 @@ function exitShopDetail() {
   renderBulkBar();
   $("#shopsView").style.display = "";
   $("#listingsDetailView").style.display = "none";
-  loadShops();
+  // P1: KHÔNG loadShops() lại — grid + data còn nguyên trong DOM, back = instant.
+  // Chỉ khôi phục vị trí cuộn (sau khi layout hiện lại). Data cũ >60s sẽ tự refresh ở P2.
+  requestAnimationFrame(() => window.scrollTo(0, state.listings.scrollY || 0));
 }
 
 async function loadListings() {

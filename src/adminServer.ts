@@ -218,6 +218,9 @@ export const startAdminServer = async () => {
       allowedHeaders: ["Content-Type", "Authorization"],
     })
   );
+  // GM_xmlhttpRequest (userscript) đôi khi KHÔNG set Content-Type application/json →
+  // express.json toàn cục bỏ qua → req.body undefined. Parse mọi content-type ở router này.
+  ingestRouter.use(express.json({ type: () => true, limit: "5mb" }));
 
   const ingestAuth: express.RequestHandler = async (req, res, next) => {
     const auth = req.headers.authorization || "";

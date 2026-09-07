@@ -434,46 +434,67 @@ export const startAdminServer = async () => {
     }
   });
 
-  // Listing của 1 shop (cho addon: xem → chọn → gen video).
+  // Listing ACTIVE của 1 shop trên 4Seller (cho addon) — có productId TikTok (dài) + ảnh.
   ingestRouter.get("/listings", localOrToken, async (req, res) => {
     try {
       const shop = String(req.query.shop || "").trim();
       if (!shop) return res.status(400).json({ error: "Thiếu shop" });
-      const owner = await getShopOwner(shop);
-      const items = await scanListings({ folder: shop, status: (req.query.status as any) || undefined, username: owner || undefined });
-      res.json({
-        listings: items.map((it) => ({ id: it.id, title: it.title, image: it.image, status: it.status })),
-      });
+      const { resolveAccountForShop } = await import("./state/fourSellerAccounts");
+      const acc = await resolveAccountForShop(shop);
+      if (!acc) return res.status(400).json({ error: `Shop "${shop}" chưa map tài khoản 4Seller (tab Cookie).` });
+      const p = `acct:${acc.uid}`;
+      const shops = await fsGetShopList(p);
+      const rec = (shops.records || []).find((s: any) => normShopName(s.shopName) === normShopName(shop));
+      if (!rec) return res.status(400).json({ error: `Không thấy shop "${shop}" trong 4Seller.` });
+      const listings: any[] = [];
+      for (let page = 1; page <= 10; page++) {
+        const r = await fsGetListingPage(p, { shopId: rec.id, status: "active", pageCurrent: page, pageSize: 100 });
+        for (const it of r.records ?? []) {
+          listings.push({
+            listingId: String(it.id),
+            productId: String((it as any).productId ?? ""),   // ← TikTok product id (dài) để Add product
+            title: String((it as any).productName ?? ""),
+            image: String((it as any).mainImage ?? "").split("|")[0] || "",
+            mainImage: String((it as any).mainImage ?? ""),
+          });
+        }
+        if ((r.records?.length ?? 0) < 100 || listings.length >= (r.total ?? 0)) break;
+      }
+      res.json({ listings });
     } catch (err: any) {
       res.status(500).json({ error: err?.message ?? "Lỗi list listing" });
     }
   });
 
-  // Gen video từ các listing đã chọn (reuse logic from-listings, không cần session).
+  // Gen video từ listing 4Seller đã chọn → productId = TikTok id (dài), ảnh từ listing detail.
   ingestRouter.post("/videos/gen", localOrToken, async (req, res) => {
     try {
-      const { ids } = req.body as { ids?: string[] };
-      if (!Array.isArray(ids) || !ids.length) return res.status(400).json({ error: "Chọn ít nhất 1 listing" });
+      const { shop, items } = req.body as {
+        shop?: string;
+        items?: { listingId: string; productId?: string; title?: string; mainImage?: string }[];
+      };
+      if (!Array.isArray(items) || !items.length) return res.status(400).json({ error: "Chọn ít nhất 1 listing" });
       if (!process.env.VIDEO_RENDER_URL) return res.status(400).json({ error: "Chưa cấu hình VIDEO_RENDER_URL trong .env" });
+      const { resolveAccountForShop } = await import("./state/fourSellerAccounts");
+      const { getListingDetail } = await import("./services/fourseller/client");
+      const { extractImageUrls } = await import("./core/videoStudio/fetchImages");
       const { VideoDb } = await import("./state/videoDb");
-      const { enqueueVideo, hubImageUrls, priceOf, VIDEO_MIN_IMAGES } = await import("./core/videoStudio/hubVideo");
+      const { enqueueVideo, VIDEO_MIN_IMAGES } = await import("./core/videoStudio/hubVideo");
+      const acc = shop ? await resolveAccountForShop(shop) : null;
+      const principal = acc ? `acct:${acc.uid}` : null;
       const db = new VideoDb();
       const created: { id: number; title: string }[] = [];
       const skipped: { id: string; reason: string }[] = [];
       try {
-        for (const id of ids.slice(0, 50)) {
-          const resolved = await resolveListingPath(id);
-          if (!resolved || !(await fs.pathExists(resolved.full))) { skipped.push({ id, reason: "file không tồn tại" }); continue; }
-          let d: any;
-          try { d = await fs.readJson(resolved.full); } catch { skipped.push({ id, reason: "không đọc được" }); continue; }
-          const images = hubImageUrls(d);
-          if (images.length < VIDEO_MIN_IMAGES) { skipped.push({ id, reason: `chỉ ${images.length} ảnh, cần ≥${VIDEO_MIN_IMAGES}` }); continue; }
-          const title = String(d?.product_name || "").slice(0, 200) || "product";
-          const pid = (String(d?.url || "").match(/-p-(\d+)\.html/) || [])[1] || resolved.file;
+        for (const it of items.slice(0, 50)) {
           try {
-            const vid = await enqueueVideo(db, { shop: resolved.folder, productId: pid, title, images, price: priceOf(d) });
+            const detail = principal ? await getListingDetail(principal, it.listingId).catch(() => null) : null;
+            const images = extractImageUrls(detail, it.mainImage).slice(0, 12);
+            if (images.length < VIDEO_MIN_IMAGES) { skipped.push({ id: it.listingId, reason: `chỉ ${images.length} ảnh, cần ≥${VIDEO_MIN_IMAGES}` }); continue; }
+            const title = String(it.title || "product").slice(0, 200);
+            const vid = await enqueueVideo(db, { shop: shop || "shop", productId: String(it.productId || it.listingId), title, images });
             created.push({ id: vid, title });
-          } catch (e: any) { skipped.push({ id, reason: String(e?.message ?? e).slice(0, 100) }); }
+          } catch (e: any) { skipped.push({ id: it.listingId, reason: String(e?.message ?? e).slice(0, 100) }); }
         }
       } finally { db.close(); }
       res.json({ ok: true, created, skipped });

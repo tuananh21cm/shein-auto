@@ -431,6 +431,54 @@ export const startAdminServer = async () => {
     }
   });
 
+  // Listing của 1 shop (cho addon: xem → chọn → gen video).
+  ingestRouter.get("/listings", localOrToken, async (req, res) => {
+    try {
+      const shop = String(req.query.shop || "").trim();
+      if (!shop) return res.status(400).json({ error: "Thiếu shop" });
+      const owner = await getShopOwner(shop);
+      const items = await scanListings({ folder: shop, status: (req.query.status as any) || undefined, username: owner || undefined });
+      res.json({
+        listings: items.map((it) => ({ id: it.id, title: it.title, image: it.image, status: it.status })),
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? "Lỗi list listing" });
+    }
+  });
+
+  // Gen video từ các listing đã chọn (reuse logic from-listings, không cần session).
+  ingestRouter.post("/videos/gen", localOrToken, async (req, res) => {
+    try {
+      const { ids } = req.body as { ids?: string[] };
+      if (!Array.isArray(ids) || !ids.length) return res.status(400).json({ error: "Chọn ít nhất 1 listing" });
+      if (!process.env.VIDEO_RENDER_URL) return res.status(400).json({ error: "Chưa cấu hình VIDEO_RENDER_URL trong .env" });
+      const { VideoDb } = await import("./state/videoDb");
+      const { enqueueVideo, hubImageUrls, priceOf, VIDEO_MIN_IMAGES } = await import("./core/videoStudio/hubVideo");
+      const db = new VideoDb();
+      const created: { id: number; title: string }[] = [];
+      const skipped: { id: string; reason: string }[] = [];
+      try {
+        for (const id of ids.slice(0, 50)) {
+          const resolved = await resolveListingPath(id);
+          if (!resolved || !(await fs.pathExists(resolved.full))) { skipped.push({ id, reason: "file không tồn tại" }); continue; }
+          let d: any;
+          try { d = await fs.readJson(resolved.full); } catch { skipped.push({ id, reason: "không đọc được" }); continue; }
+          const images = hubImageUrls(d);
+          if (images.length < VIDEO_MIN_IMAGES) { skipped.push({ id, reason: `chỉ ${images.length} ảnh, cần ≥${VIDEO_MIN_IMAGES}` }); continue; }
+          const title = String(d?.product_name || "").slice(0, 200) || "product";
+          const pid = (String(d?.url || "").match(/-p-(\d+)\.html/) || [])[1] || resolved.file;
+          try {
+            const vid = await enqueueVideo(db, { shop: resolved.folder, productId: pid, title, images, price: priceOf(d) });
+            created.push({ id: vid, title });
+          } catch (e: any) { skipped.push({ id, reason: String(e?.message ?? e).slice(0, 100) }); }
+        }
+      } finally { db.close(); }
+      res.json({ ok: true, created, skipped });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? "Lỗi gen video" });
+    }
+  });
+
   app.use("/admin/api/ingest", ingestRouter);
 
   // ── Path validator ─────────────────────────────────────

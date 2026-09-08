@@ -63,3 +63,18 @@ export const notifyFail = async (params: {
 export const notifyInfo = async (message: string): Promise<void> => {
   await send(`ℹ️ ${escape(message)}`);
 };
+
+/** Cảnh báo CAPTCHA SHEIN cần giải tay (dùng bởi kiki/captcha.ts). */
+export const notifyCaptcha = async (params: {
+  context: string;
+  profileId?: string;
+  url?: string;
+}): Promise<void> => {
+  const text =
+    `*⚠️ CAPTCHA SHEIN — cần giải thủ công*\n` +
+    `Việc: \`${escape(params.context)}\`\n` +
+    (params.profileId ? `Profile: \`${escape(params.profileId)}\`\n` : "") +
+    (params.url ? `URL: ${escape(params.url.slice(0, 120))}\n` : "") +
+    `👉 Mở cửa sổ trình duyệt, giải slider/click ảnh\. Worker tự chạy tiếp khi xong\.`;
+  await send(text);
+};

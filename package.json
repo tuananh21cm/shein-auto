@@ -20,11 +20,14 @@
     "dotenv": "^16.4.7",
     "express": "^5.2.1",
     "express-session": "^1.19.0",
+    "fingerprint-generator": "^2.1.88",
+    "fingerprint-injector": "^2.1.88",
     "fs-extra": "^11.3.3",
     "msedge-tts": "^2.0.7",
     "node-cron": "^3.0.3",
     "node-html-to-image": "^5.0.0",
     "playwright-core": "^1.55.1",
+    "proxy-chain": "^3.0.1",
     "sharp": "^0.34.5"
   },
   "devDependencies": {

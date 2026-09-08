@@ -653,6 +653,37 @@
           <button class="btn btn-ghost" onclick="loadHub()">Refresh</button>
         </div>
       </div>
+      <!-- 🕷️ Cào SHEIN theo list link (proxy pool + fingerprint anti-detect) -->
+      <div class="card" id="crawlCard" style="margin-bottom:14px; border-left:4px solid var(--accent);">
+        <div style="display:flex; justify-content:space-between; align-items:center; cursor:pointer;" onclick="toggleCrawl()">
+          <h3 style="margin:0;">🕷️ Cào theo link <span style="color:var(--text-mute); font-weight:400; font-size:0.82rem;">— proxy SOCKS5 + fingerprint chống chặn</span></h3>
+          <span id="crawlCaret" style="color:var(--text-mute);">▸ Mở</span>
+        </div>
+        <div id="crawlBody" style="display:none; margin-top:12px;">
+          <div class="grid grid-2" style="gap:12px;">
+            <label class="field"><span>Link SHEIN (mỗi dòng 1 link)</span>
+              <textarea id="crawlLinks" rows="5" placeholder="https://us.shein.com/...-p-1234567.html" style="width:100%; font-family:'JetBrains Mono',monospace; font-size:0.76rem;"></textarea>
+            </label>
+            <label class="field"><span>Proxy SOCKS5 <span style="color:var(--text-mute);">(host:port:user:pass mỗi dòng — trống = dùng data/proxies-socks5.txt)</span></span>
+              <textarea id="crawlProxies" rows="5" placeholder="host:port:user:pass" style="width:100%; font-family:'JetBrains Mono',monospace; font-size:0.76rem;"></textarea>
+            </label>
+          </div>
+          <div style="display:flex; gap:14px; align-items:center; flex-wrap:wrap; margin-top:8px;">
+            <label style="display:flex; gap:6px; align-items:center;">Output:
+              <select id="crawlOutput" onchange="$('#crawlShopWrap').style.display=this.value==='shop'?'':'none'" style="width:auto;">
+                <option value="hub">🗂️ Hub</option>
+                <option value="shop">🏪 Shop</option>
+              </select>
+            </label>
+            <span id="crawlShopWrap" style="display:none;"><input id="crawlShop" placeholder="Tên shop đích" style="width:220px;"></span>
+            <label style="display:flex; gap:6px; align-items:center;">Chrome song song <input id="crawlConc" type="number" value="3" min="1" max="10" style="width:60px;"></label>
+            <label style="display:flex; gap:5px; align-items:center;"><input type="checkbox" id="crawlHeadless"> Headless</label>
+            <button class="btn btn-primary" id="crawlBtn" onclick="startCrawl()">🕷️ Cào</button>
+          </div>
+          <div id="crawlLog" style="margin-top:10px; font:11px/1.5 'JetBrains Mono',monospace; background:var(--bg-elev); border-radius:8px; padding:10px; max-height:220px; overflow:auto; white-space:pre-wrap; display:none;"></div>
+        </div>
+      </div>
+
       <div id="hubNicheDash"></div>
       <div class="card">
         <div style="display:flex; gap:10px; align-items:center; margin-bottom:12px;">
@@ -2548,6 +2579,46 @@ function updateCloneCount() {
 
 // ─── HUB sản phẩm ─────────────────────────────────────
 function ensureHubState() { if (!state.hub) state.hub = { items: [], selected: new Set() }; }
+
+// ─── Cào SHEIN theo list link ───────────────────────────
+function toggleCrawl() {
+  const b = $("#crawlBody"), c = $("#crawlCaret");
+  const open = b.style.display === "none";
+  b.style.display = open ? "" : "none";
+  c.textContent = open ? "▾ Đóng" : "▸ Mở";
+}
+let _crawlPoll = null;
+async function startCrawl() {
+  const links = ($("#crawlLinks").value || "").split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
+  if (!links.length) return toast("Dán ít nhất 1 link SHEIN", "error");
+  const output = $("#crawlOutput").value;
+  const shop = $("#crawlShop").value.trim();
+  if (output === "shop" && !shop) return toast("Chọn output Shop thì nhập tên shop", "error");
+  const body = { links, proxies: $("#crawlProxies").value, output, shop, headless: $("#crawlHeadless").checked, concurrency: Number($("#crawlConc").value) || 3 };
+  const btn = $("#crawlBtn"); btn.disabled = true; btn.textContent = "⏳ Đang cào…";
+  $("#crawlLog").style.display = "block"; $("#crawlLog").textContent = "Khởi động…";
+  try {
+    const res = await fetch("/admin/api/crawl/from-links", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    const d = await res.json(); if (!res.ok) throw new Error(d.error);
+    pollCrawl();
+  } catch (e) { toast(e.message, "error"); btn.disabled = false; btn.textContent = "🕷️ Cào"; }
+}
+function pollCrawl() {
+  clearInterval(_crawlPoll);
+  _crawlPoll = setInterval(async () => {
+    try {
+      const d = await (await fetch("/admin/api/crawl/status")).json();
+      if (d.idle) return;
+      const el = $("#crawlLog"); el.textContent = (d.log || []).join("\n"); el.scrollTop = el.scrollHeight;
+      if (d.done) {
+        clearInterval(_crawlPoll);
+        const btn = $("#crawlBtn"); btn.disabled = false; btn.textContent = "🕷️ Cào";
+        if (d.summary) toast(`Cào xong: ${d.summary.ok}/${d.summary.total} OK`);
+        loadHub();
+      }
+    } catch { /* ignore */ }
+  }, 1500);
+}
 
 async function loadHub() {
   ensureHubState();

@@ -1893,6 +1893,93 @@ export const startAdminServer = async () => {
     return fileName;
   };
 
+  // ── Cào SHEIN theo LIST LINK (proxy pool + fingerprint anti-detect) ──────────
+  // 1 job tại 1 thời điểm. Progress giữ in-memory, UI poll qua /crawl/status.
+  let crawlJob: { running: boolean; done: boolean; log: string[]; summary: any; startedAt: number } | null = null;
+  const clog = (m: string) => {
+    if (!crawlJob) return;
+    crawlJob.log.push(`[${new Date().toLocaleTimeString()}] ${m}`);
+    if (crawlJob.log.length > 800) crawlJob.log.shift();
+  };
+
+  async function runCrawlFromLinks(opts: {
+    links: string[]; proxies?: string; output: "hub" | "shop"; shop?: string; headless?: boolean; concurrency?: number;
+  }): Promise<void> {
+    crawlJob = { running: true, done: false, log: [], summary: null, startedAt: Date.now() };
+    try {
+      const { loadProxies, parseProxyLine, startBridges } = await import("./core/proxyPool");
+      const { scrapeBatchViaProxyPool } = await import("./core/scrapeViaProxyPool");
+      // Link → {goodsId, url}
+      const items = opts.links
+        .map((u) => u.trim()).filter(Boolean)
+        .map((u) => ({ goodsId: (u.match(/-p-(\d+)\.html/) || [])[1] || u.slice(-20), url: u }));
+      if (!items.length) throw new Error("Không có link hợp lệ");
+      // Proxy: dán trực tiếp hoặc file data/proxies-socks5.txt
+      let entries = opts.proxies?.trim()
+        ? opts.proxies.split(/\r?\n/).map((l) => parseProxyLine(l.trim())).filter(Boolean) as any[]
+        : await loadProxies(path.resolve(process.cwd(), "data", "proxies-socks5.txt")).catch(() => []);
+      if (!entries.length) throw new Error("Không có proxy (dán list hoặc tạo data/proxies-socks5.txt)");
+      const cap = Math.max(1, Math.min(entries.length, opts.concurrency || 5));
+      entries = entries.slice(0, cap);
+      clog(`${items.length} link · ${entries.length} proxy · output=${opts.output}${opts.shop ? " (" + opts.shop + ")" : ""} · ${opts.headless ? "headless" : "headed"}`);
+      const { bridges, close } = await startBridges(entries, clog);
+      try {
+        // Resolve shop baseDir 1 lần (nếu output=shop)
+        let shopBaseDir: string | null = null;
+        if (opts.output === "shop") {
+          if (!opts.shop) throw new Error("output=shop nhưng thiếu tên shop");
+          const owner = await getShopOwner(opts.shop);
+          const dirs = owner ? await getUserDirsByName(owner) : null;
+          shopBaseDir = dirs?.baseSheinAutoDir || null;
+          if (!shopBaseDir) throw new Error(`Shop "${opts.shop}" chưa cấu hình baseSheinAutoDir`);
+        }
+        const onProduct = async (goodsId: string, data: any, error?: string) => {
+          if (!data) { clog(`✗ ${goodsId}: ${(error || "fail").slice(0, 80)}`); return; }
+          try {
+            if (opts.output === "shop") {
+              const folder = path.join(shopBaseDir!, opts.shop!);
+              await fs.ensureDir(folder);
+              await fs.writeFile(path.join(folder, `${opts.shop}_${Date.now()}.json`), JSON.stringify(data, null, 2), "utf-8");
+              clog(`✓ ${goodsId} → shop ${opts.shop} (${String(data.product_name || "").slice(0, 40)})`);
+            } else {
+              await writeHubFile(data, "crawler");
+              clog(`✓ ${goodsId} → Hub (${String(data.product_name || "").slice(0, 40)})`);
+            }
+          } catch (e: any) { clog(`✗ ${goodsId} ghi lỗi: ${String(e?.message ?? e).slice(0, 60)}`); }
+        };
+        const res = await scrapeBatchViaProxyPool({ items, bridges, headless: opts.headless, onLog: clog, onProduct });
+        const ok = res.filter((r) => r.ok).length;
+        crawlJob!.summary = { total: items.length, ok, fail: items.length - ok };
+        clog(`🎉 XONG: ${ok}/${items.length} OK`);
+      } finally { await close(); }
+    } catch (e: any) {
+      clog(`❌ ${String(e?.message ?? e)}`);
+    } finally {
+      if (crawlJob) { crawlJob.running = false; crawlJob.done = true; }
+    }
+  }
+
+  app.post("/admin/api/crawl/from-links", async (req, res) => {
+    try {
+      const sessionUser = (req.session as any).user as SessionUser;
+      if (sessionUser.role === "viewer") return res.status(403).json({ error: "Viewer không thể cào" });
+      if (crawlJob?.running) return res.status(409).json({ error: "Đang có job cào chạy — chờ xong hoặc xem status" });
+      const { links, proxies, output, shop, headless, concurrency } = req.body as any;
+      const arr = Array.isArray(links) ? links : String(links || "").split(/\r?\n/);
+      const clean = arr.map((s: string) => String(s).trim()).filter(Boolean);
+      if (!clean.length) return res.status(400).json({ error: "Dán ít nhất 1 link" });
+      void runCrawlFromLinks({ links: clean, proxies, output: output === "shop" ? "shop" : "hub", shop, headless: !!headless, concurrency: Number(concurrency) || 5 });
+      res.json({ ok: true, started: clean.length });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? "Lỗi khởi động cào" });
+    }
+  });
+
+  app.get("/admin/api/crawl/status", (_req, res) => {
+    if (!crawlJob) return res.json({ idle: true, log: [] });
+    res.json({ idle: false, running: crawlJob.running, done: crawlJob.done, summary: crawlJob.summary, log: crawlJob.log.slice(-200) });
+  });
+
   // Userscript đẩy sản phẩm cào được vào Hub (Bearer token, không cần shop).
   app.post("/admin/api/hub/ingest", ingestAuth, async (req, res) => {
     try {

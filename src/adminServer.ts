@@ -1867,19 +1867,77 @@ export const startAdminServer = async () => {
     return null;
   };
 
-  // Tập productId đã có sẵn trong Hub (bỏ file meta). Đọc mỗi file 1 lần.
+  /**
+   * MỌI id của 1 sản phẩm: id trên URL + id của TỪNG màu trong variant_ids.
+   *
+   * SHEIN cấp productId RIÊNG cho từng màu, nên mở màu khác của cùng một sản phẩm là ra một
+   * URL `-p-<id>` khác. Đối chiếu mỗi id trên URL (như extractProductId) thì không thể nhận
+   * ra trùng. Nhưng variant_ids của bản đã cào ĐÃ CHỨA SẴN id của mọi màu, nên chỉ cần đưa
+   * cả bộ vào tập đối chiếu là bắt được — kể cả trước khi cào, vì userscript gửi productId
+   * của màu đang mở.
+   */
+  const extractAllProductIds = (data: any): string[] => {
+    const out = new Set<string>();
+    const m = String(data?.url ?? "").match(/-p-(\d+)\.html/);
+    if (m) out.add(m[1]);
+    for (const v of data?.variant_ids ?? []) {
+      const id = Object.values(v ?? {})[0];
+      if (id && /^\d+$/.test(String(id))) out.add(String(id));
+    }
+    return [...out];
+  };
+
+  /**
+   * Cache id theo TỪNG FILE hub (tên file → mọi id của sản phẩm đó).
+   *
+   * Hub nằm trên share LAN. Quét lại cả kho mỗi lần ingest mất ~80s với 4.4k sản phẩm
+   * (đọc tuần tự qua SMB), trong khi userscript chỉ chờ 15s → request nào cũng timeout và
+   * người cào tưởng đẩy hỏng. Giữ map theo file rồi mỗi lượt chỉ đọc phần CHÊNH LỆCH so với
+   * lần trước, nên sau khi ingest thêm 1 sản phẩm thì lượt sau chỉ phải đọc đúng file mới đó.
+   *
+   * readdir gần như miễn phí (~0ms) nên việc dò chênh lệch không đáng kể.
+   */
+  let _hubIdCache: Map<string, string[]> | null = null;
+  let _hubIdCacheDir = "";
+  const HUB_ID_SCAN_CONCURRENCY = 32;
+
+  // Tập MỌI id đã có trong Hub (bỏ file meta). Chỉ đọc file chưa có trong cache.
   const buildHubProductIds = async (): Promise<Set<string>> => {
-    const set = new Set<string>();
-    if (!(await fs.pathExists(config.hubDir))) return set;
+    if (!(await fs.pathExists(config.hubDir))) {
+      _hubIdCache = null;
+      return new Set();
+    }
+    // Toggle Hub tổng đổi config.hubDir lúc chạy → cache của thư mục cũ không còn đúng.
+    if (_hubIdCacheDir !== config.hubDir) {
+      _hubIdCache = null;
+      _hubIdCacheDir = config.hubDir;
+    }
     const files = (await fs.readdir(config.hubDir)).filter(
       (f) => f.toLowerCase().endsWith(".json") && !isHubMetaFile(f)
     );
-    for (const f of files) {
-      try {
-        const id = extractProductId(JSON.parse(await fs.readFile(path.join(config.hubDir, f), "utf-8")));
-        if (id) set.add(id);
-      } catch { /* ignore */ }
-    }
+    const cache = (_hubIdCache ??= new Map());
+    const present = new Set(files);
+    for (const f of [...cache.keys()]) if (!present.has(f)) cache.delete(f); // file đã bị xoá
+
+    // File hỏng/đang ghi dở KHÔNG ghi vào cache → lượt sau đọc lại, tránh nhớ nhầm vĩnh viễn
+    // một sản phẩm mà lúc đọc còn đang ghi.
+    const missing = files.filter((f) => !cache.has(f));
+    let next = 0;
+    const worker = async (): Promise<void> => {
+      while (next < missing.length) {
+        const f = missing[next++];
+        try {
+          const data = JSON.parse(await fs.readFile(path.join(config.hubDir, f), "utf-8"));
+          cache.set(f, extractAllProductIds(data));
+        } catch { /* bỏ qua, lượt sau thử lại */ }
+      }
+    };
+    await Promise.all(
+      Array.from({ length: Math.min(HUB_ID_SCAN_CONCURRENCY, missing.length) }, () => worker())
+    );
+
+    const set = new Set<string>();
+    for (const ids of cache.values()) for (const id of ids) set.add(id);
     return set;
   };
 
@@ -1893,26 +1951,44 @@ export const startAdminServer = async () => {
     return fileName;
   };
 
+  /**
+   * Parse body BẤT KỂ Content-Type cho 2 endpoint userscript gọi.
+   *
+   * `express.json()` toàn cục chỉ nhận `application/json`, mà GM_xmlhttpRequest có lúc không
+   * set header đó → `req.body` thành undefined và ingest trả "Thiếu data". Router
+   * `/admin/api/ingest` đã được vá (dòng ~223); hai endpoint Hub gắn thẳng vào `app` nên
+   * không hưởng lây, phải vá riêng.
+   */
+  const anyJsonBody = express.json({ type: () => true, limit: "5mb" });
+
   // Userscript đẩy sản phẩm cào được vào Hub (Bearer token, không cần shop).
-  app.post("/admin/api/hub/ingest", ingestAuth, async (req, res) => {
+  app.post("/admin/api/hub/ingest", anyJsonBody, ingestAuth, async (req, res) => {
     try {
       const { data } = req.body as { data?: any };
       if (!data || typeof data !== "object") return res.status(400).json({ error: "Thiếu data" });
-      // Bỏ qua nếu productId đã có trong Hub
+      // Chỉ đem productId của TRANG ĐANG CÀO đi so — không đối chiếu cả bộ variant_ids của
+      // sản phẩm sắp ghi. Kho đối chiếu bên buildHubProductIds() mới là nơi chứa mọi màu.
       const pid = extractProductId(data);
+      // hubShared: sản phẩm rơi vào Hub CHUNG hay Hub local của máy này. Userscript hiện lại
+      // cho người cào biết ngay — trước đây không có tín hiệu này nên mất kết nối ổ mạng mà
+      // vẫn báo "đã cào vào Hub", cả đội tưởng đang đẩy lên chung.
+      // So với hubDir ĐANG dùng chứ KHÔNG phải env HUB_DIR: toggle Hub tổng đổi hubDir lúc
+      // chạy, env vẫn nguyên → nếu đọc env sẽ báo "hub chung" trong khi đang ghi vào local.
+      const hubShared = config.hubDir === config.hubDirShared;
       if (pid && (await buildHubProductIds()).has(pid)) {
-        return res.json({ ok: true, duplicate: true });
+        console.log(`🗂️  Bỏ ingest: id ${pid} đã có trong Hub (sản phẩm này cào rồi, có thể ở màu khác)`);
+        return res.json({ ok: true, duplicate: true, hubShared });
       }
       const addedBy = (req as any).tokenUser?.username;
       const file = await writeHubFile(data, addedBy);
-      res.json({ ok: true, file, duplicate: false });
+      res.json({ ok: true, file, duplicate: false, hubShared });
     } catch (err: any) {
       res.status(500).json({ error: err?.message ?? "Lỗi ingest hub" });
     }
   });
 
   // Userscript pre-check: sản phẩm (productId) đã có trong Hub chưa (trước khi cào).
-  app.post("/admin/api/hub/check", ingestAuth, async (req, res) => {
+  app.post("/admin/api/hub/check", anyJsonBody, ingestAuth, async (req, res) => {
     try {
       const { productId } = req.body as { productId?: string };
       if (!productId) return res.json({ exists: false });
@@ -2003,7 +2079,9 @@ export const startAdminServer = async () => {
           continue;
         }
         const file = await writeHubFile(data, sessionUser.username);
-        if (pid) hubIds.add(pid); // tránh trùng trong cùng lượt add
+        // Nạp CẢ BỘ id vào kho đối chiếu (không phải vế đem đi so) → sản phẩm kế tiếp trong
+        // cùng lượt mà là màu khác của nó vẫn bị bắt.
+        for (const x of extractAllProductIds(data)) hubIds.add(x);
         added.push({ id, file });
       }
       res.json({ ok: true, added, skipped, duplicates });
@@ -2031,7 +2109,7 @@ export const startAdminServer = async () => {
         const pid = extractProductId(data);
         if (pid && hubIds.has(pid)) { duplicates++; continue; }
         await writeHubFile(data, sessionUser.username);
-        if (pid) hubIds.add(pid);
+        for (const x of extractAllProductIds(data)) hubIds.add(x);
         imported++;
       }
       res.json({ ok: true, imported, duplicates, invalid });
@@ -2984,6 +3062,12 @@ export const startAdminServer = async () => {
   await new Promise<void>((resolve, reject) => {
     const server = app.listen(port, () => {
       console.log(`🌐 Admin UI đang chạy tại http://localhost:${port}/admin`);
+      // Hâm nóng cache productId của Hub ngay khi khởi động. Lượt quét lạnh mất ~20s trên
+      // share LAN — nếu để userscript kích hoạt thì cú đẩy đầu tiên vượt timeout 15s của nó
+      // và người cào tưởng đẩy hỏng. Chạy nền, không chặn server.
+      void buildHubProductIds()
+        .then((s) => console.log(`🔖 Hub dedup cache sẵn sàng: ${s.size} productId.`))
+        .catch(() => console.warn("⚠️  Không hâm được cache Hub (chưa vào được HUB_DIR?) — sẽ quét khi có request."));
       resolve();
     });
     server.on("error", (err: any) => {

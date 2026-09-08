@@ -64,16 +64,20 @@ const buildId = (owner: string, folder: string, status: ListingStatus, file: str
   return `${owner}::${folder}/${statusSeg}/${file}`;
 };
 
-const parseListingFile = async (
+/**
+ * Dựng ListingCard từ JSON ĐÃ đọc sẵn. Tách khỏi parseListingFile để caller nào đã có nội dung
+ * file trong tay (scanHub) khỏi phải đọc lại — Hub nằm trên share LAN nên mỗi lần đọc thừa là
+ * một round-trip SMB, nhân với vài nghìn sản phẩm.
+ */
+const buildListingCard = async (
+  data: any,
+  mtimeMs: number,
   filePath: string,
   owner: string,
   folder: string,
   status: ListingStatus
 ): Promise<ListingCard | null> => {
   try {
-    const stat = await fs.stat(filePath);
-    const raw = await fs.readFile(filePath, "utf-8");
-    const data = JSON.parse(raw);
     const file = path.basename(filePath);
     const id = buildId(owner, folder, status, file);
 
@@ -148,11 +152,26 @@ const parseListingFile = async (
       colorCount: colors,
       sizeCount: sizes,
       scrapedAt: typeof data.scraped_at === "string" ? data.scraped_at : null,
-      mtimeMs: stat.mtimeMs,
+      mtimeMs,
       errorMessage,
       screenshotUrl,
       niche: deriveNiche(`${data?.category || ""} ${typeof data.product_name === "string" ? data.product_name : ""}`),
     };
+  } catch {
+    return null;
+  }
+};
+
+const parseListingFile = async (
+  filePath: string,
+  owner: string,
+  folder: string,
+  status: ListingStatus
+): Promise<ListingCard | null> => {
+  try {
+    const stat = await fs.stat(filePath);
+    const data = JSON.parse(await fs.readFile(filePath, "utf-8"));
+    return await buildListingCard(data, stat.mtimeMs, filePath, owner, folder, status);
   } catch {
     return null;
   }
@@ -485,49 +504,100 @@ export const recordHubListings = async (fileToShops: Record<string, string[]>, n
     for (const s of shops) set.add(s);
     await writeOneMeta(file, { shops: [...set], lastAt: nowMs });
   }
+  invalidateHubCache();
 };
 
 /** Xoá sidecar meta của các hub file đã bị xoá. */
 export const removeHubMeta = async (files: string[]): Promise<void> => {
   for (const f of files) await fs.remove(metaPathOf(f)).catch(() => {});
+  invalidateHubCache();
 };
 
 /** Quét toàn bộ sản phẩm trong Hub (config.hubDir). Tái dùng parseListingFile. */
+/**
+ * Cache kết quả scanHub. Hub nằm trên share LAN nên mỗi lần quét là vài nghìn round-trip SMB
+ * (~20s với 4.4k sp) — mà UI gọi lại MỖI lần bấm sang tab Hub, và màn Ngách cũng gọi.
+ *
+ * Khoá cache = (số entry trong thư mục, mtime thư mục). readdir + stat thư mục gần như miễn phí
+ * (~0ms) nên kiểm tra rẻ hơn quét lại nhiều bậc. Thêm/xoá sản phẩm hay ghi sidecar meta (kể cả
+ * từ máy khác trong đội) đều đổi mtime thư mục → cache tự hết hiệu lực.
+ */
+let _hubCache: { dir: string; count: number; dirMtimeMs: number; items: HubItem[] } | null = null;
+
+/**
+ * Vứt cache scanHub. Cache tự hết hiệu lực theo mtime thư mục, nhưng ghi ĐÈ một sidecar đã có
+ * thì không chắc đổi mtime thư mục — nên mọi đường ghi trong process gọi thẳng hàm này.
+ */
+export const invalidateHubCache = (): void => { _hubCache = null; };
+
+/** Số file đọc song song khi quét Hub. Bung hết vài nghìn request cùng lúc làm nghẽn SMB. */
+const HUB_SCAN_CONCURRENCY = 32;
+
+/** Quét toàn bộ sản phẩm trong Hub (config.hubDir). Tái dùng buildListingCard. */
 export const scanHub = async (): Promise<HubItem[]> => {
   const dir = config.hubDir;
   if (!(await fs.pathExists(dir))) return [];
-  const files = (await fs.readdir(dir)).filter(
-    (f) => f.toLowerCase().endsWith(".json") && !isHubMetaFile(f)
+  const entries = await fs.readdir(dir);
+  const dirMtimeMs = await fs.stat(dir).then((st) => st.mtimeMs).catch(() => 0);
+  // dir nằm trong khoá cache: toggle Hub tổng đổi config.hubDir lúc chạy, thiếu nó sẽ trả
+  // nhầm data của thư mục trước đó.
+  if (_hubCache && _hubCache.dir === dir && _hubCache.count === entries.length && _hubCache.dirMtimeMs === dirMtimeMs) {
+    return _hubCache.items;
+  }
+
+  const files = entries.filter((f) => f.toLowerCase().endsWith(".json") && !isHubMetaFile(f));
+  // Sidecar meta rất thưa (chỉ sp đã list mới có). readdir đã cầm sẵn danh sách nên chỉ đọc
+  // đúng file tồn tại — trước đây gọi readOneMeta cho MỌI sp, phần lớn tốn 1 round-trip để
+  // nhận về ENOENT.
+  const metaNames = new Set(entries.filter((f) => f.endsWith(HUB_META_SUFFIX)));
+
+  const items: (HubItem | null)[] = new Array(files.length).fill(null);
+  let next = 0;
+  const worker = async (): Promise<void> => {
+    while (next < files.length) {
+      const i = next++;
+      const f = files[i];
+      try {
+        const full = path.join(dir, f);
+        const stat = await fs.stat(full);
+        // Đọc ĐÚNG 1 lần rồi dùng chung cho card lẫn url/addedBy.
+        const raw = JSON.parse(await fs.readFile(full, "utf-8"));
+        const card = await buildListingCard(raw, stat.mtimeMs, full, "hub", "hub", "success");
+        if (!card) continue;
+        const m = metaNames.has(f + HUB_META_SUFFIX) ? await readOneMeta(f) : null;
+        items[i] = {
+          id: f,
+          file: f,
+          title: card.title,
+          image: card.image,
+          url: typeof raw?.url === "string" ? raw.url : null,
+          priceRange: card.priceRange,
+          variantCount: card.variantCount,
+          colorCount: card.colorCount,
+          sizeCount: card.sizeCount,
+          scrapedAt: card.scrapedAt,
+          mtimeMs: card.mtimeMs,
+          niche: card.niche ?? null,
+          addedBy: raw?._addedBy ?? null,
+          addedAt: raw?._addedAt ?? null,
+          listedCount: m ? m.shops.length : 0,
+          listedShops: m ? m.shops : [],
+          lastListedMs: m ? m.lastAt : 0,
+        } as HubItem;
+      } catch {
+        // file hỏng/đang ghi dở → bỏ qua, giữ nguyên null
+      }
+    }
+  };
+  await Promise.all(
+    Array.from({ length: Math.min(HUB_SCAN_CONCURRENCY, files.length) }, () => worker())
   );
-  const items = await Promise.all(
-    files.map(async (f) => {
-      const card = await parseListingFile(path.join(dir, f), "hub", "hub", "success");
-      if (!card) return null;
-      const m = await readOneMeta(f);
-      // niche đã suy trong parseListingFile (card.niche); raw chỉ để lấy addedBy/url.
-      const raw = await fs.readJson(path.join(dir, f)).catch(() => ({} as any));
-      return {
-        id: f,
-        file: f,
-        title: card.title,
-        image: card.image,
-        url: typeof raw?.url === "string" ? raw.url : null,
-        priceRange: card.priceRange,
-        variantCount: card.variantCount,
-        colorCount: card.colorCount,
-        sizeCount: card.sizeCount,
-        scrapedAt: card.scrapedAt,
-        mtimeMs: card.mtimeMs,
-        niche: card.niche ?? null,
-        addedBy: raw?._addedBy ?? null,
-        addedAt: raw?._addedAt ?? null,
-        listedCount: m ? m.shops.length : 0,
-        listedShops: m ? m.shops : [],
-        lastListedMs: m ? m.lastAt : 0,
-      } as HubItem;
-    })
-  );
-  return items.filter((x): x is HubItem => x !== null).sort((a, b) => b.mtimeMs - a.mtimeMs);
+
+  const out = items
+    .filter((x): x is HubItem => x !== null)
+    .sort((a, b) => b.mtimeMs - a.mtimeMs);
+  _hubCache = { dir, count: entries.length, dirMtimeMs, items: out };
+  return out;
 };
 
 /** Đường dẫn tuyệt đối 1 file hub (guard traversal). null nếu tên không hợp lệ. */

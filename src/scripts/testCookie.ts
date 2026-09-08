@@ -5,11 +5,10 @@
 import "dotenv/config";
 import { chromium } from "playwright-core";
 import { configCookie } from "../utils/configCookie";
+import { cliArg } from "../utils/cliArgs";
 
 const main = async () => {
-  const args = process.argv.slice(2);
-  const userArg = args.find((a) => a.startsWith("--user="));
-  const username = userArg?.slice("--user=".length);
+  const username = cliArg("user");
   if (!username) {
     console.error("Usage: npx tsx src/scripts/testCookie.ts --user=<username>");
     process.exit(1);

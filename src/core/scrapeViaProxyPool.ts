@@ -8,6 +8,7 @@ import path from "path";
 import { crawlBatchInContext, type ChromeBatchItem, type BatchResult } from "./scrapeViaChrome";
 import type { ScrapeOptions, ScrapeResult } from "../services/kiki/sheinScraper";
 import type { ProxyBridge } from "./proxyPool";
+import { newFingerprint, fpContextOptions, applyFingerprint } from "./fingerprint";
 
 export interface ProxyPoolParams {
   items: ChromeBatchItem[];
@@ -43,13 +44,17 @@ export async function scrapeBatchViaProxyPool(params: ProxyPoolParams): Promise<
       const tag = `[P${i}]`;
       let ctx: BrowserContext | undefined;
       try {
+        // Fingerprint anti-detect riêng cho worker/proxy này.
+        const fp = newFingerprint();
+        const fpOpts = fpContextOptions(fp);
         ctx = await chromium.launchPersistentContext(dir, {
-          headless: params.headless ?? true,
+          headless: params.headless ?? false, // headed = an toàn hơn với SHEIN (chặn headless)
           proxy: { server: bridge.local },
-          viewport: { width: 1366, height: 900 },
           args: ["--disable-blink-features=AutomationControlled"],
+          ...fpOpts,
         });
-        log(`${tag} ${bridge.label} · mở, cào ${items.length} sp`);
+        await applyFingerprint(ctx, fp);
+        log(`${tag} ${bridge.label} · mở (fp: ${fpOpts.userAgent.slice(0, 40)}…), cào ${items.length} sp`);
         return await crawlBatchInContext(ctx, {
           items,
           options: params.options,

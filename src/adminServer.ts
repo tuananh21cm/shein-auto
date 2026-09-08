@@ -86,6 +86,7 @@ export const startAdminServer = async () => {
       req.path.startsWith("/admin/api/ingest") || // tampermonkey: Bearer token auth riêng
       req.path === "/admin/api/hub/ingest" || // tampermonkey đẩy vào Hub: Bearer token riêng
       req.path === "/admin/api/hub/check" || // tampermonkey pre-check trùng Hub: Bearer token riêng
+      req.path === "/admin/api/crawl/from-links" || // addon collect-link đẩy về (localOrToken guard localhost)
       req.path === "/admin/login" ||
       req.path === "/admin/logout"
     ) {
@@ -1959,10 +1960,10 @@ export const startAdminServer = async () => {
     }
   }
 
-  app.post("/admin/api/crawl/from-links", async (req, res) => {
+  app.post("/admin/api/crawl/from-links", localOrToken, async (req, res) => {
     try {
-      const sessionUser = (req.session as any).user as SessionUser;
-      if (sessionUser.role === "viewer") return res.status(403).json({ error: "Viewer không thể cào" });
+      const sessionUser = (req.session as any).user as SessionUser | undefined;
+      if (sessionUser?.role === "viewer") return res.status(403).json({ error: "Viewer không thể cào" });
       if (crawlJob?.running) return res.status(409).json({ error: "Đang có job cào chạy — chờ xong hoặc xem status" });
       const { links, proxies, output, shop, headless, concurrency } = req.body as any;
       const arr = Array.isArray(links) ? links : String(links || "").split(/\r?\n/);

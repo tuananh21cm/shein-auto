@@ -5,7 +5,26 @@ interface VariantImageParam {
   [color: string]: string | string[];
 }
 
-const normalizeSize = (s: string): string => sizeMap()[s.toLowerCase().trim()] ?? s;
+/**
+ * Chuẩn hoá size SHEIN → chuẩn TikTok US.
+ *
+ * SHEIN ghi size dạng "<số bảng> (<size thật>)" — "4 (S)", "8/10 (L)", "20 (4XL)". Con số phụ
+ * thuộc bảng size của từng loại đồ nên KHÔNG đáng tin: dữ liệu Hub có cả "4 (S)" lẫn "4 (L)",
+ * cả "0 (XXS)" lẫn "0 (S)". Chữ trong ngoặc mới là size thật.
+ *
+ * Thứ tự: tra size-map.json trước (giữ các ánh xạ thủ công như curve → 2XL), không có thì lấy
+ * phần trong ngoặc. Trước đây chỉ tra map 13 khoá nên 48 dạng lọt nguyên si sang TikTok
+ * ("10 (XL)", "12 (0XL)"…). Ràng buộc phần ngoài ngoặc chỉ gồm chữ số để không đụng
+ * "XXS (Petite)" hay "Petite M".
+ */
+const SIZE_IN_PARENS_RE = /^[\d/.\-\s]+\(([^)]+)\)$/;
+const normalizeSize = (s: string): string => {
+  const t = (s ?? "").trim();
+  const mapped = sizeMap()[t.toLowerCase()];
+  if (mapped) return mapped;
+  const m = t.match(SIZE_IN_PARENS_RE);
+  return m ? m[1].trim() : t;
+};
 
 /**
  * Pre-process JSON data trước khi đẩy lên 4Seller:

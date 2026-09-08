@@ -1,6 +1,14 @@
 import { computeFinalPrice } from "../../config/appConfig";
 import { generateRandomString } from "./randomUtils";
 
+/** Giá vượt ngần này lần trung vị coi là nhiễu, không cho quyết định giá listing. */
+const PRICE_OUTLIER_RATIO = 2;
+/**
+ * Tên variant gợi ý hàng bundle (2pcs / set / combo…). Bundle đắt là GIÁ THẬT nên được
+ * MIỄN TRỪ khỏi bộ lọc nhiễu — nếu không sẽ bán hụt đúng món đắt nhất.
+ */
+const BUNDLE_NAME_RE = /(\d+\s*pcs?|\d+\s*pack|set|bundle|combo|kit)/i;
+
 export interface PriceOverride {
   shipFee: number;
   multiplier: number;
@@ -60,16 +68,41 @@ export const fillTableData = async (
       }
     }
   }
-  // Giá fallback: dùng khi 1 màu không khớp key giá, để KHÔNG bỏ trống ô Retail Price
-  // (ô trống sẽ chặn publish với "Can not be empty"). Các màu cùng sản phẩm
-  // thường cùng giá nên đây là xấp xỉ an toàn hơn là để trống.
-  const fallbackRaw = (() => {
-    for (const v of Object.values(pricing)) {
-      const n = parseFloat(v.toString().replace(",", ".").replace(/[^0-9.]/g, ""));
-      if (!isNaN(n)) return n;
+  // Giá gốc áp cho MỌI variant = giá CAO NHẤT trong các variant.
+  //
+  // Trước đây mỗi màu ăn giá riêng của nó, nên một sản phẩm ra nhiều mức giá khác nhau và
+  // màu đắt nhất bị bán hụt. Lấy max rồi mới qua công thức → cả listing một mức giá, không
+  // màu nào lỗ. Cũng bỏ luôn nhu cầu "giá fallback" khi một màu không khớp key.
+  //
+  // Chạy SAU fixInflatedVariantPrices (trong preprocessData) nên max được lấy trên giá đã
+  // gỡ phần SHEIN thổi chống crawler.
+  const parseMoney = (v: any): number => parseFloat(String(v).replace(",", ".").replace(/[^0-9.]/g, ""));
+  const maxRaw = (() => {
+    const rows = Object.entries(pricing)
+      .map(([name, v]) => ({ name, p: parseMoney(v) }))
+      .filter((r) => !isNaN(r.p) && r.p > 0);
+    if (rows.length === 0) return NaN;
+    if (rows.length === 1) return rows[0].p;
+
+    const sorted = rows.map((r) => r.p).sort((a, b) => a - b);
+    const mid = sorted.length >> 1;
+    const med = sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+
+    // Loại giá lệch quá xa trung vị. fixInflatedVariantPrices chỉ gỡ mức thổi từ 2.7x trở lên
+    // (cố ý, để không đụng variant đắt thật), nên phần thổi ~2x còn sót lại — mà lấy MAX thì
+    // đúng cái sót đó quyết định giá cả listing. Dữ liệu Hub cho thấy chúng là màu thường bị
+    // nhiễu giá: cùng một màu mà "Apricot" 24.69 còn "Apricot 2" chỉ 10.96.
+    const outliers = rows.filter((r) => r.p > med * PRICE_OUTLIER_RATIO && !BUNDLE_NAME_RE.test(r.name));
+    const pool = rows.filter((r) => !outliers.includes(r));
+    for (const o of outliers) {
+      console.log(`⚠️  Bỏ giá lệch "${o.name}" = ${o.p} (>${PRICE_OUTLIER_RATIO}x trung vị ${med}) khỏi việc chọn MAX`);
     }
-    return NaN;
+    return Math.max(...(pool.length ? pool : rows).map((r) => r.p));
   })();
+  if (!isNaN(maxRaw)) {
+    const all = Object.values(pricing).map(parseMoney).filter((n) => !isNaN(n));
+    console.log(`💲 Giá gốc dùng cho mọi variant = MAX ${maxRaw} (trong ${all.length} variant: ${all.join(", ")})`);
+  }
 
   const ROW_SELECTOR = "table.custom_draft_table tbody tr.custom_draft_table_body_tr";
   const processedVariants = new Set<string>();
@@ -84,19 +117,11 @@ export const fillTableData = async (
     // Input theo THỨ TỰ trong row (bỏ qua cột checkbox + Variant): [0]=SKU, [1]=QTY, [2]=Price.
     const rowInputs = row.locator("td input.el-input__inner");
     const colorKey = variantText.split("/")[0].toLowerCase().trim();
-    const priceToFill = pricing[colorKey];
 
-    let numericPrice =
-      priceToFill !== undefined
-        ? parseFloat(priceToFill.toString().replace(",", ".").replace(/[^0-9.]/g, ""))
-        : NaN;
+    // Mọi variant dùng chung giá gốc cao nhất (xem maxRaw).
+    const numericPrice = maxRaw;
     if (isNaN(numericPrice)) {
-      if (!isNaN(fallbackRaw)) {
-        console.warn(`⚠️ Màu "${colorKey}" không có giá khớp — dùng giá fallback ${fallbackRaw}.`);
-        numericPrice = fallbackRaw;
-      } else {
-        console.warn(`⚠️ Màu "${colorKey}" không có giá và KHÔNG có fallback — ô Retail Price sẽ trống!`);
-      }
+      console.warn(`⚠️ Không đọc được giá của variant nào — ô Retail Price sẽ trống!`);
     }
     if (!isNaN(numericPrice)) {
       const finalPrice = calcPrice(numericPrice);

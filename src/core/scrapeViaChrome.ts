@@ -40,6 +40,17 @@ export async function crawlBatchInContext(
   const out: BatchResult = [];
   let page = await ctx.newPage();
 
+  // Warm-up: vào HOMEPAGE SHEIN trước (set cookie/session) → product page ít captcha hơn.
+  // Chạy 1 lần/context; cookie persist nên cả batch dùng chung session đã "nguội".
+  try {
+    const origin = (() => { try { return new URL(items[0]?.url || "https://us.shein.com/").origin; } catch { return "https://us.shein.com"; } })();
+    log(`Warm-up: mở ${origin}/ …`);
+    await page.goto(origin + "/", { waitUntil: "domcontentloaded", timeout: 60_000 });
+    await page.waitForTimeout(3000);
+    if (await isCaptchaPresent(page).catch(() => false)) await dismissCaptcha(page, log);
+    await page.waitForTimeout(1500);
+  } catch (e: any) { log(`Warm-up lỗi (bỏ qua): ${String(e?.message ?? e).slice(0, 60)}`); }
+
   const heavyStuck = (d: ScrapeResult): string[] => {
     const s: string[] = (d as any)?._meta?.stuckColors || [];
     const n = d.listing_variations.colors.length || 1;

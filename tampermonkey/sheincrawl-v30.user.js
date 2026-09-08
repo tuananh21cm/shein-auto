@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SHEIN → Hub Scraper v30 (one-click)
 // @namespace    http://tampermonkey.net/
-// @version      30.9.0
+// @version      30.10.0
 // @description  Bản rút gọn: CHỈ cào sản phẩm SHEIN thẳng vào Hub bằng 1 nút. Không panel, không chọn shop, không phải dán token — tự lấy từ phiên đã đăng nhập admin.
 // @author       shein-auto
 // @match        *://*.shein.com/*
@@ -87,6 +87,18 @@
 
     /** Bỏ màu có tỉ lệ size hết hàng VƯỢT ngưỡng này. Chỉ áp khi sản phẩm có nhiều màu. */
     const OOS_DROP_RATIO = 0.5;
+
+    /**
+     * Nghỉ giữa hai màu để SHEIN không bắt captcha.
+     *
+     * Bấm màu liên tục sát nhau là dấu hiệu máy rõ nhất. Nhưng nghỉ ĐÚNG một con số cố định
+     * cũng là một dấu hiệu — nhịp đều tăm tắp không giống người. Nên lấy ngẫu nhiên trong
+     * khoảng [base, base×1.8] để mỗi lần một khác.
+     *
+     * Chỉnh qua menu Tampermonkey → "⏱ Đổi độ trễ giữa màu" nếu vẫn còn dính captcha.
+     */
+    let VARIANT_DELAY_MS = Number(GM_getValue('variantDelayMs', 900)) || 900;
+    const humanPause = () => wait(VARIANT_DELAY_MS + Math.random() * VARIANT_DELAY_MS * 0.8);
 
     const detectMarket = () => {
         const h = window.location.hostname;
@@ -314,6 +326,7 @@
                 // tính trên màu được giữ, không lẫn size của màu đã bỏ.
                 const variants = [];
                 for (let i = 0; i < swatches.length; i++) {
+                    if (i > 0) await humanPause(); // giãn nhịp giữa các màu, tránh dính captcha
                     const prevName = document.querySelector(SELECTORS.colorNameLabel)?.innerText.trim() ?? '';
                     const prevGallerySig = gallerySignature(getGalleryImages());
                     // Màu ĐANG được chọn sẵn (thường là màu đầu): bấm lại thì tên lẫn ảnh đều
@@ -672,6 +685,16 @@
         } catch (e) {
             toast(`❌ ${e.message} — nhớ đăng nhập ${SERVER}/admin trước`, 'err', 6000);
         }
+    });
+    // Dính captcha thì tăng số này lên (vd 2000). Cào chậm hơn nhưng đỡ bị chặn.
+    GM_registerMenuCommand('⏱ Đổi độ trễ giữa màu', () => {
+        const v = prompt(`Nghỉ bao nhiêu ms giữa 2 màu?\n(thực tế random trong khoảng x1–x1.8; dính captcha thì tăng lên)`, String(VARIANT_DELAY_MS));
+        if (v === null) return;
+        const n = Number(v);
+        if (!Number.isFinite(n) || n < 0) { toast('❌ Phải là số ≥ 0', 'err'); return; }
+        VARIANT_DELAY_MS = Math.round(n);
+        GM_setValue('variantDelayMs', VARIANT_DELAY_MS);
+        toast(`✅ Nghỉ ${VARIANT_DELAY_MS}–${Math.round(VARIANT_DELAY_MS * 1.8)}ms giữa mỗi màu`, 'ok', 3500);
     });
     GM_registerMenuCommand('↺ Reset vị trí nút', () => {
         GM_setValue('fabPos', 'null');

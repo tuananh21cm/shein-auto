@@ -2603,6 +2603,14 @@ async function startCrawl() {
     pollCrawl();
   } catch (e) { toast(e.message, "error"); btn.disabled = false; btn.textContent = "🕷️ Cào"; }
 }
+async function showCrawlStatusOnce() {
+  try {
+    const d = await (await fetch("/admin/api/crawl/status")).json();
+    if (!d || d.idle) return;
+    const el = $("#crawlLog"); if (el) { el.style.display = "block"; el.textContent = (d.log || []).join("\n"); el.scrollTop = el.scrollHeight; }
+    if (d.running) { $("#crawlBody").style.display = ""; $("#crawlCaret").textContent = "▾ Đóng"; $("#crawlBtn").disabled = true; $("#crawlBtn").textContent = "⏳ Đang cào…"; pollCrawl(); }
+  } catch { /* ignore */ }
+}
 function pollCrawl() {
   clearInterval(_crawlPoll);
   _crawlPoll = setInterval(async () => {
@@ -2622,6 +2630,7 @@ function pollCrawl() {
 
 async function loadHub() {
   ensureHubState();
+  showCrawlStatusOnce(); // hiện tiến trình crawl đang chạy (kể cả đẩy từ addon)
   try {
     const res = await fetch("/admin/api/hub");
     const data = await res.json();

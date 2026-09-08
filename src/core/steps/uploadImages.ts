@@ -152,15 +152,16 @@ export const uploadVariantImages = async (
 ): Promise<void> => {
   console.log("--- Bắt đầu Upload ảnh Variant (Bản Multi-Image US/DE/FR) ---");
 
-  // Multi-image per variant (như main): tối đa 9 ảnh/màu — 4Seller giới hạn 9,
-  // SHEIN có màu 10-11 ảnh nên phải cap tránh "Exceeding the image count limit".
-  const MAX_VARIANT_IMAGES = 9;
+  // Mặc định CHỈ 1 ảnh hero mỗi màu (ảnh đầu của màu đó). 4Seller cho tối đa 9, nhưng
+  // upload đủ 9 ảnh × N màu là hàng chục lượt tải + chờ, trong khi ô variant chỉ hiện
+  // ảnh đầu. Chỉnh qua worker.json → variantImageCount nếu muốn nhiều góc chụp.
+  const MAX_VARIANT_IMAGES = Math.max(1, Math.min(9, workerConfig().variantImageCount ?? 1));
   const imageMap: { [key: string]: string[] } = {};
   for (const item of variantImages) {
     for (const [key, value] of Object.entries(item)) {
       const arr = Array.isArray(value) ? value : [value];
       if (arr.length > MAX_VARIANT_IMAGES) {
-        console.log(`✂️ "${key}": ${arr.length} ảnh → cắt còn ${MAX_VARIANT_IMAGES} (giới hạn 4Seller)`);
+        console.log(`✂️ "${key}": ${arr.length} ảnh → giữ ${MAX_VARIANT_IMAGES} (variantImageCount)`);
       }
       imageMap[key] = arr.slice(0, MAX_VARIANT_IMAGES);
     }

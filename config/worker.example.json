@@ -7,6 +7,7 @@
   "queueManagerCron": "*/1 * * * *",
   "imageUploadWaitPerImageMs": 7000,
   "imageUploadMaxImages": 9,
+  "variantImageCount": 1,
   "descriptionImagesCount": 8,
   "descriptionMaxAttributes": 8,
   "descriptionHeroFirst": true,

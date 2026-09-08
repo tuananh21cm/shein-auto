@@ -32,6 +32,14 @@ interface WorkerFile {
   queueManagerCron: string;
   imageUploadWaitPerImageMs: number;
   imageUploadMaxImages: number;
+  /**
+   * Số ảnh upload cho MỖI màu ở mục Variant Image. Mặc định 1 — chỉ ảnh hero.
+   *
+   * 4Seller cho tối đa 9, nhưng upload đủ 9 ảnh × N màu là hàng chục lượt tải + chờ
+   * (imageUploadWaitPerImageMs), trong khi ô variant chỉ hiện ảnh đầu. Đặt >1 nếu muốn
+   * khách xem được nhiều góc chụp của từng màu.
+   */
+  variantImageCount?: number;
   descriptionImagesCount: number;
   descriptionMaxAttributes: number;
   /** Banner "feature" (hero) đưa lên NGAY sau headline mô tả, collage xuống giữa. */

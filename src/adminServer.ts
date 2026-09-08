@@ -1915,44 +1915,57 @@ export const startAdminServer = async () => {
         .map((u) => u.trim()).filter(Boolean)
         .map((u) => ({ goodsId: (u.match(/-p-(\d+)\.html/) || [])[1] || u.slice(-20), url: u }));
       if (!items.length) throw new Error("Không có link hợp lệ");
-      // Proxy: dán trực tiếp hoặc file data/proxies-socks5.txt
+      // Proxy: dán trực tiếp hoặc file data/proxies-socks5.txt (trống → cào TRỰC TIẾP IP máy).
       let entries = opts.proxies?.trim()
         ? opts.proxies.split(/\r?\n/).map((l) => parseProxyLine(l.trim())).filter(Boolean) as any[]
         : await loadProxies(path.resolve(process.cwd(), "data", "proxies-socks5.txt")).catch(() => []);
-      if (!entries.length) throw new Error("Không có proxy (dán list hoặc tạo data/proxies-socks5.txt)");
-      const cap = Math.max(1, Math.min(entries.length, opts.concurrency || 5));
+      const cap = Math.max(1, Math.min(entries.length || 1, opts.concurrency || 5));
       entries = entries.slice(0, cap);
-      clog(`${items.length} link · ${entries.length} proxy · output=${opts.output}${opts.shop ? " (" + opts.shop + ")" : ""} · ${opts.headless ? "headless" : "headed"}`);
-      const { bridges, close } = await startBridges(entries, clog);
-      try {
-        // Resolve shop baseDir 1 lần (nếu output=shop)
-        let shopBaseDir: string | null = null;
-        if (opts.output === "shop") {
-          if (!opts.shop) throw new Error("output=shop nhưng thiếu tên shop");
-          const owner = await getShopOwner(opts.shop);
-          const dirs = owner ? await getUserDirsByName(owner) : null;
-          shopBaseDir = dirs?.baseSheinAutoDir || null;
-          if (!shopBaseDir) throw new Error(`Shop "${opts.shop}" chưa cấu hình baseSheinAutoDir`);
-        }
-        const onProduct = async (goodsId: string, data: any, error?: string) => {
-          if (!data) { clog(`✗ ${goodsId}: ${(error || "fail").slice(0, 80)}`); return; }
-          try {
-            if (opts.output === "shop") {
-              const folder = path.join(shopBaseDir!, opts.shop!);
-              await fs.ensureDir(folder);
-              await fs.writeFile(path.join(folder, `${opts.shop}_${Date.now()}.json`), JSON.stringify(data, null, 2), "utf-8");
-              clog(`✓ ${goodsId} → shop ${opts.shop} (${String(data.product_name || "").slice(0, 40)})`);
-            } else {
-              await writeHubFile(data, "crawler");
-              clog(`✓ ${goodsId} → Hub (${String(data.product_name || "").slice(0, 40)})`);
-            }
-          } catch (e: any) { clog(`✗ ${goodsId} ghi lỗi: ${String(e?.message ?? e).slice(0, 60)}`); }
-        };
-        const res = await scrapeBatchViaProxyPool({ items, bridges, headless: opts.headless, onLog: clog, onProduct });
-        const ok = res.filter((r) => r.ok).length;
-        crawlJob!.summary = { total: items.length, ok, fail: items.length - ok };
-        clog(`🎉 XONG: ${ok}/${items.length} OK`);
-      } finally { await close(); }
+
+      // Resolve shop baseDir + onProduct (dùng chung cho proxy-pool lẫn direct).
+      let shopBaseDir: string | null = null;
+      if (opts.output === "shop") {
+        if (!opts.shop) throw new Error("output=shop nhưng thiếu tên shop");
+        const owner = await getShopOwner(opts.shop);
+        const dirs = owner ? await getUserDirsByName(owner) : null;
+        shopBaseDir = dirs?.baseSheinAutoDir || null;
+        if (!shopBaseDir) throw new Error(`Shop "${opts.shop}" chưa cấu hình baseSheinAutoDir`);
+      }
+      const onProduct = async (goodsId: string, data: any, error?: string) => {
+        if (!data) { clog(`✗ ${goodsId}: ${(error || "fail").slice(0, 80)}`); return; }
+        try {
+          if (opts.output === "shop") {
+            const folder = path.join(shopBaseDir!, opts.shop!);
+            await fs.ensureDir(folder);
+            await fs.writeFile(path.join(folder, `${opts.shop}_${Date.now()}.json`), JSON.stringify(data, null, 2), "utf-8");
+            clog(`✓ ${goodsId} → shop ${opts.shop} (${String(data.product_name || "").slice(0, 40)})`);
+          } else {
+            await writeHubFile(data, "crawler");
+            clog(`✓ ${goodsId} → Hub (${String(data.product_name || "").slice(0, 40)})`);
+          }
+        } catch (e: any) { clog(`✗ ${goodsId} ghi lỗi: ${String(e?.message ?? e).slice(0, 60)}`); }
+      };
+
+      let res: { ok: boolean }[];
+      if (entries.length) {
+        clog(`${items.length} link · ${entries.length} proxy · output=${opts.output}${opts.shop ? " (" + opts.shop + ")" : ""} · ${opts.headless ? "headless" : "headed"}`);
+        const { bridges, close } = await startBridges(entries, clog);
+        try { res = await scrapeBatchViaProxyPool({ items, bridges, headless: opts.headless, onLog: clog, onProduct }); }
+        finally { await close(); }
+      } else {
+        clog(`⚠️ KHÔNG có proxy → cào TRỰC TIẾP (IP máy + fingerprint), 1 Chrome. Thêm data/proxies-socks5.txt (hoặc dán proxy) để cào nhiều/né chặn tốt hơn.`);
+        const { chromium } = await import("playwright-core");
+        const { crawlBatchInContext } = await import("./core/scrapeViaChrome");
+        const { newFingerprint, fpContextOptions, applyFingerprint } = await import("./core/fingerprint");
+        const fp = newFingerprint(); const fpOpts = fpContextOptions(fp);
+        const dir = path.join(process.cwd(), "data", "chrome-crawl-direct");
+        const ctx = await chromium.launchPersistentContext(dir, { headless: !!opts.headless, args: ["--disable-blink-features=AutomationControlled"], ...fpOpts });
+        try { await applyFingerprint(ctx, fp); res = await crawlBatchInContext(ctx, { items, onLog: clog, onProduct, tag: "[direct]" }); }
+        finally { try { await ctx.close(); } catch { /* ignore */ } }
+      }
+      const ok = res.filter((r) => r.ok).length;
+      crawlJob!.summary = { total: items.length, ok, fail: items.length - ok };
+      clog(`🎉 XONG: ${ok}/${items.length} OK`);
     } catch (e: any) {
       clog(`❌ ${String(e?.message ?? e)}`);
     } finally {

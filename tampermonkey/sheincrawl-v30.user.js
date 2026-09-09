@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SHEIN → Hub Scraper v30 (one-click)
 // @namespace    http://tampermonkey.net/
-// @version      30.10.0
+// @version      30.11.0
 // @description  Bản rút gọn: CHỈ cào sản phẩm SHEIN thẳng vào Hub bằng 1 nút. Không panel, không chọn shop, không phải dán token — tự lấy từ phiên đã đăng nhập admin.
 // @author       shein-auto
 // @match        *://*.shein.com/*
@@ -180,6 +180,33 @@
         return getGalleryImages();
     }
 
+    /**
+     * Size này hết hàng chưa.
+     *
+     * Nút size thật là thẻ <p> bên trong, nhưng MỌI dấu hiệu hết hàng lại nằm ở thẻ CHA
+     * mang role="radio" — HTML thật của SHEIN:
+     *
+     *   còn hàng : <div class="product-intro__size-radio ..."                            aria-disabled="false">
+     *   hết hàng : <div class="product-intro__size-radio ... product-intro__size-radio_soldout" aria-disabled="true">
+     *
+     * Bản cũ trượt cả hai đường: regex chỉ có "sold-out"/"sold_out" mà SHEIN viết LIỀN
+     * "soldout", còn aria-disabled thì đọc trên chính thẻ <p> nên luôn null. Hậu quả:
+     * 0/4.504 sản phẩm trong Hub từng có dữ liệu hết hàng.
+     */
+    const isSoldOut = (btn) => {
+        // Thẻ mang trạng thái: ưu tiên role="radio", lùi dần lên cha/ông.
+        const holder = btn.closest('[role="radio"], [aria-disabled], li, label') || btn.parentElement;
+        const cls = `${btn.className || ''} ${holder?.className || ''} ${btn.parentElement?.className || ''}`;
+        return (
+            // sold[-_ ]?out phủ cả "soldout", "sold-out", "sold_out", "sold out"
+            /sold[-_\s]?out|out[-_\s]?of[-_\s]?stock|not[-_\s]?available|disabled/i.test(cls) ||
+            holder?.getAttribute('aria-disabled') === 'true' ||
+            btn.getAttribute('aria-disabled') === 'true' ||
+            btn.hasAttribute('disabled') ||
+            holder?.hasAttribute('disabled') === true
+        );
+    };
+
     function getAvailableSizesForCurrentColor() {
         const buttons = Array.from(document.querySelectorAll(SELECTORS.sizeButtons));
         const available = [];
@@ -190,13 +217,7 @@
             if (isSkippedSize(rawText)) continue;
             const text = normalizeShein(rawText);
             if (isSkippedSize(text)) continue; // chuẩn hoá xong vẫn là kiểu dáng → không phải size
-            const cls = btn.className || '';
-            const parentCls = btn.parentElement?.className || '';
-            const isDisabled =
-                /disabled|sold-out|sold_out|out-of-stock|not-available|gray/i.test(cls + ' ' + parentCls) ||
-                btn.hasAttribute('disabled') ||
-                btn.getAttribute('aria-disabled') === 'true';
-            if (isDisabled) sold.push(text);
+            if (isSoldOut(btn)) sold.push(text);
             else available.push(text);
         }
         return { available, sold };
@@ -345,10 +366,14 @@
                     if (!colorCounter[rawColorName]) colorCounter[rawColorName] = 1;
                     else { colorCounter[rawColorName]++; finalColorName = `${rawColorName} ${colorCounter[rawColorName]}`; }
 
-                    const { available: availSizes, sold: soldSizes } = getAvailableSizesForCurrentColor();
                     const currentId = getProductIdFromUrl() || 'Unknown';
                     const priceText = document.querySelector(SELECTORS.price)?.innerText.trim() || '0';
                     const variantImages = await waitForGalleryChange(prevGallerySig, nameChanged ? galleryBudget() : 900);
+
+                    // Đọc size SAU khi ảnh đã ổn định, không phải ngay lúc tên màu đổi. SHEIN
+                    // dựng lại danh sách size sau khi đổi màu; đọc sớm sẽ ăn trạng thái còn/hết
+                    // của màu TRƯỚC. Chờ ảnh vốn đã tốn thời gian rồi nên không mất thêm gì.
+                    const { available: availSizes, sold: soldSizes } = getAvailableSizesForCurrentColor();
 
                     variants.push({ name: finalColorName, id: currentId, price: priceText, images: variantImages, avail: availSizes, sold: soldSizes });
 

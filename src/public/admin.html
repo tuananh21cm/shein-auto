@@ -2874,6 +2874,7 @@ function renderHub(resetPage) {
         <div class="time-row"><span title="${escapeHtml(absTime(it.mtimeMs))}">⏱ ${escapeHtml(relTime(it.mtimeMs))}</span>${it.lastListedMs ? `<span class="scraped" title="List gần nhất">📤 ${escapeHtml(relTime(it.lastListedMs))}</span>` : ''}</div>
         <div class="actions">
           <button onclick="viewHub('${idEnc}')">View</button>
+          ${canEdit ? `<button onclick="editHubVariants('${idEnc}')" title="Xoá bớt màu không cần">✏️</button>` : ''}
           ${canEdit ? `<button class="retry" onclick="listHubOne('${idEnc}')">📤 List</button>` : ''}
           ${canEdit ? `<button class="delete" onclick="deleteHubOne('${idEnc}')">🗑</button>` : ''}
         </div>
@@ -3431,6 +3432,107 @@ async function viewHub(idEnc) {
     $("#modalBg").classList.add("show");
   } catch (err) {
     toast(err.message, "error");
+  }
+}
+
+// ─── Sửa variant Hub: bỏ bớt màu không cần ────────────────
+// Tick màu nào là BỎ màu đó. Hiện ảnh + giá + số size để nhìn là quyết được, khỏi mở JSON.
+async function editHubVariants(idEnc) {
+  const id = decodeURIComponent(idEnc);
+  try {
+    const res = await fetch("/admin/api/hub/json?file=" + encodeURIComponent(id));
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+    const d = data.content || {};
+    const colors = d.listing_variations?.colors || [];
+    if (!colors.length) return toast("Sản phẩm này không có màu nào", "error");
+
+    const imgOf = (c) => {
+      const hit = (d.variant_images || []).find((x) => Object.keys(x)[0] === c);
+      const v = hit ? Object.values(hit)[0] : null;
+      return Array.isArray(v) ? v[0] : v;
+    };
+    const priceOf = (c) => {
+      const hit = (d.variant_price || []).find((x) => Object.keys(x)[0] === c);
+      return hit ? Object.values(hit)[0] : "";
+    };
+
+    state.hubEdit = { file: id, total: colors.length };
+    $("#modalTitle").textContent = `✏️ Sửa màu — ${d.product_name || id}`;
+    $("#modalBody").innerHTML = `
+      <div style="color:var(--text-mute); font-size:0.85rem; margin-bottom:12px;">
+        Tick màu muốn <b>bỏ</b>. Ảnh, giá và ô size của màu đó sẽ bị gỡ khỏi sản phẩm.
+        Danh sách size tổng được tính lại theo các màu còn giữ. Phải chừa ít nhất 1 màu.
+      </div>
+      <div style="display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:10px; max-height:52vh; overflow:auto;">
+        ${colors.map((c) => {
+          const img = imgOf(c);
+          const avail = (d.available_matrix?.[c] || []).length;
+          const oos = (d.oos_matrix?.[c] || []).length;
+          return `
+          <label class="hub-edit-color" style="display:block; border:1px solid var(--border); border-radius:10px; overflow:hidden; cursor:pointer;">
+            <input type="checkbox" class="hub-edit-cb" value="${escapeHtml(c)}" onchange="onHubEditToggle(this)" style="position:absolute; margin:8px;" />
+            ${img ? `<img src="${escapeHtml(img)}" alt="" loading="lazy" style="width:100%; aspect-ratio:3/4; object-fit:cover; display:block;" onerror="this.style.display='none'" />` : `<div style="aspect-ratio:3/4; display:flex; align-items:center; justify-content:center; color:var(--text-mute); font-size:0.8rem;">(no image)</div>`}
+            <div style="padding:7px 9px;">
+              <div style="font-weight:600; font-size:0.85rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${escapeHtml(c)}">${escapeHtml(c)}</div>
+              <div style="color:var(--text-mute); font-size:0.78rem; margin-top:2px;">
+                ${escapeHtml(String(priceOf(c)))} · ${avail} size${oos ? ` · <span style="color:var(--danger);">${oos} hết</span>` : ''}
+              </div>
+            </div>
+          </label>`;
+        }).join('')}
+      </div>
+      <div id="hubEditInfo" style="color:var(--text-mute); font-size:0.82rem; margin-top:12px; min-height:18px;">Chưa chọn màu nào để bỏ.</div>
+      <div style="display:flex; gap:8px; margin-top:10px;">
+        <button class="btn btn-ghost" onclick="closeModal()" style="flex:1;">Huỷ</button>
+        <button class="btn btn-primary" id="hubEditSave" onclick="saveHubVariants()" style="flex:1;" disabled>Bỏ màu đã chọn</button>
+      </div>`;
+    $("#modalBg").classList.add("show");
+  } catch (err) {
+    toast(err.message, "error");
+  }
+}
+
+function onHubEditToggle(cb) {
+  cb.closest('.hub-edit-color').style.opacity = cb.checked ? '0.4' : '1';
+  const picked = [...document.querySelectorAll('.hub-edit-cb:checked')].length;
+  const total = state.hubEdit?.total || 0;
+  const info = $("#hubEditInfo"), btn = $("#hubEditSave");
+  if (!info || !btn) return;
+  if (picked === 0) {
+    info.textContent = "Chưa chọn màu nào để bỏ.";
+    info.style.color = "var(--text-mute)";
+    btn.disabled = true;
+  } else if (picked >= total) {
+    info.textContent = `Không thể bỏ hết ${total} màu — phải chừa lại ít nhất 1.`;
+    info.style.color = "var(--danger)";
+    btn.disabled = true;
+  } else {
+    info.textContent = `Bỏ ${picked} màu, còn lại ${total - picked}.`;
+    info.style.color = "var(--text-mute)";
+    btn.disabled = false;
+  }
+}
+
+async function saveHubVariants() {
+  const remove = [...document.querySelectorAll('.hub-edit-cb:checked')].map((c) => c.value);
+  if (!remove.length || !state.hubEdit) return;
+  const btn = $("#hubEditSave");
+  btn.disabled = true; btn.textContent = "Đang lưu…";
+  try {
+    const res = await fetch("/admin/api/hub/variants", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ file: state.hubEdit.file, remove }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+    closeModal();
+    toast(`Đã bỏ ${data.removed} màu — còn ${data.colors.length}`);
+    await loadHub();
+  } catch (err) {
+    toast(err.message, "error");
+    btn.disabled = false; btn.textContent = "Bỏ màu đã chọn";
   }
 }
 

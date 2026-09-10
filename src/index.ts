@@ -13,6 +13,7 @@ import { scheduleCrmSync } from "./core/crmSync";
 import { scheduleRankTracking } from "./core/rankTracking";
 import { schedulePromotionCron } from "./core/promotionScan";
 import { scheduleCookieAutoRefresh } from "./services/fourseller/autoRefresh";
+import { acquireInstanceLock } from "./state/singleInstance";
 
 // Pipe console.* lên eventBus để SSE stream xuống UI. Phải gọi sớm.
 installConsoleTap();
@@ -26,7 +27,12 @@ console.log(`⏰ File router  : ${config.cronFileRouter}`);
 console.log(`⏰ Queue manager: ${config.cronQueueManager}`);
 console.log("==============================================\n");
 
+let releaseLock: (() => void) | null = null;
+
 const bootstrap = async () => {
+  // Giành khoá TRƯỚC mọi thứ khác. Bind port từng được dùng làm chốt chặn nhưng trên Windows
+  // instance thứ hai vẫn bind "thành công" rồi lên lịch cron song song (xem singleInstance.ts).
+  releaseLock = await acquireInstanceLock();
   await initDb(); // SQLite — phải init đầu tiên (auto-import legacy JSON)
   await Promise.all([historyStore.init(), geminiCache.init()]);
   refreshQueueSnapshot().catch(() => {});
@@ -55,11 +61,17 @@ const bootstrap = async () => {
 };
 bootstrap().catch((err) => {
   console.error("❌ Bootstrap failed:", err?.message ?? err);
+  releaseLock?.(); // chỉ nhả nếu CHÍNH mình đã giành được (hàm tự kiểm tra pid)
   process.exit(1); // instance thừa thoát hẳn, không chạy cron song song
 });
 
+// Thoát bình thường (không qua SIGINT/SIGTERM) vẫn phải nhả khoá, nếu không lần chạy sau
+// sẽ thấy khoá của một PID đã chết.
+process.on("exit", () => releaseLock?.());
+
 const shutdown = (signal: string) => {
   console.log(`\n📴 Nhận ${signal}, dừng worker...`);
+  releaseLock?.();
   closeDb();
   process.exit(0);
 };

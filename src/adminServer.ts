@@ -1986,7 +1986,17 @@ export const startAdminServer = async () => {
       let entries = opts.proxies?.trim()
         ? opts.proxies.split(/\r?\n/).map((l) => parseProxyLine(l.trim())).filter(Boolean) as any[]
         : await loadProxies(path.resolve(process.cwd(), "data", "proxies-socks5.txt")).catch(() => []);
+      // XÁO trước khi cắt. Trước đây `slice(0, cap)` luôn lấy đúng N proxy ĐẦU danh sách:
+      // kho có 871 IP mà mọi lần chạy đều dùng lại 3 IP đầu → chúng bị SHEIN chặn nhanh
+      // trong khi 868 cái còn lại nằm không. Xáo Fisher-Yates rồi mới cắt để trải đều.
+      // Chỉ xáo khi lấy từ FILE — proxy người dùng dán tay thì tôn trọng thứ tự họ viết.
       const cap = Math.max(1, Math.min(entries.length || 1, opts.concurrency || 5));
+      if (!opts.proxies?.trim() && entries.length > cap) {
+        for (let i = entries.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [entries[i], entries[j]] = [entries[j], entries[i]];
+        }
+      }
       entries = entries.slice(0, cap);
 
       // Resolve shop baseDir + onProduct (dùng chung cho proxy-pool lẫn direct).

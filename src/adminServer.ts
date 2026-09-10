@@ -86,6 +86,7 @@ export const startAdminServer = async () => {
       req.path.startsWith("/admin/api/ingest") || // tampermonkey: Bearer token auth riêng
       req.path === "/admin/api/hub/ingest" || // tampermonkey đẩy vào Hub: Bearer token riêng
       req.path === "/admin/api/hub/check" || // tampermonkey pre-check trùng Hub: Bearer token riêng
+      req.path === "/admin/api/crawl/from-links" || // addon collect-link đẩy về (localOrToken guard localhost)
       req.path === "/admin/login" ||
       req.path === "/admin/logout"
     ) {
@@ -1960,6 +1961,142 @@ export const startAdminServer = async () => {
    * không hưởng lây, phải vá riêng.
    */
   const anyJsonBody = express.json({ type: () => true, limit: "5mb" });
+  // ── Cào SHEIN theo LIST LINK (proxy pool + fingerprint anti-detect) ──────────
+  // 1 job tại 1 thời điểm. Progress giữ in-memory, UI poll qua /crawl/status.
+  let crawlJob: { running: boolean; done: boolean; log: string[]; summary: any; startedAt: number } | null = null;
+  const clog = (m: string) => {
+    if (!crawlJob) return;
+    crawlJob.log.push(`[${new Date().toLocaleTimeString()}] ${m}`);
+    if (crawlJob.log.length > 800) crawlJob.log.shift();
+  };
+
+  async function runCrawlFromLinks(opts: {
+    links: string[]; proxies?: string; output: "hub" | "shop"; shop?: string; headless?: boolean; concurrency?: number;
+  }): Promise<void> {
+    crawlJob = { running: true, done: false, log: [], summary: null, startedAt: Date.now() };
+    try {
+      const { loadProxies, parseProxyLine, startBridges } = await import("./core/proxyPool");
+      const { scrapeBatchViaProxyPool } = await import("./core/scrapeViaProxyPool");
+      // Link → {goodsId, url}
+      const items = opts.links
+        .map((u) => u.trim()).filter(Boolean)
+        .map((u) => ({ goodsId: (u.match(/-p-(\d+)\.html/) || [])[1] || u.slice(-20), url: u }));
+      if (!items.length) throw new Error("Không có link hợp lệ");
+      // Proxy: dán trực tiếp hoặc file data/proxies-socks5.txt (trống → cào TRỰC TIẾP IP máy).
+      let entries = opts.proxies?.trim()
+        ? opts.proxies.split(/\r?\n/).map((l) => parseProxyLine(l.trim())).filter(Boolean) as any[]
+        : await loadProxies(path.resolve(process.cwd(), "data", "proxies-socks5.txt")).catch(() => []);
+      const cap = Math.max(1, Math.min(entries.length || 1, opts.concurrency || 5));
+      entries = entries.slice(0, cap);
+
+      // Resolve shop baseDir + onProduct (dùng chung cho proxy-pool lẫn direct).
+      let shopBaseDir: string | null = null;
+      if (opts.output === "shop") {
+        if (!opts.shop) throw new Error("output=shop nhưng thiếu tên shop");
+        const owner = await getShopOwner(opts.shop);
+        const dirs = owner ? await getUserDirsByName(owner) : null;
+        shopBaseDir = dirs?.baseSheinAutoDir || null;
+        if (!shopBaseDir) throw new Error(`Shop "${opts.shop}" chưa cấu hình baseSheinAutoDir`);
+      }
+      const onProduct = async (goodsId: string, data: any, error?: string) => {
+        if (!data) { clog(`✗ ${goodsId}: ${(error || "fail").slice(0, 80)}`); return; }
+        try {
+          if (opts.output === "shop") {
+            const folder = path.join(shopBaseDir!, opts.shop!);
+            await fs.ensureDir(folder);
+            await fs.writeFile(path.join(folder, `${opts.shop}_${Date.now()}.json`), JSON.stringify(data, null, 2), "utf-8");
+            clog(`✓ ${goodsId} → shop ${opts.shop} (${String(data.product_name || "").slice(0, 40)})`);
+          } else {
+            await writeHubFile(data, "crawler");
+            clog(`✓ ${goodsId} → Hub (${String(data.product_name || "").slice(0, 40)})`);
+          }
+        } catch (e: any) { clog(`✗ ${goodsId} ghi lỗi: ${String(e?.message ?? e).slice(0, 60)}`); }
+      };
+
+      let res: { ok: boolean }[];
+      if (entries.length) {
+        clog(`${items.length} link · ${entries.length} proxy · output=${opts.output}${opts.shop ? " (" + opts.shop + ")" : ""} · ${opts.headless ? "headless" : "headed"}`);
+        const { bridges, close } = await startBridges(entries, clog);
+        try { res = await scrapeBatchViaProxyPool({ items, bridges, headless: opts.headless, onLog: clog, onProduct }); }
+        finally { await close(); }
+      } else {
+        clog(`⚠️ KHÔNG có proxy → cào TRỰC TIẾP (IP máy + fingerprint), 1 Chrome. Thêm data/proxies-socks5.txt (hoặc dán proxy) để cào nhiều/né chặn tốt hơn.`);
+        const { chromium } = await import("playwright-core");
+        const { crawlBatchInContext } = await import("./core/scrapeViaChrome");
+        const { newFingerprint, fpContextOptions, applyFingerprint } = await import("./core/fingerprint");
+        const fp = newFingerprint(); const fpOpts = fpContextOptions(fp);
+        const dir = path.join(process.cwd(), "data", "chrome-crawl-direct");
+        const ctx = await chromium.launchPersistentContext(dir, { headless: !!opts.headless, args: ["--disable-blink-features=AutomationControlled"], ...fpOpts });
+        try { await applyFingerprint(ctx, fp); res = await crawlBatchInContext(ctx, { items, onLog: clog, onProduct, tag: "[direct]" }); }
+        finally { try { await ctx.close(); } catch { /* ignore */ } }
+      }
+      const ok = res.filter((r) => r.ok).length;
+      crawlJob!.summary = { total: items.length, ok, fail: items.length - ok };
+      clog(`🎉 XONG: ${ok}/${items.length} OK`);
+    } catch (e: any) {
+      clog(`❌ ${String(e?.message ?? e)}`);
+    } finally {
+      if (crawlJob) { crawlJob.running = false; crawlJob.done = true; }
+    }
+  }
+
+  app.post("/admin/api/crawl/from-links", localOrToken, async (req, res) => {
+    try {
+      const sessionUser = (req.session as any).user as SessionUser | undefined;
+      if (sessionUser?.role === "viewer") return res.status(403).json({ error: "Viewer không thể cào" });
+      if (crawlJob?.running) return res.status(409).json({ error: "Đang có job cào chạy — chờ xong hoặc xem status" });
+      const { links, proxies, output, shop, headless, concurrency } = req.body as any;
+      const arr = Array.isArray(links) ? links : String(links || "").split(/\r?\n/);
+      const clean = arr.map((s: string) => String(s).trim()).filter(Boolean);
+      if (!clean.length) return res.status(400).json({ error: "Dán ít nhất 1 link" });
+      // Field nào caller (addon) không gửi → lấy từ crawl settings đã lưu ở màn Settings.
+      const s = await loadCrawlSettings();
+      void runCrawlFromLinks({
+        links: clean, proxies,
+        output: (output ?? s.output) === "shop" ? "shop" : "hub",
+        shop,
+        headless: typeof headless === "boolean" ? headless : s.headless,
+        concurrency: Number(concurrency) || s.concurrency,
+      });
+      res.json({ ok: true, started: clean.length });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? "Lỗi khởi động cào" });
+    }
+  });
+
+  app.get("/admin/api/crawl/status", (_req, res) => {
+    if (!crawlJob) return res.json({ idle: true, log: [] });
+    res.json({ idle: false, running: crawlJob.running, done: crawlJob.done, summary: crawlJob.summary, log: crawlJob.log.slice(-200) });
+  });
+
+  // ── Crawl settings (áp cho crawl addon-đẩy-về; RIÊNG worker.json của máy đăng listing) ──
+  const CRAWL_SETTINGS_FILE = path.resolve(process.cwd(), "data", "crawl-settings.json");
+  const CRAWL_DEFAULTS = { headless: false, concurrency: 3, output: "hub" as "hub" | "shop" };
+  async function loadCrawlSettings() {
+    try { return { ...CRAWL_DEFAULTS, ...(await fs.readJson(CRAWL_SETTINGS_FILE)) }; }
+    catch { return { ...CRAWL_DEFAULTS }; }
+  }
+  app.get("/admin/api/crawl/settings", async (_req, res) => {
+    res.json(await loadCrawlSettings());
+  });
+  app.post("/admin/api/crawl/settings", async (req, res) => {
+    try {
+      const sessionUser = (req.session as any).user as SessionUser | undefined;
+      if (sessionUser?.role !== "admin") return res.status(403).json({ error: "Chỉ admin mới sửa" });
+      const cur = await loadCrawlSettings();
+      const b = req.body as any;
+      const next = {
+        headless: typeof b.headless === "boolean" ? b.headless : cur.headless,
+        concurrency: Number.isFinite(+b.concurrency) ? Math.max(1, Math.min(10, Math.round(+b.concurrency))) : cur.concurrency,
+        output: b.output === "shop" ? "shop" : b.output === "hub" ? "hub" : cur.output,
+      };
+      await fs.ensureDir(path.dirname(CRAWL_SETTINGS_FILE));
+      await fs.writeJson(CRAWL_SETTINGS_FILE, next, { spaces: 2 });
+      res.json({ ok: true, settings: next });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? "Lỗi lưu crawl settings" });
+    }
+  });
 
   // Userscript đẩy sản phẩm cào được vào Hub (Bearer token, không cần shop).
   app.post("/admin/api/hub/ingest", anyJsonBody, ingestAuth, async (req, res) => {

@@ -22,6 +22,14 @@ export interface ColorRef {
   goodsId: string;
   /** Tên màu đọc từ label lúc thu (có thể trùng → dedupe khi merge). */
   name: string;
+  /**
+   * URL THẬT mà SHEIN chuyển tới khi bấm swatch màu này (đầy đủ slug).
+   *
+   * Trước đây pass 1 chỉ rút lấy goodsId rồi vứt URL, pass 2 dựng lại `host/-p-<id>.html`
+   * — dạng KHÔNG có slug nên SHEIN phải redirect về link chuẩn: tốn thêm một vòng request
+   * và thêm một dịp dính captcha. Giữ luôn URL thật thì goto phát ăn ngay.
+   */
+  url?: string;
 }
 
 /** Số liệu chắc chắn lấy từ BFF realtime_data của MỘT màu. */
@@ -118,11 +126,16 @@ export async function collectColorIds(page: Page, opts: { maxColors?: number; de
       // CHỜ URL ĐỔI (luôn đáng tin) — KHÔNG chờ DOM/ảnh.
       for(var t=0;t<20;t++){ await wait(150); if(idOf()!==before) break; }
       var name=(document.querySelector('.color-block .sub-title, [class*="color-block"] .sub-title')||{}).innerText||"";
-      return {id:idOf(), name:String(name).trim(), changed: idOf()!==before};
+      // Giữ nguyên location.href — đây là link THẬT của màu, đầy đủ slug.
+      return {id:idOf(), name:String(name).trim(), href:location.href, changed: idOf()!==before};
     })()`) as any;
     if (r?.id && !seen.has(r.id)) {
       seen.add(r.id);
-      refs.push({ goodsId: String(r.id), name: r.name || `Color ${i + 1}` });
+      // Bỏ query string (tham số theo dõi), giữ nguyên đường dẫn có slug.
+      const href = (() => {
+        try { const u = new URL(String(r.href || "")); return u.origin + u.pathname; } catch { return undefined; }
+      })();
+      refs.push({ goodsId: String(r.id), name: r.name || `Color ${i + 1}`, url: href });
     }
     await page.waitForTimeout(delay + Math.floor(Math.random() * 400)); // pacing nhẹ
   }
@@ -172,7 +185,8 @@ export async function scrapeSheinProductV2(
 
   for (let i = 0; i < colors.length; i++) {
     const c = colors[i];
-    const url = `${host}/-p-${c.goodsId}.html`;
+    // Ưu tiên URL thật thu được lúc bấm swatch; chỉ dựng tay khi pass 1 không lấy được.
+    const url = c.url || `${host}/-p-${c.goodsId}.html`;
     const rt = catchRealtime(page);
     log(`   [${i + 1}/${colors.length}] màu "${c.name}" → goto ${c.goodsId}`);
     await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60_000 }).catch((e) => log(`      goto warn: ${e?.message}`));

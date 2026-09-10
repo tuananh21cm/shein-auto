@@ -7,6 +7,7 @@
  */
 import { chromium, type BrowserContext } from "playwright-core";
 import { scrapeSheinProduct, type ScrapeOptions, type ScrapeResult } from "../services/kiki/sheinScraper";
+import { scrapeSheinProductV2 } from "../services/kiki/sheinScraperV2";
 import { dismissCaptcha, isCaptchaPresent, type CaptchaOptions } from "../services/kiki/captcha";
 import { attachStatsCapture } from "../services/kiki/productStats";
 
@@ -32,9 +33,12 @@ export type BatchResult = { goodsId: string; ok: boolean; data?: ScrapeResult; e
 /** CORE: cào batch trong 1 BrowserContext (CDP hoặc persistentContext-có-proxy). */
 export async function crawlBatchInContext(
   ctx: BrowserContext,
-  params: Omit<ScrapeBatchChromeParams, "cdpUrl"> & { tag?: string }
+  params: Omit<ScrapeBatchChromeParams, "cdpUrl"> & { tag?: string; useV2?: boolean }
 ): Promise<BatchResult> {
   const { items, options, onLog, onProduct } = params;
+  // V2 (ID-first, goto fresh-load từng màu) = MẶC ĐỊNH → hết bug "ảnh variant lệch"
+  // (URL/màu đổi mà ảnh gallery không nhảy). V1 (click-swatch-in-page) chỉ khi ép useV2:false.
+  const useV2 = params.useV2 ?? true;
   const tag = params.tag ? `${params.tag} ` : "";
   const log = (m: string) => onLog?.(tag + m);
   const out: BatchResult = [];
@@ -76,8 +80,15 @@ export async function crawlBatchInContext(
       const blocked = /risk\/challenge|\/captcha/i.test(page.url()) || (await isCaptchaPresent(page).catch(() => false));
       throw new Error(blocked ? "__CAPTCHA_BLOCK__ captcha challenge chặn URL (/risk/challenge)" : "Không thấy sản phẩm sau 24s.");
     }
-    log(`[${idx + 1}] Đang cào…`);
-    const data = await scrapeSheinProduct(page, options);
+    log(`[${idx + 1}] Đang cào…${useV2 ? " (V2: goto fresh-load từng màu, ảnh không lệch)" : ""}`);
+    const data = useV2
+      ? await scrapeSheinProductV2(page, {
+          ...options,
+          onLog: log,
+          // Mỗi màu là 1 goto fresh → có thể dính captcha per-load → auto-X ngay.
+          onCaptcha: async (p) => { if (await isCaptchaPresent(p).catch(() => false)) await dismissCaptcha(p, log); },
+        })
+      : await scrapeSheinProduct(page, options);
     await page.waitForTimeout(1200);
     statsCapture.detach();
     (data as any).stats = statsCapture.stats;

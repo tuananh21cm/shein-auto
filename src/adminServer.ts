@@ -1982,7 +1982,15 @@ export const startAdminServer = async () => {
       const arr = Array.isArray(links) ? links : String(links || "").split(/\r?\n/);
       const clean = arr.map((s: string) => String(s).trim()).filter(Boolean);
       if (!clean.length) return res.status(400).json({ error: "Dán ít nhất 1 link" });
-      void runCrawlFromLinks({ links: clean, proxies, output: output === "shop" ? "shop" : "hub", shop, headless: !!headless, concurrency: Number(concurrency) || 5 });
+      // Field nào caller (addon) không gửi → lấy từ crawl settings đã lưu ở màn Settings.
+      const s = await loadCrawlSettings();
+      void runCrawlFromLinks({
+        links: clean, proxies,
+        output: (output ?? s.output) === "shop" ? "shop" : "hub",
+        shop,
+        headless: typeof headless === "boolean" ? headless : s.headless,
+        concurrency: Number(concurrency) || s.concurrency,
+      });
       res.json({ ok: true, started: clean.length });
     } catch (err: any) {
       res.status(500).json({ error: err?.message ?? "Lỗi khởi động cào" });
@@ -1992,6 +2000,35 @@ export const startAdminServer = async () => {
   app.get("/admin/api/crawl/status", (_req, res) => {
     if (!crawlJob) return res.json({ idle: true, log: [] });
     res.json({ idle: false, running: crawlJob.running, done: crawlJob.done, summary: crawlJob.summary, log: crawlJob.log.slice(-200) });
+  });
+
+  // ── Crawl settings (áp cho crawl addon-đẩy-về; RIÊNG worker.json của máy đăng listing) ──
+  const CRAWL_SETTINGS_FILE = path.resolve(process.cwd(), "data", "crawl-settings.json");
+  const CRAWL_DEFAULTS = { headless: false, concurrency: 3, output: "hub" as "hub" | "shop" };
+  async function loadCrawlSettings() {
+    try { return { ...CRAWL_DEFAULTS, ...(await fs.readJson(CRAWL_SETTINGS_FILE)) }; }
+    catch { return { ...CRAWL_DEFAULTS }; }
+  }
+  app.get("/admin/api/crawl/settings", async (_req, res) => {
+    res.json(await loadCrawlSettings());
+  });
+  app.post("/admin/api/crawl/settings", async (req, res) => {
+    try {
+      const sessionUser = (req.session as any).user as SessionUser | undefined;
+      if (sessionUser?.role !== "admin") return res.status(403).json({ error: "Chỉ admin mới sửa" });
+      const cur = await loadCrawlSettings();
+      const b = req.body as any;
+      const next = {
+        headless: typeof b.headless === "boolean" ? b.headless : cur.headless,
+        concurrency: Number.isFinite(+b.concurrency) ? Math.max(1, Math.min(10, Math.round(+b.concurrency))) : cur.concurrency,
+        output: b.output === "shop" ? "shop" : b.output === "hub" ? "hub" : cur.output,
+      };
+      await fs.ensureDir(path.dirname(CRAWL_SETTINGS_FILE));
+      await fs.writeJson(CRAWL_SETTINGS_FILE, next, { spaces: 2 });
+      res.json({ ok: true, settings: next });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? "Lỗi lưu crawl settings" });
+    }
   });
 
   // Userscript đẩy sản phẩm cào được vào Hub (Bearer token, không cần shop).

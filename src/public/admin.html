@@ -903,6 +903,22 @@
         </div>
 
         <div class="card">
+          <h3 style="margin:0 0 6px;">🕷️ Cào SHEIN (addon đẩy về)</h3>
+          <div style="font-size:0.82rem; color:var(--text-mute); margin-bottom:12px;">Áp cho link addon đẩy về Hub. Có proxy (data/proxies-socks5.txt) → mỗi Chrome 1 IP; không có → cào trực tiếp 1 Chrome.</div>
+          <div class="grid grid-2">
+            <label class="field"><span>🚀 Chrome song song <span style="color:var(--text-mute);">(mỗi cái = 1 proxy/IP)</span></span>
+              <input type="number" id="crawlSetConc" min="1" max="10" />
+            </label>
+            <label class="field"><span>🪟 Cửa sổ trình duyệt</span>
+              <select id="crawlSetHeadless">
+                <option value="false">Hiện — an toàn hơn với SHEIN (khuyên dùng)</option>
+                <option value="true">Ẩn — chạy ngầm (dễ bị chặn hơn)</option>
+              </select>
+            </label>
+          </div>
+        </div>
+
+        <div class="card">
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
             <h3 style="margin:0;">💰 Công thức giá bán</h3>
             <span id="priceSaveStatus" style="font-size:0.82rem; color:var(--text-mute);">💾 Tự lưu khi sửa</span>
@@ -4107,9 +4123,36 @@ async function loadSettings() {
     $("#rtTelegram").innerHTML = data.telegram.enabled
       ? '<span class="badge badge-success">đã set</span>'
       : '<span class="badge badge-warn">chưa set</span>';
+    loadCrawlSettings();
   } catch {
     toast("Không tải được settings", "error");
   }
+}
+
+async function loadCrawlSettings() {
+  try {
+    const data = await (await fetch("/admin/api/crawl/settings")).json();
+    $("#crawlSetConc").value = data.concurrency;
+    $("#crawlSetHeadless").value = String(data.headless);
+    if (state.user.role === "admin") {
+      ["crawlSetConc", "crawlSetHeadless"].forEach((id) => {
+        const el = $("#" + id); if (el) el.onchange = () => autoSave("crawlSettings", saveCrawlSettings);
+      });
+    }
+  } catch { /* ignore */ }
+}
+
+async function saveCrawlSettings() {
+  if (state.user.role !== "admin") return toast("Chỉ admin mới sửa được", "error");
+  try {
+    const res = await fetch("/admin/api/crawl/settings", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ concurrency: Number($("#crawlSetConc").value), headless: $("#crawlSetHeadless").value === "true" }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+    flashSaved("setSaveStatus");
+  } catch (err) { toast(err.message, "error"); }
 }
 
 async function saveSettings() {

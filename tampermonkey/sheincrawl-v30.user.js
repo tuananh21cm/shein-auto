@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         SHEIN → Hub Scraper v30 (one-click)
 // @namespace    http://tampermonkey.net/
-// @version      30.11.0
-// @description  Bản rút gọn: CHỈ cào sản phẩm SHEIN thẳng vào Hub bằng 1 nút. Không panel, không chọn shop, không phải dán token — tự lấy từ phiên đã đăng nhập admin.
+// @version      31.0.0
+// @description  Cào sản phẩm SHEIN vào Hub: 1 nút ở trang sản phẩm, hoặc gom link ở trang danh mục cho server cào nền. Không panel, không chọn shop, không phải dán token — tự lấy từ phiên đã đăng nhập admin.
 // @author       shein-auto
 // @match        *://*.shein.com/*
 // @match        *://*.shein.co.uk/*
@@ -541,6 +541,31 @@
         #sh-hub-toast.warn{background:#b8860b;}
         #sh-hub-toast.err{background:#c0261c;}
         #sh-hub-toast.info{background:#111;}
+
+        /* ---- Gom link: chip dem + panel ---- */
+        #sh-lc-chip{position:fixed;z-index:2147483000;display:none;align-items:center;gap:6px;padding:7px 12px;border-radius:12px;
+            background:#000;color:#fff;font:700 12px/1 sans-serif;cursor:pointer;box-shadow:0 6px 20px rgba(0,0,0,.3);
+            user-select:none;-webkit-tap-highlight-color:transparent;}
+        #sh-lc-chip:hover{background:#222;}
+        #sh-lc-chip b{color:#4ade80;font-variant-numeric:tabular-nums;}
+        #sh-lc-panel{position:fixed;z-index:2147483001;width:296px;background:#111;color:#eee;border-radius:14px;display:none;
+            flex-direction:column;overflow:hidden;box-shadow:0 12px 40px rgba(0,0,0,.5);font-family:sans-serif;}
+        #sh-lc-panel .hd{padding:11px 13px;font:700 13px sans-serif;display:flex;justify-content:space-between;align-items:center;
+            border-bottom:1px solid #2a2a2a;}
+        #sh-lc-panel .hd span:last-child{cursor:pointer;color:#888;}
+        #sh-lc-panel .hd span:last-child:hover{color:#fff;}
+        #sh-lc-panel .bd{padding:11px 13px;}
+        #sh-lc-panel .hint{font-size:11px;color:#999;line-height:1.5;margin-bottom:9px;}
+        #sh-lc-panel .hint b{color:#eee;}
+        #sh-lc-panel .r{display:flex;gap:6px;margin-top:6px;}
+        #sh-lc-panel button{flex:1;padding:9px;border:none;border-radius:8px;font:700 12px sans-serif;cursor:pointer;}
+        #sh-lc-all{background:#2a2a2a;color:#eee;} #sh-lc-all:hover{background:#3a3a3a;}
+        #sh-lc-clear{background:#7f1d1d;color:#fff;} #sh-lc-clear:hover{background:#991b1b;}
+        #sh-lc-go{background:#4ade80;color:#000;} #sh-lc-go:hover{background:#6ee7a0;}
+        #sh-lc-go:disabled{background:#2a2a2a;color:#666;cursor:default;}
+        #sh-lc-log{font:11px/1.45 ui-monospace,monospace;color:#4ade80;margin-top:9px;max-height:118px;overflow:auto;white-space:pre-wrap;}
+        /* Viền xanh trên sản phẩm đã gom — nhìn là biết đã nhặt cái nào */
+        .sh-lc-picked{outline:3px solid #4ade80 !important;outline-offset:-3px;border-radius:6px;}
     `);
 
     // Icon giỏ hàng + mũi tên xuống (giống ảnh) — stroke trắng trên nền đen (phong cách SHEIN)
@@ -643,6 +668,7 @@
             fab.style.top = c.top + 'px';
             fab.style.right = 'auto';
             fab.style.bottom = 'auto';
+            lcPlaceChip();
         });
         const end = (e) => {
             if (!dragging) return;
@@ -665,6 +691,160 @@
         });
     }
 
+    /* ============= GOM LINK -> server tu cao (proxy + fingerprint) ============= */
+    /**
+     * Hai cách cào cho hai loại trang khác nhau:
+     *   - Nút chính: đang ở TRANG SẢN PHẨM → trình duyệt của bạn tự cào ngay, ảnh đầy đủ.
+     *   - Gom link : đang ở trang danh mục/tìm kiếm → nhặt link rồi giao server cào nền qua
+     *                proxy + fingerprint, không chiếm trình duyệt và đỡ dính captcha.
+     *
+     * Danh sách link lưu qua GM_setValue nên sống sót khi cuộn, sang trang, hay F5.
+     * Dùng chung SERVER / TOKEN / toast của v30, không dựng lại bộ cấu hình riêng.
+     */
+    const LC_PROD_SEL = 'a[href*="-p-"]';
+    const lcIsProduct = (href) => /-p-\d+\.html/i.test(href || '');
+    const lcClean = (href) => {
+        try { const u = new URL(href, location.origin); return u.origin + u.pathname; }
+        catch { return (href || '').split('?')[0]; }
+    };
+    let LC_LINKS = new Set((() => {
+        try { return JSON.parse(GM_getValue('collectedLinks', '[]')); } catch { return []; }
+    })());
+    const lcSave = () => GM_setValue('collectedLinks', JSON.stringify([...LC_LINKS]));
+    const lcLog = (m) => {
+        const el = document.getElementById('sh-lc-log');
+        if (el) el.textContent = m + (el.textContent ? '\n' + el.textContent : '');
+    };
+
+    /** Chip bám ngay TRÊN nút chính, kể cả khi nút bị kéo sang chỗ khác. */
+    function lcPlaceChip() {
+        const chip = document.getElementById('sh-lc-chip');
+        const fab = document.getElementById('sh-hub-fab');
+        if (!chip || !fab) return;
+        const r = fab.getBoundingClientRect();
+        chip.style.left = Math.max(4, r.right - chip.offsetWidth) + 'px';
+        chip.style.top = Math.max(4, r.top - chip.offsetHeight - 8) + 'px';
+        const panel = document.getElementById('sh-lc-panel');
+        if (panel && panel.style.display === 'flex') {
+            panel.style.left = Math.max(4, Math.min(window.innerWidth - panel.offsetWidth - 4, r.right - panel.offsetWidth)) + 'px';
+            panel.style.top = Math.max(4, r.top - panel.offsetHeight - 8) + 'px';
+        }
+    }
+
+    function lcRefresh() {
+        const chip = document.getElementById('sh-lc-chip');
+        if (!chip) return;
+        const n = LC_LINKS.size;
+        const panelOpen = document.getElementById('sh-lc-panel')?.style.display === 'flex';
+        chip.innerHTML = '🔗 <b>' + n + '</b>';
+        chip.style.display = n > 0 || panelOpen ? 'flex' : 'none';
+        const go = document.getElementById('sh-lc-go');
+        if (go) { go.textContent = '🕷️ Đẩy ' + n + ' link về Hub'; go.disabled = n === 0; }
+        document.querySelectorAll(LC_PROD_SEL).forEach((a) => {
+            a.classList.toggle('sh-lc-picked', LC_LINKS.has(lcClean(a.href)));
+        });
+        lcPlaceChip();
+    }
+
+    const lcToggle = (href) => {
+        const u = lcClean(href);
+        if (LC_LINKS.has(u)) LC_LINKS.delete(u); else LC_LINKS.add(u);
+        lcSave(); lcRefresh();
+    };
+
+    // Shift + click 1 sản phẩm = nhặt/bỏ. Chặn điều hướng để không rời trang.
+    document.addEventListener('click', (e) => {
+        if (!e.shiftKey) return;
+        const a = e.target.closest(LC_PROD_SEL);
+        if (!a || !lcIsProduct(a.href)) return;
+        e.preventDefault(); e.stopPropagation();
+        lcToggle(a.href);
+        lcLog('• ' + lcClean(a.href).slice(-45));
+        toast('🔗 ' + LC_LINKS.size + ' link đã gom', 'info', 1200);
+    }, true);
+
+    // Phím G = nhặt hết sản phẩm đang hiện trên trang.
+    document.addEventListener('keydown', (e) => {
+        if (e.key !== 'g' && e.key !== 'G') return;
+        if (e.ctrlKey || e.metaKey || e.altKey) return;
+        if (/input|textarea|select/i.test(e.target.tagName) || e.target.isContentEditable) return;
+        let n = 0;
+        document.querySelectorAll(LC_PROD_SEL).forEach((a) => {
+            if (!lcIsProduct(a.href)) return;
+            const u = lcClean(a.href);
+            if (!LC_LINKS.has(u)) { LC_LINKS.add(u); n++; }
+        });
+        lcSave(); lcRefresh();
+        lcLog('⤵ Gom hết trang: +' + n + ' (tổng ' + LC_LINKS.size + ')');
+        toast(n ? '⤵ +' + n + ' link (tổng ' + LC_LINKS.size + ')' : 'Không có link mới trên trang', n ? 'ok' : 'warn', 1800);
+    });
+
+    function lcTogglePanel(force) {
+        const panel = document.getElementById('sh-lc-panel');
+        if (!panel) return;
+        panel.style.display = (force ?? (panel.style.display !== 'flex')) ? 'flex' : 'none';
+        lcRefresh();
+    }
+
+    async function lcPush() {
+        const links = [...LC_LINKS];
+        if (!links.length) return;
+        const go = document.getElementById('sh-lc-go');
+        if (go) { go.disabled = true; go.textContent = 'Đang gửi…'; }
+        lcLog('Đang gửi ' + links.length + ' link…');
+        try {
+            // Endpoint bỏ qua auth khi gọi từ localhost, nhưng vẫn kèm token nếu có — để
+            // trỏ sang máy khác trong đội cũng chạy được.
+            try { await ensureToken(); } catch { /* localhost thì không cần token */ }
+            const r = await gmRequest({
+                url: SERVER + '/admin/api/crawl/from-links',
+                method: 'POST',
+                body: { links, output: 'hub', concurrency: 3 },
+                token: TOKEN,
+            });
+            if (!r || r.ok !== true) throw new Error(r?.error || 'Server từ chối');
+            const n = r.started ?? links.length;
+            lcLog('✅ Đã giao ' + n + ' link — server đang cào nền. Xem ở Admin → Hub.');
+            toast('✅ Đã giao ' + n + ' link cho server', 'ok', 4000);
+            LC_LINKS.clear(); lcSave(); lcRefresh();
+        } catch (e) {
+            lcLog('❌ ' + e.message);
+            toast('❌ ' + e.message, 'err', 6000);
+            lcRefresh();
+        }
+    }
+
+    function initLinkCollector() {
+        if (document.getElementById('sh-lc-chip')) return;
+
+        const chip = document.createElement('div');
+        chip.id = 'sh-lc-chip';
+        chip.title = 'Link đã gom — bấm để mở bảng';
+        chip.onclick = () => lcTogglePanel();
+        document.body.appendChild(chip);
+
+        const panel = document.createElement('div');
+        panel.id = 'sh-lc-panel';
+        panel.innerHTML =
+            '<div class="hd"><span>🔗 Gom link → Hub</span><span id="sh-lc-x">✕</span></div>' +
+            '<div class="bd">' +
+            '<div class="hint">Giữ <b>Shift</b> + click sản phẩm để nhặt · phím <b>G</b> nhặt hết trang.<br>Server tự cào nền qua proxy, không chiếm trình duyệt.</div>' +
+            '<div class="r"><button id="sh-lc-all">⤵ Gom hết trang</button><button id="sh-lc-clear">🗑 Xoá</button></div>' +
+            '<div class="r"><button id="sh-lc-go">🕷️ Đẩy 0 link về Hub</button></div>' +
+            '<div id="sh-lc-log"></div>' +
+            '</div>';
+        document.body.appendChild(panel);
+
+        document.getElementById('sh-lc-x').onclick = () => lcTogglePanel(false);
+        document.getElementById('sh-lc-all').onclick = () =>
+            document.dispatchEvent(new KeyboardEvent('keydown', { key: 'G' }));
+        document.getElementById('sh-lc-clear').onclick = () => {
+            LC_LINKS.clear(); lcSave(); lcRefresh(); lcLog('Đã xoá hết.');
+        };
+        document.getElementById('sh-lc-go').onclick = lcPush;
+        lcRefresh();
+    }
+
     function initUI() {
         if (document.getElementById('sh-hub-fab')) return;
         const fab = document.createElement('div');
@@ -678,6 +858,8 @@
         const t = document.createElement('div');
         t.id = 'sh-hub-toast';
         document.body.appendChild(t);
+
+        initLinkCollector();
     }
 
     // Giữ nút trong màn hình khi resize
@@ -687,6 +869,7 @@
             const c = clampToViewport(fab, parseFloat(fab.style.left), parseFloat(fab.style.top));
             fab.style.left = c.left + 'px'; fab.style.top = c.top + 'px';
         }
+        lcPlaceChip();
     });
 
     /* ============= Cấu hình qua menu Tampermonkey ============= */
@@ -721,6 +904,7 @@
         GM_setValue('variantDelayMs', VARIANT_DELAY_MS);
         toast(`✅ Nghỉ ${VARIANT_DELAY_MS}–${Math.round(VARIANT_DELAY_MS * 1.8)}ms giữa mỗi màu`, 'ok', 3500);
     });
+    GM_registerMenuCommand('🔗 Mở bảng gom link', () => lcTogglePanel(true));
     GM_registerMenuCommand('↺ Reset vị trí nút', () => {
         GM_setValue('fabPos', 'null');
         const fab = document.getElementById('sh-hub-fab');
@@ -729,5 +913,5 @@
     });
 
     initUI();
-    setInterval(initUI, 3000); // SHEIN là SPA — đảm bảo nút luôn còn khi đổi trang
+    setInterval(() => { initUI(); lcRefresh(); }, 3000); // SHEIN là SPA — giữ nút + cập nhật viền link đã gom
 })();

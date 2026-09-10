@@ -1,0 +1,134 @@
+// ==UserScript==
+// @name         SHEIN Link Collector → Homie Hub
+// @namespace    http://tampermonkey.net/
+// @version      1.0.0
+// @description  Gom link sản phẩm SHEIN (Shift+click hoặc "Gom hết trang") → 1 nút đẩy về Homie crawler (cào proxy + fingerprint → Hub). Tool local, khỏi token.
+// @author       homie
+// @match        *://*.shein.com/*
+// @match        *://*.shein.co.uk/*
+// @match        *://*.shein.de/*
+// @match        *://*.shein.fr/*
+// @match        *://*.shein.it/*
+// @match        *://*.shein.es/*
+// @connect      localhost
+// @connect      127.0.0.1
+// @connect      tooltik.app
+// @connect      *.tooltik.app
+// @connect      *
+// @grant        GM_setValue
+// @grant        GM_getValue
+// @grant        GM_addStyle
+// @grant        GM_xmlhttpRequest
+// @grant        GM_registerMenuCommand
+// ==/UserScript==
+
+(function () {
+  'use strict';
+
+  let SERVER = GM_getValue('serverUrl', 'http://localhost:3000');
+  // Set link đã gom (persist qua scroll/phân trang/reload).
+  let LINKS = new Set((() => { try { return JSON.parse(GM_getValue('collectedLinks', '[]')); } catch { return []; } })());
+  const save = () => GM_setValue('collectedLinks', JSON.stringify([...LINKS]));
+
+  const PROD_SEL = 'a[href*="-p-"]';
+  const cleanUrl = (href) => {
+    try { const u = new URL(href, location.origin); return u.origin + u.pathname; } catch { return (href || '').split('?')[0]; }
+  };
+  const isProduct = (href) => /-p-\d+\.html/i.test(href || '');
+
+  /* ===== UI ===== */
+  GM_addStyle(`
+    #slc-fab{position:fixed;right:18px;bottom:18px;z-index:2147483000;background:#000;color:#fff;border:none;border-radius:12px;
+      padding:12px 16px;font:700 13px sans-serif;cursor:pointer;box-shadow:0 6px 20px rgba(0,0,0,.3);}
+    #slc-fab b{color:#4ade80;}
+    #slc-panel{position:fixed;right:18px;bottom:70px;z-index:2147483000;width:300px;background:#111;color:#eee;border-radius:12px;
+      box-shadow:0 12px 40px rgba(0,0,0,.5);display:none;flex-direction:column;font-family:sans-serif;overflow:hidden;}
+    #slc-panel .hd{padding:10px 12px;font-weight:700;display:flex;justify-content:space-between;border-bottom:1px solid #333;}
+    #slc-panel .bd{padding:10px 12px;}
+    #slc-panel input{width:100%;padding:6px 8px;border:1px solid #444;border-radius:6px;background:#000;color:#eee;font-size:11px;box-sizing:border-box;margin-bottom:6px;}
+    #slc-panel .r{display:flex;gap:6px;margin-top:6px;}
+    #slc-panel button{flex:1;padding:8px;border:none;border-radius:7px;font-weight:700;cursor:pointer;font-size:12px;}
+    #slc-go{background:#4ade80;color:#000;} #slc-all{background:#333;color:#eee;} #slc-clear{background:#7f1d1d;color:#fff;}
+    #slc-log{font:11px/1.4 monospace;color:#4ade80;margin-top:8px;max-height:120px;overflow:auto;white-space:pre-wrap;}
+    .slc-picked{outline:3px solid #4ade80 !important;outline-offset:-3px;border-radius:6px;}
+  `);
+  const fab = document.createElement('button');
+  fab.id = 'slc-fab'; document.body.appendChild(fab);
+  const panel = document.createElement('div');
+  panel.id = 'slc-panel';
+  panel.innerHTML = `
+    <div class="hd"><span>🔗 Gom link → Hub</span><span id="slc-x" style="cursor:pointer;">✕</span></div>
+    <div class="bd">
+      <div style="font-size:11px;color:#999;margin-bottom:6px;">Giữ <b style="color:#eee;">Shift</b> + click sản phẩm để gom · phím <b style="color:#eee;">G</b> = gom hết trang</div>
+      <input id="slc-server" placeholder="Server (localhost:3000)">
+      <div class="r"><button id="slc-all">⤵ Gom hết trang</button><button id="slc-clear">🗑 Xoá</button></div>
+      <div class="r"><button id="slc-go">🕷️ Đẩy <span id="slc-n">0</span> link về Hub</button></div>
+      <div id="slc-log"></div>
+    </div>`;
+  document.body.appendChild(panel);
+  const $ = (s) => panel.querySelector(s) || document.querySelector(s);
+  $('#slc-server').value = SERVER;
+  const log = (m) => { const el = $('#slc-log'); el.textContent = m + (el.textContent ? '\n' + el.textContent : ''); };
+
+  function refresh() {
+    fab.innerHTML = `🔗 <b>${LINKS.size}</b> link`;
+    $('#slc-n').textContent = LINKS.size;
+    // highlight anchor đã gom
+    document.querySelectorAll(PROD_SEL).forEach((a) => {
+      a.classList.toggle('slc-picked', LINKS.has(cleanUrl(a.href)));
+    });
+  }
+  const toggle = (href) => { const u = cleanUrl(href); if (LINKS.has(u)) LINKS.delete(u); else LINKS.add(u); save(); refresh(); };
+
+  // Shift+click 1 sản phẩm → gom (chặn điều hướng)
+  document.addEventListener('click', (e) => {
+    if (!e.shiftKey) return;
+    const a = e.target.closest(PROD_SEL);
+    if (!a || !isProduct(a.href)) return;
+    e.preventDefault(); e.stopPropagation();
+    toggle(a.href);
+    log('• ' + cleanUrl(a.href).slice(-45));
+  }, true);
+
+  // Phím G = gom hết link sản phẩm đang hiện trên trang
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'g' && e.key !== 'G') return;
+    if (/input|textarea/i.test(e.target.tagName)) return;
+    let n = 0;
+    document.querySelectorAll(PROD_SEL).forEach((a) => { if (isProduct(a.href) && !LINKS.has(cleanUrl(a.href))) { LINKS.add(cleanUrl(a.href)); n++; } });
+    save(); refresh(); log(`⤵ Gom hết trang: +${n} (tổng ${LINKS.size})`);
+  });
+
+  fab.onclick = () => { panel.style.display = panel.style.display === 'flex' ? 'none' : 'flex'; refresh(); };
+  $('#slc-x').onclick = () => (panel.style.display = 'none');
+  $('#slc-all').onclick = () => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'G' }));
+  $('#slc-clear').onclick = () => { LINKS.clear(); save(); refresh(); log('Đã xoá hết.'); };
+
+  $('#slc-go').onclick = () => {
+    SERVER = ($('#slc-server').value.trim() || 'http://localhost:3000').replace(/\/$/, ''); GM_setValue('serverUrl', SERVER);
+    const links = [...LINKS];
+    if (!links.length) { log('⚠️ Chưa gom link nào.'); return; }
+    log(`Đang gửi ${links.length} link về Hub…`);
+    GM_xmlhttpRequest({
+      method: 'POST', url: `${SERVER}/admin/api/crawl/from-links`,
+      headers: { 'Content-Type': 'application/json' },
+      data: JSON.stringify({ links, output: 'hub', concurrency: 3 }),
+      timeout: 30000,
+      onload: (r) => {
+        let d = {}; try { d = JSON.parse(r.responseText); } catch { /* */ }
+        if (r.status >= 200 && r.status < 300 && d.ok) {
+          log(`✅ Đã gửi ${d.started} link → server đang cào vào Hub. Xem tiến trình ở Admin → Hub.`);
+          LINKS.clear(); save(); refresh();
+        } else {
+          log(`❌ ${d.error || ('HTTP ' + r.status)}`);
+        }
+      },
+      onerror: () => log('❌ Không gọi được server (bật server + đúng URL?).'),
+      ontimeout: () => log('❌ Timeout.'),
+    });
+  };
+
+  refresh();
+  setInterval(refresh, 2500); // SHEIN là SPA → cập nhật highlight khi đổi trang
+  GM_registerMenuCommand('🔗 Mở Gom link SHEIN', () => { panel.style.display = 'flex'; refresh(); });
+})();

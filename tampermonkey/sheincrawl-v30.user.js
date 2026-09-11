@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SHEIN → Hub Scraper v30 (one-click)
 // @namespace    http://tampermonkey.net/
-// @version      31.0.0
+// @version      31.1.0
 // @description  Cào sản phẩm SHEIN vào Hub: 1 nút ở trang sản phẩm, hoặc gom link ở trang danh mục cho server cào nền. Không panel, không chọn shop, không phải dán token — tự lấy từ phiên đã đăng nhập admin.
 // @author       shein-auto
 // @match        *://*.shein.com/*
@@ -275,6 +275,7 @@
         if (!productId) { toast('⚠️ Không phải trang sản phẩm SHEIN', 'err'); return; }
 
         BUSY = true;
+        _stateForProduct = productId; // tick sắp hiện là CỦA sản phẩm này
         setState('busy');
         setProgress(0);
         let ok = false;
@@ -291,7 +292,8 @@
             // 0. Pre-check trùng Hub — bấm là báo ngay, chưa cào
             try {
                 const r = await apiHubCheck(productId);
-                if (r && r.exists) { toast('🗂️ Đã có trong Hub', 'warn'); setState('done dup'); ok = true; return; }
+                // Tick vàng đã nói đủ, không cần toast.
+                if (r && r.exists) { setState('done dup'); ok = true; return; }
             } catch (e) { console.warn('[HUB-SCRAPER] check lỗi (skip):', e.message); }
             setProgress(8);
 
@@ -397,7 +399,7 @@
                 // Không còn màu nào đạt → sản phẩm này không đáng list. Dừng hẳn, không đẩy
                 // lên Hub một sản phẩm rỗng màu (xuống queue cũng fail).
                 if (kept.length === 0) {
-                    toast(`⚠️ Bỏ qua: cả ${variants.length} màu đều hết hơn ${OOS_DROP_RATIO * 100}% size`, 'warn', 6000);
+                    console.log(`[HUB-SCRAPER] Bỏ qua: cả ${variants.length} màu đều hết hơn ${OOS_DROP_RATIO * 100}% size`);
                     setState('done dup');
                     ok = true;
                     return;
@@ -477,7 +479,7 @@
             //
             // Lọc bớt màu hết hàng cũng là việc bình thường → tick xanh, không báo gì; màu nào
             // bị bỏ vẫn ghi ra console cho ai cần tra lại.
-            if (res && res.duplicate) { toast('🗂️ Trùng — đã có trong Hub', 'warn'); setState('done dup'); }
+            if (res && res.duplicate) setState('done dup');
             else setState('done');
         } catch (e) {
             console.error('[HUB-SCRAPER]', e);
@@ -504,7 +506,9 @@
         #sh-hub-fab .sh-cart{width:30px;height:30px;display:block;}
 
         /* Trang thai: idle (gio hang) · busy (vong tron %) · done (tick) · error (X) */
-        #sh-hub-fab.busy,#sh-hub-fab.done,#sh-hub-fab.error{pointer-events:none;}
+        /* Chi khoa khi DANG chay. done/error van bam duoc de cao lai — tick giu luon nen
+           neu khoa thi nut thanh vo dung. */
+        #sh-hub-fab.busy{pointer-events:none;}
         #sh-hub-fab.busy{background:#333;}
         #sh-hub-fab.done{background:#0a8f3c;}
         #sh-hub-fab.done.dup{background:#b8860b;}
@@ -614,9 +618,26 @@
         fab.classList.remove('busy', 'done', 'error', 'dup');
         if (name) fab.classList.add(...name.split(' '));
         clearTimeout(_resetTimer);
-        // done/error tự trở về icon giỏ hàng; lỗi để lâu hơn cho kịp đọc.
-        if (name && name.startsWith('done')) _resetTimer = setTimeout(() => setState(''), 2500);
-        else if (name === 'error') _resetTimer = setTimeout(() => setState(''), 5000);
+        // Tick xanh / tick vàng GIỮ LUÔN, không tự biến mất — nó là dấu "sản phẩm này xong
+        // rồi", nhìn nút là biết, khỏi cần toast. Chỉ tự xoá khi sang sản phẩm KHÁC
+        // (xem resetStateIfProductChanged) hoặc khi bấm cào lại.
+        // Riêng lỗi vẫn tự về idle sau 5s: nó là trạng thái nhất thời, giữ lại chỉ gây hiểu nhầm.
+        if (name === 'error') _resetTimer = setTimeout(() => setState(''), 5000);
+    }
+
+    /**
+     * Đổi sang sản phẩm khác thì trả nút về icon giỏ hàng.
+     *
+     * Cần vì tick giờ giữ luôn: không có cái này thì mở sản phẩm mới vẫn thấy tick xanh của
+     * sản phẩm trước, tưởng đã cào rồi. SHEIN là SPA nên URL đổi mà trang không tải lại.
+     */
+    let _stateForProduct = null;
+    function resetStateIfProductChanged() {
+        const id = getProductIdFromUrl();
+        if (id === _stateForProduct) return;
+        _stateForProduct = id;
+        const fab = document.getElementById('sh-hub-fab');
+        if (fab && !fab.classList.contains('busy')) setState('');
     }
 
     function setProgress(pct) {
@@ -913,5 +934,5 @@
     });
 
     initUI();
-    setInterval(() => { initUI(); lcRefresh(); }, 3000); // SHEIN là SPA — giữ nút + cập nhật viền link đã gom
+    setInterval(() => { initUI(); lcRefresh(); resetStateIfProductChanged(); }, 3000); // SHEIN là SPA — giữ nút, cập nhật viền link, xoá tick khi sang sp khác
 })();

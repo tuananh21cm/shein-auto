@@ -1,4 +1,5 @@
 import cron from "node-cron";
+import { pruneOld } from "./services/tikcrm/dailyStore";
 import { config } from "./config";
 import { runFileRouterOnce } from "./queue/fileRouter";
 import { runQueueManagerOnce, recoverOrphanedProcessing } from "./queue/queueManager";
@@ -43,6 +44,8 @@ const bootstrap = async () => {
   // chạy cron (chống double-publish do 2 worker song song).
   cron.schedule(config.cronFileRouter, runFileRouterOnce);
   cron.schedule(config.cronQueueManager, runQueueManagerOnce);
+  // TikCRM: dọn archive snapshot cũ hơn 120 ngày (mount lại 14/09/2026). 4Seller/AI đề xuất chạy tay qua /admin/api/tikcrm/*.
+  cron.schedule("30 3 * * *", () => { const n = pruneOld(120); if (n) console.log(`[TikCRM] prune ${n} ngày archive cũ`); }, { timezone: "Asia/Ho_Chi_Minh" });
   console.log("⏰ Cron đã lên lịch (file router + queue manager).");
 
   // Drip-publish draft 4Seller nhỏ giọt (bật/tắt qua config/publish.json → enabled).

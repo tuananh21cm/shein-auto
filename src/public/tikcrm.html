@@ -130,6 +130,7 @@
   <button id="emOpen">📧 Lọc email</button>
   <span id="emChip" class="chip" style="display:none"></span>
   <button id="hide9999" title="Ẩn shop có Health = 9999">🙈 Ẩn Health 9999</button>
+  <button id="showDeactive" title="Chỉ hiện shop ngoài hệ thống có Net earnings > 0 — đủ điều kiện addon che thành Account deactivated (xem preCheck.ts)">🔴 Lọt luật Deactive</button>
   <button id="reload">↻ Tải lại</button>
   <span id="count" class="chip" title="Số shop khớp bộ lọc hiện tại / tổng"></span>
 </div>
@@ -227,6 +228,9 @@ const taxEmail = (p)=> (p && p.tax_detail && p.tax_detail.tax_email) || "";
 let EMAILFILTER = null; // null=tắt; {emails:Set, domains:Set, count, raw}
 let HIDE9999 = false;   // true = ẩn shop có assessment_current_level = 9999
 const is9999 = (s)=> s.assessment_current_level==null || s.assessment_current_level===9999;
+let SYSTEM_SHOPS = null;   // Set mã shop hệ thống (nạp từ /admin/api/tikcrm/system-shops)
+let SHOW_DEACTIVE = false; // true = chỉ hiện shop lọt luật che (ngoài hệ thống + net earnings > 0) — xem preCheck.ts
+const isDeactiveRule = (s)=> !!SYSTEM_SHOPS && !SYSTEM_SHOPS.has(String(s.shop_code||"").toUpperCase()) && netVal(s)>0;
 function parseEmailList(text){
   const emails=new Set(), domains=new Set();
   const toks = String(text||"").split(/[\s,;]+/).map(x=>x.trim().toLowerCase()).filter(Boolean);
@@ -287,11 +291,13 @@ function render(){
   else if(FILTER==="kbt_yes") list = list.filter(s=> s.kbt_linked===true);
   else if(FILTER==="kbt_no")  list = list.filter(s=> s.kbt_linked===false);
   if(HIDE9999) list = list.filter(s=> !is9999(s));
+  if(SHOW_DEACTIVE) list = list.filter(isDeactiveRule);
   if(STATUS!=="all") list = list.filter(s=> String(s.shop_status||"")===STATUS);
   if(NEWF>0) list = list.filter(s=> isNewWithin(s, NEWF));
   if(EMAILFILTER) list = list.filter(inEmailList);
   updateChip();
   updateHideBtn();
+  updateDeactiveBtn();
   // Số kết quả sau khi áp mọi bộ lọc (search/status/mới thêm/email/9999)
   const filtered = list.length !== SHOPS.length;
   $("#count").textContent = filtered ? `Lọc: ${list.length.toLocaleString()} / ${SHOPS.length.toLocaleString()} shop` : `${SHOPS.length.toLocaleString()} shop`;
@@ -633,6 +639,21 @@ function updateHideBtn(){
   b.textContent = HIDE9999 ? `🙈 Đang ẩn ${cnt} (9999)` : "🙈 Ẩn Health 9999";
 }
 $("#hide9999").onclick=()=>{ HIDE9999=!HIDE9999; localStorage.setItem("tikcrm_hide9999", HIDE9999?"1":"0"); render(); };
+function updateDeactiveBtn(){
+  const b=$("#showDeactive");
+  b.classList.toggle("on", SHOW_DEACTIVE);
+  if(!SYSTEM_SHOPS){ b.textContent = "🔴 Lọt luật Deactive (đang tải…)"; b.disabled = true; return; }
+  b.disabled = false;
+  const cnt = SHOPS.filter(isDeactiveRule).length;
+  b.textContent = SHOW_DEACTIVE ? `🔴 Đang lọc ${cnt} shop` : `🔴 Lọt luật Deactive (${cnt})`;
+}
+async function loadSystemShops(){
+  try{ const r=await fetch("/admin/api/tikcrm/system-shops"); const j=await r.json();
+    SYSTEM_SHOPS = new Set((j.codes||[]).map(c=>String(c).toUpperCase()));
+  }catch(e){ console.warn("loadSystemShops lỗi", e); SYSTEM_SHOPS = SYSTEM_SHOPS || new Set(); }
+  updateDeactiveBtn();
+}
+$("#showDeactive").onclick=()=>{ SHOW_DEACTIVE=!SHOW_DEACTIVE; render(); updateDeactiveBtn(); };
 function openEm(o){ $("#emModal").classList.toggle("open",o); $("#emBack").classList.toggle("open",o); }
 function clearEmailFilter(){ EMAILFILTER=null; localStorage.removeItem("tikcrm_email_filter"); render(); }
 
@@ -649,6 +670,7 @@ $("#reload").onclick=load;
 { const saved = localStorage.getItem("tikcrm_email_filter"); if(saved && saved.trim()) EMAILFILTER = parseEmailList(saved); }
 HIDE9999 = localStorage.getItem("tikcrm_hide9999")==="1";
 NEWF = Number(localStorage.getItem("tikcrm_newf_h"))||0; if(![0,2,8,12,24,72,168,720].includes(NEWF)) NEWF=0; $("#newf").value=String(NEWF);
+loadSystemShops();
 load();
 setInterval(load, 60000);
 </script>

@@ -1,0 +1,47 @@
+{
+  "_note": "Ngách gợi ý cho dropdown set-ngách-shop (Settings), chia nhóm, mùa Q4 thu-đông women US. Đã bỏ đồ biển. Sửa tự do; user vẫn gõ tay được. Tách khỏi niche-keywords.json (deriveNiche).",
+  "groups": [
+    { "label": "🔥 Hoodie & Sweatshirt", "items": [
+      "Zip-up hoodie", "Cropped hoodie", "Oversized hoodie", "Half-zip pullover", "Quarter-zip sweatshirt",
+      "Graphic sweatshirt", "Vintage washed sweatshirt", "Embroidered sweatshirt", "Sherpa / teddy hoodie",
+      "Color block hoodie", "Drawstring hoodie", "Hoodie dress"
+    ]},
+    { "label": "🧶 Sweater & Knit", "items": [
+      "Oversized sweater", "Chunky knit sweater", "Cable knit sweater", "Turtleneck sweater", "Mock neck sweater",
+      "V-neck sweater", "Cropped sweater", "Argyle sweater", "Striped sweater", "Fuzzy / eyelash knit",
+      "Sweater vest", "Ribbed knit top", "Sweater dress (váy len)", "Off-shoulder sweater"
+    ]},
+    { "label": "🧥 Cardigan", "items": [
+      "Cardigan", "Cropped cardigan", "Long cardigan / duster", "Button-up cardigan", "Chunky cardigan"
+    ]},
+    { "label": "☁️ Loungewear & Cozy", "items": [
+      "Fleece loungewear set", "2-piece sweatsuit set", "Joggers / sweatpants", "Cargo sweatpants",
+      "Fleece-lined leggings", "Flare leggings", "Waffle knit set", "Thermal set", "Matching pajama set", "Fleece pants"
+    ]},
+    { "label": "🧥 Áo khoác (Outerwear)", "items": [
+      "Puffer jacket", "Cropped puffer", "Long puffer", "Teddy / fleece coat", "Wool coat", "Trench coat",
+      "Bomber jacket", "Faux leather jacket", "Quilted jacket", "Shacket (khoác sơ mi dày)", "Flannel shirt",
+      "Vest / gilet", "Faux fur coat", "Varsity jacket", "Sherpa denim jacket"
+    ]},
+    { "label": "👖 Quần & Váy", "items": [
+      "Wide-leg pants", "Cargo pants", "Parachute pants", "Corduroy pants", "Faux leather pants",
+      "Baggy / straight jeans", "Midi skirt", "Maxi skirt", "Pleated skirt", "Denim mini skirt",
+      "Corduroy skirt", "Sweater skirt"
+    ]},
+    { "label": "👗 Đầm (Dress)", "items": [
+      "Long sleeve mini dress", "Bodycon long sleeve dress", "Knit midi dress", "Sweater maxi dress",
+      "Velvet dress", "Wrap dress", "Corset dress", "Satin slip dress"
+    ]},
+    { "label": "🎄 Dịp lễ (Holiday / NYE)", "items": [
+      "Party dress dự tiệc", "Sequin dress NYE", "Christmas / ugly sweater", "Festive graphic tee",
+      "Velvet blazer", "Satin blouse", "Holiday pajamas"
+    ]},
+    { "label": "👚 Tops", "items": [
+      "Long sleeve top", "Mock neck top", "Turtleneck top", "Corset top", "Henley top", "Thermal top",
+      "Velvet top", "Long sleeve bodysuit", "Off-shoulder top", "Ribbed long sleeve"
+    ]},
+    { "label": "🧣 Phụ kiện & khác", "items": [
+      "Beanie", "Scarf", "Knit hat", "Gloves", "Leg warmers", "Crossbody bag", "Tote bag", "Cozy socks", "Shapewear"
+    ]}
+  ]
+}

@@ -24,7 +24,8 @@ import { scanListings, scanShopsSummary, resolveListingPath, scanHub, resolveHub
 import { validatePath, detectDirConflicts, getUserDirsByName, getShopOwner } from "./state/userDirs";
 import { processFile } from "./queue/queueManager";
 import { eventBus } from "./state/eventBus";
-import { workerConfig, reloadAppConfig } from "./config/appConfig";
+import { registerTikcrmRoutes } from "./services/tikcrm/routes"; // TikCRM: nhận mirror từ extension TikCheck + report/dashboard (mount lại 14/09/2026, từng archive 25/08)
+import { workerConfig, reloadAppConfig, isAutoSourceOn } from "./config/appConfig";
 import { configCookie, configCookieForAccount, userCookiePath } from "./utils/configCookie";
 import {
   listAccounts as fsAccounts,
@@ -87,6 +88,10 @@ export const startAdminServer = async () => {
       req.path === "/admin/api/hub/ingest" || // tampermonkey đẩy vào Hub: Bearer token riêng
       req.path === "/admin/api/hub/check" || // tampermonkey pre-check trùng Hub: Bearer token riêng
       req.path === "/admin/api/crawl/from-links" || // addon collect-link đẩy về (localOrToken guard localhost)
+      req.path === "/admin/api/ai/auto-source/tick" || // trigger auto-sourcer thủ công (localOrToken guard localhost)
+      req.path === "/admin/api/crawl/status" || // đọc log crawl từ localhost (debug)
+      req.path.startsWith("/webhook/tikcheck") || // extension TikCheck mirror (không kèm session)
+      req.path.startsWith("/r/") || // báo cáo shop public qua token bí mật
       req.path === "/admin/login" ||
       req.path === "/admin/logout"
     ) {
@@ -100,6 +105,7 @@ export const startAdminServer = async () => {
   app.use(requireAuth);
   // Ảnh preview tính năng listing (Settings → card shop) — sau requireAuth nên cần login
   app.use("/admin/previews", express.static(path.join(__dirname, "public", "previews")));
+  registerTikcrmRoutes(app);
 
   // ── Static HTML routes ─────────────────────────────────────
   app.get("/admin/login", (_req, res) => {
@@ -1903,11 +1909,10 @@ export const startAdminServer = async () => {
     if (crawlJob.log.length > 800) crawlJob.log.shift();
   };
 
-  async function runCrawlFromLinks(opts: {
+  // CORE: cào 1 list link. Caller phải set crawlJob TRƯỚC (running/done do wrapper quản).
+  async function crawlLinksCore(opts: {
     links: string[]; proxies?: string; output: "hub" | "shop"; shop?: string; headless?: boolean; concurrency?: number;
   }): Promise<void> {
-    crawlJob = { running: true, done: false, log: [], summary: null, startedAt: Date.now() };
-    try {
       const { loadProxies, parseProxyLine, startBridges } = await import("./core/proxyPool");
       const { scrapeBatchViaProxyPool } = await import("./core/scrapeViaProxyPool");
       // Link → {goodsId, url}
@@ -1919,8 +1924,11 @@ export const startAdminServer = async () => {
       let entries = opts.proxies?.trim()
         ? opts.proxies.split(/\r?\n/).map((l) => parseProxyLine(l.trim())).filter(Boolean) as any[]
         : await loadProxies(path.resolve(process.cwd(), "data", "proxies-socks5.txt")).catch(() => []);
-      const cap = Math.max(1, Math.min(entries.length || 1, opts.concurrency || 5));
-      entries = entries.slice(0, cap);
+      // MỖI sản phẩm 1 IP RIÊNG (871 proxy dư sức) → xoay tối đa, không IP nào bị lặp trong cycle.
+      // Random hoá từ cả list → mỗi cycle dùng bộ IP khác nhau. Parallelism = concurrency.
+      const conc = Math.max(1, opts.concurrency || 3);
+      const poolSize = Math.max(1, Math.min(entries.length || 1, Math.max(items.length, conc)));
+      entries = [...entries].sort(() => Math.random() - 0.5).slice(0, poolSize);
 
       // Resolve shop baseDir + onProduct (dùng chung cho proxy-pool lẫn direct).
       let shopBaseDir: string | null = null;
@@ -1948,9 +1956,9 @@ export const startAdminServer = async () => {
 
       let res: { ok: boolean }[];
       if (entries.length) {
-        clog(`${items.length} link · ${entries.length} proxy · output=${opts.output}${opts.shop ? " (" + opts.shop + ")" : ""} · ${opts.headless ? "headless" : "headed"}`);
+        clog(`${items.length} link · ${entries.length} proxy (xoay/sp) · ${conc} song song · output=${opts.output}${opts.shop ? " (" + opts.shop + ")" : ""} · ${opts.headless ? "headless" : "headed"}`);
         const { bridges, close } = await startBridges(entries, clog);
-        try { res = await scrapeBatchViaProxyPool({ items, bridges, headless: opts.headless, onLog: clog, onProduct }); }
+        try { res = await scrapeBatchViaProxyPool({ items, bridges, concurrency: conc, headless: opts.headless, onLog: clog, onProduct }); }
         finally { await close(); }
       } else {
         clog(`⚠️ KHÔNG có proxy → cào TRỰC TIẾP (IP máy + fingerprint), 1 Chrome. Thêm data/proxies-socks5.txt (hoặc dán proxy) để cào nhiều/né chặn tốt hơn.`);
@@ -1958,14 +1966,129 @@ export const startAdminServer = async () => {
         const { crawlBatchInContext } = await import("./core/scrapeViaChrome");
         const { newFingerprint, fpContextOptions, applyFingerprint } = await import("./core/fingerprint");
         const fp = newFingerprint(); const fpOpts = fpContextOptions(fp);
-        const dir = path.join(process.cwd(), "data", "chrome-crawl-direct");
-        const ctx = await chromium.launchPersistentContext(dir, { headless: !!opts.headless, args: ["--disable-blink-features=AutomationControlled"], ...fpOpts });
-        try { await applyFingerprint(ctx, fp); res = await crawlBatchInContext(ctx, { items, onLog: clog, onProduct, tag: "[direct]" }); }
-        finally { try { await ctx.close(); } catch { /* ignore */ } }
+        const browser = await chromium.launch({ headless: !!opts.headless, args: ["--disable-blink-features=AutomationControlled"] }); // ephemeral
+        const ctx = await browser.newContext({ ...fpOpts });
+        try { await applyFingerprint(ctx, fp); res = await crawlBatchInContext(ctx, { items, useV2: false, onLog: clog, onProduct, tag: "[direct]" }); }
+        finally { try { await browser.close(); } catch { /* ignore */ } }
       }
       const ok = res.filter((r) => r.ok).length;
       crawlJob!.summary = { total: items.length, ok, fail: items.length - ok };
       clog(`🎉 XONG: ${ok}/${items.length} OK`);
+  }
+
+  async function runCrawlFromLinks(opts: {
+    links: string[]; proxies?: string; output: "hub" | "shop"; shop?: string; headless?: boolean; concurrency?: number;
+  }): Promise<void> {
+    crawlJob = { running: true, done: false, log: [], summary: null, startedAt: Date.now() };
+    try { await crawlLinksCore(opts); }
+    catch (e: any) { clog(`❌ ${String(e?.message ?? e)}`); }
+    finally { if (crawlJob) { crawlJob.running = false; crawlJob.done = true; } }
+  }
+
+  // Gom sp từ 1 list URL (trang search /pdsearch/ HOẶC trang shop) → lọc "ngon" → cào full vào Hub.
+  // Dùng chung cho tính năng "tìm theo keyword" và "cào nguyên shop". filter ngưỡng=0 → lấy hết.
+  async function runHarvestAndCrawl(opts: {
+    seedUrls: string[]; kind: "search" | "shop"; proxies?: string; headless?: boolean; concurrency?: number;
+    minReviews: number; minRating: number; limit: number; maxPerKeyword: number;
+    pages?: number;                           // số trang search/keyword (?page=N)
+    output?: "hub" | "shop"; shop?: string;   // đích cào (mặc định hub)
+    niche?: string;                           // có → AI chấm điểm hợp ngách thay vì lọc cơ học
+    dedupeShop?: string;                      // có → bỏ goodsId đã cào trước cho shop này (chống trùng)
+  }): Promise<void> {
+    crawlJob = { running: true, done: false, log: [], summary: null, startedAt: Date.now() };
+    try {
+      const { collectFromUrls, filterGoodListings } = await import("./core/searchShein");
+      const { loadProxies, parseProxyLine, startBridges } = await import("./core/proxyPool");
+      const { chromium } = await import("playwright-core");
+      const { newFingerprint, fpContextOptions, applyFingerprint } = await import("./core/fingerprint");
+
+      const entries = opts.proxies?.trim()
+        ? opts.proxies.split(/\r?\n/).map((l) => parseProxyLine(l.trim())).filter(Boolean) as any[]
+        : await loadProxies(path.resolve(process.cwd(), "data", "proxies-socks5.txt")).catch(() => []);
+      const label = opts.kind === "shop"
+        ? (u: string) => `shop ${(u.match(/store_code=(\w+)/) || [])[1] || u.replace(/^https?:\/\//, "").slice(0, 45)}`
+        : (u: string) => `search "${decodeURIComponent((u.match(/pdsearch\/([^/]+)/) || [])[1] || "")}"`;
+      const filterNote = opts.minReviews || opts.minRating ? `lọc review≥${opts.minReviews} rating≥${opts.minRating} · ` : "lấy hết · ";
+
+      let candidates: any[] = [];
+      if (entries.length) {
+        // POOL: MỖI keyword 1 PROXY RIÊNG (fresh IP+fingerprint mỗi keyword) → không dồn tải 1 IP
+        // → tránh risk/action/limit (403). Chạy tối đa `concurrency` keyword song song.
+        const nProxy = Math.max(1, Math.min(entries.length, opts.seedUrls.length)); // 1 proxy / keyword
+        const pool = [...entries].sort(() => Math.random() - 0.5).slice(0, nProxy);  // random hoá
+        const par = Math.max(1, Math.min(opts.concurrency || 3, nProxy));
+        clog(`🔎 ${opts.seedUrls.length} ${opts.kind === "shop" ? "shop" : "keyword"} · ${nProxy} proxy (1/keyword) · ${par} song song · ${filterNote}top ${opts.limit}`);
+        const { bridges, close } = await startBridges(pool, clog);
+        try {
+          const map = new Map<string, any>();
+          let idx = 0;
+          const runOne = async (): Promise<void> => {
+            for (;;) {
+              const my = idx++;
+              if (my >= opts.seedUrls.length) break;
+              const bridge = bridges[my % bridges.length];
+              if (!bridge) continue;
+              const fp = newFingerprint(); const fpOpts = fpContextOptions(fp);
+              let browser: any;
+              try {
+                // EPHEMERAL: mỗi keyword browser SẠCH (không session/cookie cũ, không "Restore pages").
+                browser = await chromium.launch({
+                  headless: !!opts.headless,
+                  args: ["--disable-blink-features=AutomationControlled"],
+                  proxy: { server: bridge.local },
+                });
+                const ctx = await browser.newContext({ ...fpOpts });
+                await applyFingerprint(ctx, fp);
+                const r = await collectFromUrls(ctx, [opts.seedUrls[my]], { maxPerKeyword: opts.maxPerKeyword, pages: opts.pages, onLog: (m) => clog(`[${bridge.label.slice(-14)}] ${m}`), label });
+                r.forEach((p) => { if (p?.goodsId && !map.has(p.goodsId)) map.set(p.goodsId, p); });
+              } catch (e: any) {
+                clog(`[kw${my}] ✗ ${String(e?.message ?? e).slice(0, 60)}`);
+              } finally { try { if (browser) await browser.close(); } catch { /* ignore */ } }
+            }
+          };
+          await Promise.all(Array.from({ length: par }, () => runOne()));
+          candidates = [...map.values()];
+        } finally { await close(); }
+      } else {
+        // Không proxy → 1 context TRỰC TIẾP (fingerprint, IP máy). Ít an toàn — thêm data/proxies-socks5.txt để xoay IP.
+        clog(`🔎 ${opts.seedUrls.length} ${opts.kind === "shop" ? "shop" : "keyword"} · IP máy (KHÔNG proxy) · ${filterNote}top ${opts.limit}`);
+        const fp = newFingerprint(); const fpOpts = fpContextOptions(fp);
+        let browser: any;
+        try {
+          browser = await chromium.launch({ headless: !!opts.headless, args: ["--disable-blink-features=AutomationControlled"] });
+          const ctx = await browser.newContext({ ...fpOpts });
+          await applyFingerprint(ctx, fp);
+          candidates = await collectFromUrls(ctx, opts.seedUrls, { maxPerKeyword: opts.maxPerKeyword, pages: opts.pages, onLog: clog, label });
+        } finally { try { if (browser) await browser.close(); } catch { /* ignore */ } }
+      }
+      let good = filterGoodListings(candidates, { minReviews: opts.minReviews, minRating: opts.minRating, limit: opts.niche ? 200 : opts.limit });
+      // Có ngách → AI chấm hợp-ngách + đáng-bán trên số đã pre-filter (giảm token).
+      if (opts.niche && good.length) {
+        try {
+          const { scoreListingsForShop } = await import("./services/anthropic/shopSourcing");
+          clog(`🤖 AI chấm ${good.length} sp theo ngách "${opts.niche.slice(0, 50)}"…`);
+          const scored = await scoreListingsForShop(opts.niche, good);
+          const keep = scored.filter((s) => s.keep).sort((a, b) => b.fit - a.fit).slice(0, opts.limit);
+          const keepIds = new Set(keep.map((s) => s.goodsId));
+          keep.slice(0, 8).forEach((s) => clog(`   ✓ fit ${s.fit} · ${s.reason}`));
+          good = good.filter((p) => keepIds.has(p.goodsId));
+        } catch (e: any) {
+          clog(`⚠️ AI chấm lỗi (${String(e?.message ?? e).slice(0, 60)}) → dùng lọc cơ học`);
+          good = good.slice(0, opts.limit);
+        }
+      }
+      // Chống trùng: bỏ goodsId đã cào trước cho shop này.
+      if (opts.dedupeShop && good.length) {
+        const seen = await loadSourcedIds(opts.dedupeShop);
+        const before = good.length;
+        good = good.filter((p) => !seen.has(p.goodsId));
+        if (before !== good.length) clog(`↩ bỏ ${before - good.length} sp đã cào trước cho shop`);
+      }
+      const dest = opts.output === "shop" ? `shop ${opts.shop}` : "Hub";
+      clog(`📊 Gom ${candidates.length} sp · lấy ${good.length}${opts.niche ? " (AI chọn)" : opts.minReviews || opts.minRating ? ` (review≥${opts.minReviews}, rating≥${opts.minRating})` : ""} → cào full vào ${dest}…`);
+      if (!good.length) { crawlJob!.summary = { total: 0, ok: 0, fail: 0 }; clog("Không sp nào — nới ngưỡng / đổi ngách / kiểm tra link."); return; }
+      await crawlLinksCore({ links: good.map((p) => p.url as string), proxies: opts.proxies, output: opts.output ?? "hub", shop: opts.shop, headless: opts.headless, concurrency: opts.concurrency });
+      if (opts.dedupeShop && good.length) await addSourcedIds(opts.dedupeShop, good.map((p) => p.goodsId));
     } catch (e: any) {
       clog(`❌ ${String(e?.message ?? e)}`);
     } finally {
@@ -1997,6 +2120,246 @@ export const startAdminServer = async () => {
     }
   });
 
+  // Tìm SHEIN theo keyword → lọc listing ngon → cào Hub (UI-only, session auth).
+  app.post("/admin/api/search/keywords", async (req, res) => {
+    try {
+      const sessionUser = (req.session as any).user as SessionUser | undefined;
+      if (sessionUser?.role === "viewer") return res.status(403).json({ error: "Viewer không thể cào" });
+      if (crawlJob?.running) return res.status(409).json({ error: "Đang có job chạy — chờ xong hoặc xem status" });
+      const b = req.body as any;
+      const arr = Array.isArray(b.keywords) ? b.keywords : String(b.keywords || "").split(/\r?\n/);
+      const keywords = arr.map((s: string) => String(s).trim()).filter(Boolean);
+      if (!keywords.length) return res.status(400).json({ error: "Nhập ít nhất 1 keyword" });
+      const s = await loadCrawlSettings();
+      const seedUrls = keywords.map((k: string) => `https://us.shein.com/pdsearch/${encodeURIComponent(k)}/`);
+      void runHarvestAndCrawl({
+        seedUrls, kind: "search", proxies: b.proxies,
+        headless: typeof b.headless === "boolean" ? b.headless : s.headless,
+        concurrency: Number(b.concurrency) || s.concurrency,
+        minReviews: Number.isFinite(+b.minReviews) ? Math.max(0, Math.round(+b.minReviews)) : 100,
+        minRating: Number.isFinite(+b.minRating) ? Math.max(0, Math.min(5, +b.minRating)) : 4,
+        limit: Number.isFinite(+b.limit) ? Math.max(1, Math.min(200, Math.round(+b.limit))) : 50,
+        maxPerKeyword: Number.isFinite(+b.maxPerKeyword) ? Math.max(1, Math.min(200, Math.round(+b.maxPerKeyword))) : 60,
+        pages: Number(b.pages) || s.searchPages,
+      });
+      res.json({ ok: true, keywords: keywords.length });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? "Lỗi khởi động search" });
+    }
+  });
+
+  // Cào NGUYÊN listing của 1 shop → input link shop (UI-only, session auth). Mặc định lấy HẾT.
+  app.post("/admin/api/search/shop", async (req, res) => {
+    try {
+      const sessionUser = (req.session as any).user as SessionUser | undefined;
+      if (sessionUser?.role === "viewer") return res.status(403).json({ error: "Viewer không thể cào" });
+      if (crawlJob?.running) return res.status(409).json({ error: "Đang có job chạy — chờ xong hoặc xem status" });
+      const b = req.body as any;
+      const arr = Array.isArray(b.shops) ? b.shops : String(b.shops || "").split(/\r?\n/);
+      const shops = arr.map((s: string) => String(s).trim()).filter(Boolean).filter((u: string) => /shein\./i.test(u));
+      if (!shops.length) return res.status(400).json({ error: "Nhập ít nhất 1 link shop SHEIN" });
+      const s = await loadCrawlSettings();
+      const maxProducts = Number.isFinite(+b.maxProducts) ? Math.max(1, Math.min(1000, Math.round(+b.maxProducts))) : 300;
+      void runHarvestAndCrawl({
+        seedUrls: shops, kind: "shop", proxies: b.proxies,
+        headless: typeof b.headless === "boolean" ? b.headless : s.headless,
+        concurrency: Number(b.concurrency) || s.concurrency,
+        // Mặc định lấy HẾT (ngưỡng 0); user có thể set để lọc.
+        minReviews: Number.isFinite(+b.minReviews) ? Math.max(0, Math.round(+b.minReviews)) : 0,
+        minRating: Number.isFinite(+b.minRating) ? Math.max(0, Math.min(5, +b.minRating)) : 0,
+        limit: maxProducts,
+        maxPerKeyword: maxProducts, // gom tối đa bao nhiêu sp/shop
+      });
+      res.json({ ok: true, shops: shops.length });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? "Lỗi khởi động cào shop" });
+    }
+  });
+
+  // ── AI tìm hàng cho shop theo ngách ──────────────────────
+  const SHOP_NICHE_FILE = path.resolve(process.cwd(), "config", "shop-niche.json");
+  async function loadShopNiche(): Promise<Record<string, { niche?: string; niches?: string[]; keywords?: string[] }>> {
+    try { return await fs.readJson(SHOP_NICHE_FILE); } catch { return {}; }
+  }
+  // Danh sách ngách của 1 shop (hợp nhất field cũ `niche` + mới `niches`, dedupe).
+  const shopNiches = (cfg?: { niche?: string; niches?: string[] }): string[] => {
+    const arr = cfg?.niches && cfg.niches.length ? cfg.niches : cfg?.niche ? [cfg.niche] : [];
+    return [...new Set(arr.map((s) => String(s).trim()).filter(Boolean))];
+  };
+  // goodsId đã cào cho mỗi shop → chống list trùng khi auto-source lặp nhiều lượt.
+  const sourcedFile = (shop: string) => path.resolve(process.cwd(), "data", "sourced", `${shop.replace(/[^\w.-]+/g, "_")}.json`);
+  async function loadSourcedIds(shop: string): Promise<Set<string>> {
+    try { return new Set(await fs.readJson(sourcedFile(shop))); } catch { return new Set(); }
+  }
+  async function addSourcedIds(shop: string, ids: string[]): Promise<void> {
+    const set = await loadSourcedIds(shop);
+    ids.forEach((id) => set.add(id));
+    await fs.ensureDir(path.dirname(sourcedFile(shop)));
+    await fs.writeJson(sourcedFile(shop), [...set]);
+  }
+
+  // Danh sách category (ngách) gợi ý cho dropdown set-ngách-shop.
+  // Ưu tiên config/shop-categories.json (curate theo mùa); fallback niche-keywords.json.
+  app.get("/admin/api/ai/categories", async (_req, res) => {
+    try {
+      const curated = await fs.readJson(path.resolve(process.cwd(), "config", "shop-categories.json")).catch(() => null);
+      if (curated?.groups?.length) {
+        const groups = curated.groups.map((g: any) => ({ label: String(g.label || ""), items: (g.items || []).map((i: any) => String(i)).filter(Boolean) }));
+        return res.json({ groups, categories: groups.flatMap((g: any) => g.items) });
+      }
+      if (curated?.categories?.length) return res.json({ categories: curated.categories.map((c: any) => String(c)).filter(Boolean) });
+      const j = await fs.readJson(path.resolve(process.cwd(), "config", "niche-keywords.json")).catch(() => ({ rules: [] }));
+      res.json({ categories: (j.rules || []).map((r: any) => String(r.niche)).filter(Boolean) });
+    } catch { res.json({ categories: [] }); }
+  });
+
+  // Lấy ngách đã lưu của 1 shop (trả list niches).
+  app.get("/admin/api/ai/niche", async (req, res) => {
+    const shop = String(req.query.shop || "").trim();
+    const cfg = (await loadShopNiche())[shop];
+    res.json({ niches: shopNiches(cfg), keywords: cfg?.keywords || [] });
+  });
+
+  // AI ĐOÁN ngách từ title listing shop đang bán (KHÔNG tự lưu — UI cho sửa rồi mới lưu).
+  app.post("/admin/api/ai/niche/infer", async (req, res) => {
+    try {
+      const shop = String(req.body?.shop || "").trim();
+      if (!shop) return res.status(400).json({ error: "Thiếu shop" });
+      const { resolveAccountForShop } = await import("./state/fourSellerAccounts");
+      const acc = await resolveAccountForShop(shop);
+      if (!acc) return res.status(400).json({ error: `Shop "${shop}" chưa map tài khoản 4Seller (tab Cookie).` });
+      const p = `acct:${acc.uid}`;
+      const shops = await fsGetShopList(p);
+      const rec = (shops.records || []).find((s: any) => normShopName(s.shopName) === normShopName(shop));
+      if (!rec) return res.status(400).json({ error: `Không thấy shop "${shop}" trong 4Seller.` });
+      const r = await fsGetListingPage(p, { shopId: rec.id, status: "active", pageCurrent: 1, pageSize: 100 });
+      const titles = (r.records ?? []).map((it: any) => String(it.productName ?? "")).filter(Boolean);
+      if (!titles.length) return res.status(400).json({ error: "Shop chưa có listing active để đoán ngách — nhập tay." });
+      const { inferNiche } = await import("./services/anthropic/shopSourcing");
+      const niche = await inferNiche(titles);
+      res.json({ ok: true, niche, sampled: titles.length });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? "Lỗi đoán ngách" });
+    }
+  });
+
+  // Lưu ngách (+ keyword khoá cứng) cho shop.
+  app.post("/admin/api/ai/niche", async (req, res) => {
+    try {
+      const sessionUser = (req.session as any).user as SessionUser | undefined;
+      if (sessionUser?.role === "viewer") return res.status(403).json({ error: "Viewer không sửa được" });
+      const b = req.body as any;
+      const shop = String(b.shop || "").trim();
+      if (!shop) return res.status(400).json({ error: "Thiếu shop" });
+      const niches: string[] = Array.isArray(b.niches)
+        ? b.niches.map((n: string) => String(n).trim()).filter(Boolean)
+        : b.niche ? [String(b.niche).trim()] : [];
+      const all = await loadShopNiche();
+      all[shop] = {
+        niches: [...new Set(niches)],
+        keywords: Array.isArray(b.keywords) ? b.keywords.map((k: string) => String(k).trim()).filter(Boolean) : [],
+      };
+      await fs.ensureDir(path.dirname(SHOP_NICHE_FILE));
+      await fs.writeJson(SHOP_NICHE_FILE, all, { spaces: 2 });
+      res.json({ ok: true, saved: all[shop] });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? "Lỗi lưu ngách" });
+    }
+  });
+
+  // Chạy full: ngách → AI sinh keyword → search → AI chấm → cào full vào folder shop.
+  app.post("/admin/api/ai/source-shop", async (req, res) => {
+    try {
+      const sessionUser = (req.session as any).user as SessionUser | undefined;
+      if (sessionUser?.role === "viewer") return res.status(403).json({ error: "Viewer không thể cào" });
+      if (crawlJob?.running) return res.status(409).json({ error: "Đang có job chạy — chờ xong hoặc xem status" });
+      const b = req.body as any;
+      const shop = String(b.shop || "").trim();
+      if (!shop) return res.status(400).json({ error: "Chọn shop" });
+      const entry = (await loadShopNiche())[shop];
+      const shNiches = shopNiches(entry);
+      // Nhiều ngách → chọn 1 (b.niche chỉ định, hoặc random) cho lần cào này.
+      const niche = String(b.niche || shNiches[Math.floor(Math.random() * Math.max(1, shNiches.length))] || "").trim();
+      if (!niche) return res.status(400).json({ error: "Shop chưa có ngách — Đoán/nhập ngách trước" });
+      const s = await loadCrawlSettings();
+      const { generateKeywords } = await import("./services/anthropic/shopSourcing");
+      const keywords = await generateKeywords(niche, Number(b.keywordCount) || 8, entry?.keywords || []);
+      if (!keywords.length) return res.status(400).json({ error: "AI không sinh được keyword — thử lại" });
+      const seedUrls = keywords.map((k) => `https://us.shein.com/pdsearch/${encodeURIComponent(k)}/`);
+      void runHarvestAndCrawl({
+        seedUrls, kind: "search", niche, output: "shop", shop, proxies: b.proxies,
+        headless: typeof b.headless === "boolean" ? b.headless : s.headless,
+        concurrency: Number(b.concurrency) || s.concurrency,
+        minReviews: Number.isFinite(+b.minReviews) ? Math.max(0, Math.round(+b.minReviews)) : 20, // pre-filter nhẹ trước khi AI chấm
+        minRating: Number.isFinite(+b.minRating) ? Math.max(0, Math.min(5, +b.minRating)) : 0,
+        limit: Number.isFinite(+b.limit) ? Math.max(1, Math.min(200, Math.round(+b.limit))) : 40,
+        maxPerKeyword: Number.isFinite(+b.maxPerKeyword) ? Math.max(1, Math.min(200, Math.round(+b.maxPerKeyword))) : 60,
+        pages: s.searchPages,
+      });
+      res.json({ ok: true, niche, keywords });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? "Lỗi AI source shop" });
+    }
+  });
+
+  // ── AUTO-SOURCER: tự đổ nhiên liệu (AI keyword→search→chấm→cào) cho MỌI shop có ngách
+  //    tới khi đủ 100 LIVE. Publish do queueManager+dripPublisher lo (cần autoCron BẬT).
+  const AUTO_SOURCE_TARGET = 100;
+  const AUTO_SOURCE_BACKLOG_CAP = 30;   // giữ tối đa ~30 file chờ / shop → không cào nhanh hơn publish tiêu
+  const AUTO_SOURCE_PER_CYCLE = 30;     // mỗi lượt thêm tối đa ~30 sp
+  let autoSourceBusy = false;
+  async function shopBacklog(shop: string): Promise<number> {
+    try {
+      const owner = await getShopOwner(shop);
+      const dirs = owner ? await getUserDirsByName(owner) : null;
+      if (!dirs?.baseSheinAutoDir) return 0;
+      const files = await fs.readdir(path.join(dirs.baseSheinAutoDir, shop)).catch(() => [] as string[]);
+      return files.filter((f) => f.toLowerCase().endsWith(".json")).length; // file chờ (Success/Fail nằm ở subfolder)
+    } catch { return 0; }
+  }
+  async function runAutoSourceOnce(): Promise<void> {
+    if (autoSourceBusy || !isAutoSourceOn() || crawlJob?.running) return;
+    autoSourceBusy = true;
+    try {
+      const entries = Object.entries(await loadShopNiche()).filter(([, v]) => shopNiches(v).length);
+      if (!entries.length) return;
+      const live = await fetchLiveCounts("auto").catch(() => ({} as Record<string, number>));
+      for (const [shop, cfg] of entries) {
+        const liveCnt = live[shop.toLowerCase()] ?? 0;
+        if (liveCnt >= AUTO_SOURCE_TARGET) continue;              // shop đã đủ 100
+        const backlog = await shopBacklog(shop);
+        if (liveCnt + backlog >= AUTO_SOURCE_TARGET) continue;    // đã đủ nguyên liệu để cán 100
+        if (backlog >= AUTO_SOURCE_BACKLOG_CAP) continue;         // chờ publish tiêu bớt
+        // Nhiều ngách → XOAY: mỗi cycle chọn ngẫu nhiên 1 ngách của shop để phủ đều.
+        const nichesOfShop = shopNiches(cfg);
+        const niche = nichesOfShop[Math.floor(Math.random() * nichesOfShop.length)];
+        const s = await loadCrawlSettings();
+        const { generateKeywords } = await import("./services/anthropic/shopSourcing");
+        const keywords = await generateKeywords(niche, 6, cfg.keywords || []).catch(() => [] as string[]);
+        if (!keywords.length) continue;
+        const need = Math.min(AUTO_SOURCE_PER_CYCLE, AUTO_SOURCE_TARGET - liveCnt - backlog);
+        clog(`🤖 [auto] shop "${shop}" live ${liveCnt} + chờ ${backlog} → cào thêm ~${need} (ngách: ${niche.slice(0, 40)}${nichesOfShop.length > 1 ? ` · 1/${nichesOfShop.length}` : ""})`);
+        // Fire-and-forget: runHarvestAndCrawl set crawlJob.running → lượt sau tự bỏ qua cho tới khi xong.
+        void runHarvestAndCrawl({
+          seedUrls: keywords.map((k) => `https://us.shein.com/pdsearch/${encodeURIComponent(k)}/`),
+          kind: "search", niche, output: "shop", shop, dedupeShop: shop,
+          headless: s.headless, concurrency: s.concurrency,
+          minReviews: 20, minRating: 0, limit: Math.max(5, need), maxPerKeyword: 40, pages: s.searchPages,
+        });
+        break; // 1 shop / lượt (crawlJob single-global)
+      }
+    } catch { /* ignore */ } finally { autoSourceBusy = false; }
+  }
+  setInterval(() => { void runAutoSourceOnce(); }, 3 * 60_000); // check mỗi 3 phút
+
+  // Trigger auto-sourcer NGAY (khỏi đợi tick). localOrToken → gọi từ localhost.
+  app.post("/admin/api/ai/auto-source/tick", localOrToken, (_req, res) => {
+    if (!isAutoSourceOn()) return res.json({ ok: false, reason: "autoSource đang TẮT" });
+    if (crawlJob?.running) return res.json({ ok: false, reason: "đang có job cào chạy" });
+    void runAutoSourceOnce();
+    res.json({ ok: true, triggered: true });
+  });
+
   app.get("/admin/api/crawl/status", (_req, res) => {
     if (!crawlJob) return res.json({ idle: true, log: [] });
     res.json({ idle: false, running: crawlJob.running, done: crawlJob.done, summary: crawlJob.summary, log: crawlJob.log.slice(-200) });
@@ -2004,7 +2367,7 @@ export const startAdminServer = async () => {
 
   // ── Crawl settings (áp cho crawl addon-đẩy-về; RIÊNG worker.json của máy đăng listing) ──
   const CRAWL_SETTINGS_FILE = path.resolve(process.cwd(), "data", "crawl-settings.json");
-  const CRAWL_DEFAULTS = { headless: false, concurrency: 3, output: "hub" as "hub" | "shop" };
+  const CRAWL_DEFAULTS = { headless: false, concurrency: 3, output: "hub" as "hub" | "shop", searchPages: 2 };
   async function loadCrawlSettings() {
     try { return { ...CRAWL_DEFAULTS, ...(await fs.readJson(CRAWL_SETTINGS_FILE)) }; }
     catch { return { ...CRAWL_DEFAULTS }; }
@@ -2022,6 +2385,7 @@ export const startAdminServer = async () => {
         headless: typeof b.headless === "boolean" ? b.headless : cur.headless,
         concurrency: Number.isFinite(+b.concurrency) ? Math.max(1, Math.min(10, Math.round(+b.concurrency))) : cur.concurrency,
         output: b.output === "shop" ? "shop" : b.output === "hub" ? "hub" : cur.output,
+        searchPages: Number.isFinite(+b.searchPages) ? Math.max(1, Math.min(10, Math.round(+b.searchPages))) : cur.searchPages,
       };
       await fs.ensureDir(path.dirname(CRAWL_SETTINGS_FILE));
       await fs.writeJson(CRAWL_SETTINGS_FILE, next, { spaces: 2 });
@@ -2373,6 +2737,7 @@ export const startAdminServer = async () => {
         : {};
       res.json({
         autoCron: w.autoCron,
+        autoSource: !!(w as any).autoSource,
         concurrency: w.concurrency,
         headless: w.headless,
         fileRouterCron: config.cronFileRouter,
@@ -2398,6 +2763,7 @@ export const startAdminServer = async () => {
 
       const body = req.body as Partial<{
         autoCron: boolean;
+        autoSource: boolean;
         concurrency: number;
         headless: boolean;
         fileRouterCron: string;

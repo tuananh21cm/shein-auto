@@ -18,6 +18,7 @@ import { computeDeleteCandidates } from "./deleteCandidates";
 import { parseReturns } from "./returnsParser";
 import { requestVideo, refreshVideoState, getVideoFile } from "./videoOnDemand";
 import { refreshSheinSuggestForShop, refreshSheinSuggestAll, setSheinOverride, getShopNiche } from "./sheinSuggest";
+import { preCheck, getSystemShops, setSystemShops, getMaskDaily } from "./preCheck";
 
 /** Gom dữ liệu báo cáo 1 shop (dùng cho trang public + admin). */
 function buildReport(code: string) {
@@ -173,6 +174,31 @@ export function registerTikcrmRoutes(app: express.Express): void {
       res.json({ ok: true });
     } catch (err: any) { res.status(500).json({ error: err?.message ?? "lỗi" }); }
   });
+
+  // Pre-check TRƯỚC khi addon hiện panel (public — cùng whitelist /webhook/tikcheck). Xem preCheck.ts.
+  //   ?code=&name=&money=<on_hold+net>&net=<net earnings>&age=<ngày tuổi tài khoản>&live=1|0
+  app.get("/webhook/tikcheck/pre", (req, res) => {
+    try {
+      const code = String(req.query.code || "").trim();
+      if (!code) return res.status(400).json({ error: "thiếu code" });
+      const ageRaw = Number(req.query.age);
+      res.json(preCheck({
+        code, name: String(req.query.name || "").slice(0, 120),
+        money: Number(req.query.money) || 0,
+        net: Number(req.query.net) || 0,
+        ageDays: Number.isFinite(ageRaw) ? ageRaw : null,
+        live: String(req.query.live) === "1",
+      }));
+    } catch (err: any) { res.status(500).json({ error: err?.message ?? "lỗi pre" }); }
+  });
+  // Admin: danh sách shop hệ thống (thay cả danh sách) + xem quyết định che của hôm nay
+  app.get("/admin/api/tikcrm/system-shops", (_req, res) => { const codes = getSystemShops(); res.json({ count: codes.length, codes }); });
+  app.post("/admin/api/tikcrm/system-shops", (req, res) => {
+    const codes = Array.isArray(req.body?.codes) ? req.body.codes : [];
+    if (!codes.length) return res.status(400).json({ error: "codes rỗng" });
+    res.json({ ok: true, count: setSystemShops(codes.map(String)) });
+  });
+  app.get("/admin/api/tikcrm/mask-daily", (_req, res) => res.json(getMaskDaily()));
 
   // Extension lấy link báo cáo (public, whitelist — nội bộ) theo shop_code
   app.get("/webhook/tikcheck/report-link", (req, res) => {

@@ -8,7 +8,7 @@
 import { chromium, type BrowserContext } from "playwright-core";
 import { scrapeSheinProduct, type ScrapeOptions, type ScrapeResult } from "../services/kiki/sheinScraper";
 import { scrapeSheinProductV2 } from "../services/kiki/sheinScraperV2";
-import { dismissCaptcha, isCaptchaPresent, type CaptchaOptions } from "../services/kiki/captcha";
+import { dismissCaptcha, isCaptchaPresent, acceptCookies, type CaptchaOptions } from "../services/kiki/captcha";
 import { attachStatsCapture } from "../services/kiki/productStats";
 
 export interface ChromeBatchItem {
@@ -33,7 +33,7 @@ export type BatchResult = { goodsId: string; ok: boolean; data?: ScrapeResult; e
 /** CORE: cào batch trong 1 BrowserContext (CDP hoặc persistentContext-có-proxy). */
 export async function crawlBatchInContext(
   ctx: BrowserContext,
-  params: Omit<ScrapeBatchChromeParams, "cdpUrl"> & { tag?: string; useV2?: boolean }
+  params: Omit<ScrapeBatchChromeParams, "cdpUrl"> & { tag?: string; useV2?: boolean; failFastCaptcha?: boolean }
 ): Promise<BatchResult> {
   const { items, options, onLog, onProduct } = params;
   // V2 (ID-first, goto fresh-load từng màu) = MẶC ĐỊNH → hết bug "ảnh variant lệch"
@@ -51,6 +51,7 @@ export async function crawlBatchInContext(
     log(`Warm-up: mở ${origin}/ …`);
     await page.goto(origin + "/", { waitUntil: "domcontentloaded", timeout: 60_000 });
     await page.waitForTimeout(3000);
+    if (await acceptCookies(page)) { log(`🍪 accept cookie`); await page.waitForTimeout(600); } // accept banner → ít captcha
     if (await isCaptchaPresent(page).catch(() => false)) await dismissCaptcha(page, log);
     await page.waitForTimeout(1500);
   } catch (e: any) { log(`Warm-up lỗi (bỏ qua): ${String(e?.message ?? e).slice(0, 60)}`); }
@@ -68,16 +69,22 @@ export async function crawlBatchInContext(
     const statsCapture = attachStatsCapture(page, goodsId);
     await page.goto(it.url, { waitUntil: "domcontentloaded", timeout: 60_000 });
     await page.waitForTimeout(2500);
+    await acceptCookies(page, 2500).catch(() => false); // banner cookie trên trang product → accept để đỡ captcha
+    const isGone = async (): Promise<boolean> =>
+      !!(await page.evaluate(`(function(){var t=(document.body?document.body.innerText:'')||''; return /OOPS|BACK TO HOME|page (not found|doesn'?t exist)/i.test(t.slice(0,500));})()`).catch(() => false));
     let hasProduct = 0;
+    let gone = false;
     for (let attempt = 0; attempt < 12; attempt++) {
       if (await isCaptchaPresent(page).catch(() => false)) await dismissCaptcha(page, log);
       hasProduct = await page.locator(".product-intro__head-name, h1.product-intro__head-name").first().count().catch(() => 0);
       if (hasProduct) break;
+      if (await isGone()) { gone = true; break; } // sp đã gỡ (OOPS) → khỏi retry 24s
       await page.waitForTimeout(2000);
     }
     if (!hasProduct) {
       statsCapture.detach();
       const blocked = /risk\/challenge|\/captcha/i.test(page.url()) || (await isCaptchaPresent(page).catch(() => false));
+      if (gone) throw new Error("Sản phẩm đã gỡ (OOPS/404).");
       throw new Error(blocked ? "__CAPTCHA_BLOCK__ captcha challenge chặn URL (/risk/challenge)" : "Không thấy sản phẩm sau 24s.");
     }
     log(`[${idx + 1}] Đang cào…${useV2 ? " (V2: goto fresh-load từng màu, ảnh không lệch)" : ""}`);
@@ -108,6 +115,13 @@ export async function crawlBatchInContext(
           data = await loadAndScrape(it, idx);
         } catch (eCap: any) {
           if (!String(eCap?.message ?? "").includes("__CAPTCHA_BLOCK__")) throw eCap;
+          // Pool xoay-IP-mỗi-sp: captcha → BỎ IP này ngay (đừng hold 5p), sp cào lại bằng IP khác.
+          if (params.failFastCaptcha) {
+            log(`⛔ [${idx + 1}] captcha → bỏ IP này (sp cào lại IP khác sau).`);
+            out.push({ goodsId: it.goodsId, ok: false, error: "captcha (đổi IP)" });
+            if (onProduct) await onProduct(it.goodsId, null, "captcha (đổi IP)");
+            break;
+          }
           log(`🛑 [${idx + 1}] Captcha challenge → HOLD ${holdMin} phút cho SHEIN nguội…`);
           await sleep(holdMs);
           log(`▶ [${idx + 1}] Hết hold ${holdMin}p — thử lại sp…`);

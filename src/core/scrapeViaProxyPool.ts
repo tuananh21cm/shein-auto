@@ -3,8 +3,7 @@
  * → chia tải, captcha không dồn vào 1 IP. Mỗi worker = Playwright launchPersistentContext
  * (profile riêng + proxy local từ proxy-chain). Dùng lại crawlBatchInContext.
  */
-import { chromium, type BrowserContext } from "playwright-core";
-import path from "path";
+import { chromium, type Browser } from "playwright-core";
 import { crawlBatchInContext, type ChromeBatchItem, type BatchResult } from "./scrapeViaChrome";
 import type { ScrapeOptions, ScrapeResult } from "../services/kiki/sheinScraper";
 import type { ProxyBridge } from "./proxyPool";
@@ -17,59 +16,64 @@ export interface ProxyPoolParams {
   headless?: boolean;
   options?: ScrapeOptions;
   captchaHoldMs?: number;
+  concurrency?: number; // số Chrome chạy SONG SONG (proxy xoay theo từng sp, không giới hạn bởi số này)
   onLog?: (m: string) => void;
   onProduct?: (goodsId: string, data: ScrapeResult | null, error?: string) => Promise<void> | void;
 }
 
-/** Chia round-robin thành n chunk (cân bằng). */
-function splitRoundRobin<T>(arr: T[], n: number): T[][] {
-  const out: T[][] = Array.from({ length: n }, () => []);
-  arr.forEach((it, i) => out[i % n].push(it));
-  return out;
-}
-
+/**
+ * Cào batch: MỖI SẢN PHẨM 1 Chrome + 1 PROXY MỚI (xoay IP+fingerprint liên tục) → không dồn
+ * tải 1 IP → tránh captcha/risk-limit khi cào nhiều sp. Chạy tối đa `concurrency` sp song song.
+ * Captcha 1 sp → crawlBatchInContext fail-fast (không hold), sp đó cycle sau cào lại bằng IP khác.
+ */
 export async function scrapeBatchViaProxyPool(params: ProxyPoolParams): Promise<BatchResult> {
   const log = params.onLog ?? (() => {});
   const bridges = params.bridges;
   if (!bridges.length) throw new Error("Không có proxy bridge.");
-  const base = params.userDataDirBase || "C:\\chrome-proxy-shein";
-  const chunks = splitRoundRobin(params.items, bridges.length);
-  log(`Pool ${bridges.length} Chrome/proxy · ${params.items.length} sp → chia ${chunks.map((c) => c.length).join("/")}`);
+  const par = Math.max(1, Math.min(params.concurrency ?? 3, bridges.length, params.items.length));
+  log(`Pool ${bridges.length} proxy · ${params.items.length} sp · ${par} song song · MỖI sp 1 IP+browser MỚI (ephemeral, không session cũ)`);
 
-  const results = await Promise.all(
-    bridges.map(async (bridge, i): Promise<BatchResult> => {
-      const items = chunks[i];
-      if (!items.length) return [];
-      const dir = path.join(base, `w${i}`);
-      const tag = `[P${i}]`;
-      let ctx: BrowserContext | undefined;
+  const out: BatchResult = [];
+  let idx = 0;
+  let rot = 0;
+  const worker = async (): Promise<void> => {
+    for (;;) {
+      const my = idx++;
+      if (my >= params.items.length) break;
+      const it = params.items[my];
+      const bridge = bridges[(rot++) % bridges.length]; // xoay proxy theo từng sp
+      let browser: Browser | undefined;
       try {
-        // Fingerprint anti-detect riêng cho worker/proxy này.
         const fp = newFingerprint();
         const fpOpts = fpContextOptions(fp);
-        ctx = await chromium.launchPersistentContext(dir, {
-          headless: params.headless ?? false, // headed = an toàn hơn với SHEIN (chặn headless)
+        // EPHEMERAL (không userDataDir) → mỗi sp browser SẠCH: không cookie/session cũ, không dialog "Restore pages".
+        browser = await chromium.launch({
+          headless: params.headless ?? false,
           proxy: { server: bridge.local },
           args: ["--disable-blink-features=AutomationControlled"],
-          ...fpOpts,
         });
+        const ctx = await browser.newContext({ ...fpOpts });
         await applyFingerprint(ctx, fp);
-        log(`${tag} ${bridge.label} · mở (fp: ${fpOpts.userAgent.slice(0, 40)}…), cào ${items.length} sp`);
-        return await crawlBatchInContext(ctx, {
-          items,
+        const r = await crawlBatchInContext(ctx, {
+          items: [it],
           options: params.options,
-          captchaHoldMs: params.captchaHoldMs,
+          captchaHoldMs: 0,
+          failFastCaptcha: true, // captcha → bỏ IP ngay (đừng hold), sp cào lại bằng IP khác
+          useV2: false, // V1 = click variant IN-SESSION, KHÔNG reload/màu → ít captcha hơn hẳn V2 (goto/màu)
           onLog: params.onLog,
           onProduct: params.onProduct,
-          tag,
+          tag: `[${bridge.label.slice(-14)}]`,
         });
+        out.push(...r);
       } catch (e: any) {
-        log(`${tag} ✗ lỗi worker: ${String(e?.message ?? e).slice(0, 80)}`);
-        return items.map((it) => ({ goodsId: it.goodsId, ok: false, error: `proxy worker lỗi: ${e?.message}` }));
+        log(`[sp${my}] ✗ ${String(e?.message ?? e).slice(0, 70)}`);
+        out.push({ goodsId: it.goodsId, ok: false, error: String(e?.message ?? e).slice(0, 120) });
+        if (params.onProduct) await params.onProduct(it.goodsId, null, "proxy worker lỗi");
       } finally {
-        try { if (ctx) await ctx.close(); } catch { /* ignore */ }
+        try { if (browser) await browser.close(); } catch { /* ignore */ }
       }
-    })
-  );
-  return results.flat();
+    }
+  };
+  await Promise.all(Array.from({ length: par }, () => worker()));
+  return out;
 }

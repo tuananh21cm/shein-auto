@@ -26,6 +26,7 @@ interface PricingFile {
 }
 interface WorkerFile {
   autoCron: boolean;
+  autoSource?: boolean; // master-switch cho auto-sourcer (AI tự tìm hàng tới 100 listing/shop)
   concurrency: number;
   headless: boolean;
   fileRouterCron: string;
@@ -87,6 +88,11 @@ export const workerConfig = (): WorkerFile =>
  */
 export const isAutoCronOn = (): boolean => {
   try { return !!readJson<WorkerFile>("worker.json").autoCron; } catch { return false; }
+};
+
+/** Đọc autoSource TƯƠI (master-switch auto-sourcer) — tắt là dừng trong 1 tick. */
+export const isAutoSourceOn = (): boolean => {
+  try { return !!readJson<WorkerFile>("worker.json").autoSource; } catch { return false; }
 };
 
 export const sizeMap = (): Record<string, string> =>

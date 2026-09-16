@@ -684,6 +684,47 @@
         </div>
       </div>
 
+      <!-- 🔎 Tìm theo keyword → lọc listing ngon → cào Hub -->
+      <div class="card" id="searchCard" style="margin-bottom:14px; border-left:4px solid var(--accent);">
+        <div style="display:flex; justify-content:space-between; align-items:center; cursor:pointer;" onclick="toggleSearch()">
+          <h3 style="margin:0;">🔎 Tìm theo keyword <span style="color:var(--text-mute); font-weight:400; font-size:0.82rem;">— search SHEIN → lọc listing ngon → cào Hub</span></h3>
+          <span id="searchCaret" style="color:var(--text-mute);">▸ Mở</span>
+        </div>
+        <div id="searchBody" style="display:none; margin-top:12px;">
+          <label class="field"><span>Keyword <span style="color:var(--text-mute);">(mỗi dòng 1 từ khoá)</span></span>
+            <textarea id="searchKw" rows="3" placeholder="summer dress&#10;bikini set&#10;cargo pants" style="width:100%; font-family:'JetBrains Mono',monospace; font-size:0.76rem;"></textarea>
+          </label>
+          <div style="display:flex; gap:14px; align-items:center; flex-wrap:wrap; margin-top:8px;">
+            <label style="display:flex; gap:6px; align-items:center;" title="Số review tối thiểu — proxy cho lượng bán">Review ≥ <input id="searchMinRev" type="number" value="100" min="0" style="width:80px;"></label>
+            <label style="display:flex; gap:6px; align-items:center;">Rating ≥ <input id="searchMinRate" type="number" value="4" min="0" max="5" step="0.1" style="width:60px;"></label>
+            <label style="display:flex; gap:6px; align-items:center;" title="Cào tối đa bao nhiêu sp ngon nhất (sort review giảm dần)">Top <input id="searchLimit" type="number" value="50" min="1" max="200" style="width:70px;"></label>
+            <label style="display:flex; gap:6px; align-items:center;" title="Quét tối đa mỗi keyword bao nhiêu sp">Quét/kw <input id="searchPerKw" type="number" value="60" min="1" max="200" style="width:70px;"></label>
+            <button class="btn btn-primary" id="searchBtn" onclick="startSearch()">🔎 Tìm &amp; cào</button>
+          </div>
+          <div style="font-size:0.78rem; color:var(--text-mute); margin-top:6px;">Headless &amp; Chrome song song lấy từ Settings. Tiến trình chạy chung log với "Cào theo link" (cùng 1 job).</div>
+        </div>
+      </div>
+
+      <!-- 🏬 Cào nguyên listing của 1 shop -->
+      <div class="card" id="shopCard" style="margin-bottom:14px; border-left:4px solid var(--accent);">
+        <div style="display:flex; justify-content:space-between; align-items:center; cursor:pointer;" onclick="toggleShop()">
+          <h3 style="margin:0;">🏬 Cào nguyên shop <span style="color:var(--text-mute); font-weight:400; font-size:0.82rem;">— dán link shop → cào hết listing về Hub</span></h3>
+          <span id="shopCaret" style="color:var(--text-mute);">▸ Mở</span>
+        </div>
+        <div id="shopBody" style="display:none; margin-top:12px;">
+          <label class="field"><span>Link shop SHEIN <span style="color:var(--text-mute);">(mỗi dòng 1 shop)</span></span>
+            <textarea id="shopUrls" rows="3" placeholder="https://us.shein.com/store/home?store_code=1234567" style="width:100%; font-family:'JetBrains Mono',monospace; font-size:0.76rem;"></textarea>
+          </label>
+          <div style="display:flex; gap:14px; align-items:center; flex-wrap:wrap; margin-top:8px;">
+            <label style="display:flex; gap:6px; align-items:center;" title="Tối đa bao nhiêu sp mỗi shop">Tối đa sp <input id="shopMax" type="number" value="300" min="1" max="1000" style="width:80px;"></label>
+            <label style="display:flex; gap:6px; align-items:center;" title="0 = lấy hết, không lọc">Review ≥ <input id="shopMinRev" type="number" value="0" min="0" style="width:70px;"></label>
+            <label style="display:flex; gap:6px; align-items:center;">Rating ≥ <input id="shopMinRate" type="number" value="0" min="0" max="5" step="0.1" style="width:60px;"></label>
+            <button class="btn btn-primary" id="shopBtn" onclick="startShopCrawl()">🏬 Cào shop</button>
+          </div>
+          <div style="font-size:0.78rem; color:var(--text-mute); margin-top:6px;">Mặc định lấy HẾT (ngưỡng 0). Headless &amp; Chrome song song lấy từ Settings. Chung log với "Cào theo link".</div>
+        </div>
+      </div>
+
       <div id="hubNicheDash"></div>
       <div class="card">
         <div style="display:flex; gap:10px; align-items:center; margin-bottom:12px;">
@@ -851,6 +892,19 @@
             <span id="setAutoCronLabel" style="font-weight:600;">—</span>
           </label>
         </div>
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; margin-top:14px; padding-top:14px; border-top:1px solid var(--border);">
+          <div>
+            <h3 style="margin:0 0 4px;">🤖 Tự tìm hàng (Auto-source)</h3>
+            <div style="color: var(--text-mute); font-size: 0.85rem;">
+              Bật = mọi shop đã set <b>ngách</b> tự: AI sinh keyword → search → chấm chọn → cào → tới <b>100 listing/shop</b>.<br>
+              ⚠️ Cần bật cả "Tự động chạy (Cron)" phía trên để tự <b>đăng</b> lên shop.
+            </div>
+          </div>
+          <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+            <input type="checkbox" id="setAutoSource" style="width: 20px; height: 20px;" />
+            <span id="setAutoSourceLabel" style="font-weight:600;">—</span>
+          </label>
+        </div>
       </div>
 
       <div class="grid grid-2" style="margin-top: 18px; align-items: start;">
@@ -914,6 +968,9 @@
                 <option value="false">Hiện — an toàn hơn với SHEIN (khuyên dùng)</option>
                 <option value="true">Ẩn — chạy ngầm (dễ bị chặn hơn)</option>
               </select>
+            </label>
+            <label class="field"><span>📄 Số trang search / keyword <span style="color:var(--text-mute);">(?page=N — càng nhiều càng sâu nhưng dễ captcha, nên có proxy)</span></span>
+              <input type="number" id="crawlSetPages" min="1" max="10" />
             </label>
           </div>
         </div>
@@ -2603,6 +2660,100 @@ function toggleCrawl() {
   b.style.display = open ? "" : "none";
   c.textContent = open ? "▾ Đóng" : "▸ Mở";
 }
+function toggleSearch() {
+  const b = $("#searchBody"), c = $("#searchCaret");
+  const open = b.style.display === "none";
+  b.style.display = open ? "" : "none";
+  c.textContent = open ? "▾ Đóng" : "▸ Mở";
+}
+async function startSearch() {
+  const keywords = ($("#searchKw").value || "").split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
+  if (!keywords.length) return toast("Nhập ít nhất 1 keyword", "error");
+  const body = {
+    keywords,
+    minReviews: Number($("#searchMinRev").value) || 0,
+    minRating: Number($("#searchMinRate").value) || 0,
+    limit: Number($("#searchLimit").value) || 50,
+    maxPerKeyword: Number($("#searchPerKw").value) || 60,
+  };
+  const btn = $("#searchBtn"); btn.disabled = true; btn.textContent = "⏳ Đang tìm…";
+  // Dùng chung log với panel "Cào theo link" (cùng 1 job) → mở panel đó cho thấy log.
+  $("#crawlBody").style.display = ""; $("#crawlCaret").textContent = "▾ Đóng";
+  $("#crawlLog").style.display = "block"; $("#crawlLog").textContent = "Khởi động search…";
+  try {
+    const res = await fetch("/admin/api/search/keywords", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    const d = await res.json(); if (!res.ok) throw new Error(d.error);
+    pollCrawl();
+  } catch (e) { toast(e.message, "error"); btn.disabled = false; btn.textContent = "🔎 Tìm & cào"; }
+}
+function toggleShop() {
+  const b = $("#shopBody"), c = $("#shopCaret");
+  const open = b.style.display === "none";
+  b.style.display = open ? "" : "none";
+  c.textContent = open ? "▾ Đóng" : "▸ Mở";
+}
+async function startShopCrawl() {
+  const shops = ($("#shopUrls").value || "").split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
+  if (!shops.length) return toast("Dán ít nhất 1 link shop", "error");
+  const body = {
+    shops,
+    maxProducts: Number($("#shopMax").value) || 300,
+    minReviews: Number($("#shopMinRev").value) || 0,
+    minRating: Number($("#shopMinRate").value) || 0,
+  };
+  const btn = $("#shopBtn"); btn.disabled = true; btn.textContent = "⏳ Đang cào shop…";
+  $("#crawlBody").style.display = ""; $("#crawlCaret").textContent = "▾ Đóng";
+  $("#crawlLog").style.display = "block"; $("#crawlLog").textContent = "Khởi động cào shop…";
+  try {
+    const res = await fetch("/admin/api/search/shop", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    const d = await res.json(); if (!res.ok) throw new Error(d.error);
+    pollCrawl();
+  } catch (e) { toast(e.message, "error"); btn.disabled = false; btn.textContent = "🏬 Cào shop"; }
+}
+// ─── AI ngách cho shop (đặt trong modal Settings per-shop) ───
+let _aiCategories = null;
+async function aiCategories() {
+  if (_aiCategories) return _aiCategories;
+  try { _aiCategories = await (await fetch("/admin/api/ai/categories")).json(); }
+  catch { _aiCategories = { categories: [] }; }
+  return _aiCategories;
+}
+let _spNiches = [];
+function renderNicheChips() {
+  const wrap = $("#spNicheChips"); if (!wrap) return;
+  wrap.innerHTML = _spNiches.length
+    ? _spNiches.map((n, i) => `<span style="display:inline-flex; align-items:center; gap:6px; background:var(--bg-elev); border:1px solid var(--border); border-radius:14px; padding:3px 10px; font-size:0.82rem;">${escapeHtml(n)} <span onclick="spRemoveNiche(${i})" title="Xoá" style="cursor:pointer; color:var(--danger); font-weight:700;">✕</span></span>`).join("")
+    : '<span style="color:var(--text-mute); font-size:0.82rem;">Chưa chọn ngách — auto-sourcer sẽ không chạy cho shop này.</span>';
+}
+function spAddNiche(n) {
+  n = (n || "").trim(); if (!n) return;
+  if (!_spNiches.some((x) => x.toLowerCase() === n.toLowerCase())) { _spNiches.push(n); renderNicheChips(); }
+}
+function spRemoveNiche(i) { _spNiches.splice(i, 1); renderNicheChips(); }
+async function spLoadNiche(shop) {
+  try {
+    const d = await (await fetch("/admin/api/ai/niche?shop=" + encodeURIComponent(shop))).json();
+    _spNiches = Array.isArray(d.niches) ? d.niches : (d.niche ? [d.niche] : []);
+  } catch { _spNiches = []; }
+  renderNicheChips();
+}
+async function spInferNiche(shop) {
+  const btn = $("#spInferBtn"); if (btn) { btn.disabled = true; btn.textContent = "⏳…"; }
+  try {
+    const res = await fetch("/admin/api/ai/niche/infer", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ shop }) });
+    const d = await res.json(); if (!res.ok) throw new Error(d.error);
+    spAddNiche(d.niche || "");
+    toast(`AI đoán từ ${d.sampled} listing → thêm "${d.niche}" (bấm Lưu)`);
+  } catch (e) { toast(e.message, "error"); }
+  finally { if (btn) { btn.disabled = false; btn.textContent = "🔮 AI đoán"; } }
+}
+async function spSaveNiche(shop) {
+  try {
+    const res = await fetch("/admin/api/ai/niche", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ shop, niches: _spNiches }) });
+    const d = await res.json(); if (!res.ok) throw new Error(d.error);
+    toast(_spNiches.length ? `✓ Đã lưu ${_spNiches.length} ngách — auto-sourcer sẽ xoay từng ngách` : "✓ Đã xoá ngách (dừng auto cho shop này)");
+  } catch (e) { toast(e.message, "error"); }
+}
 let _crawlPoll = null;
 async function startCrawl() {
   const links = ($("#crawlLinks").value || "").split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
@@ -2637,7 +2788,9 @@ function pollCrawl() {
       if (d.done) {
         clearInterval(_crawlPoll);
         const btn = $("#crawlBtn"); btn.disabled = false; btn.textContent = "🕷️ Cào";
-        if (d.summary) toast(`Cào xong: ${d.summary.ok}/${d.summary.total} OK`);
+        const sb = $("#searchBtn"); if (sb) { sb.disabled = false; sb.textContent = "🔎 Tìm & cào"; }
+        const pb = $("#shopBtn"); if (pb) { pb.disabled = false; pb.textContent = "🏬 Cào shop"; }
+        if (d.summary) toast(`Xong: ${d.summary.ok}/${d.summary.total} OK`);
         loadHub();
       }
     } catch { /* ignore */ }
@@ -4091,6 +4244,12 @@ async function loadSettings() {
       $("#setAutoCronLabel").textContent = e.target.checked ? "🟢 BẬT" : "🔴 TẮT";
       saveSettings(); // toggle → lưu ngay
     };
+    $("#setAutoSource").checked = !!data.autoSource;
+    $("#setAutoSourceLabel").textContent = data.autoSource ? "🟢 BẬT" : "🔴 TẮT";
+    $("#setAutoSource").onchange = (e) => {
+      $("#setAutoSourceLabel").textContent = e.target.checked ? "🟢 BẬT" : "🔴 TẮT";
+      saveSettings();
+    };
     // Sửa input/select "Máy đăng hàng" → tự lưu (debounce)
     if (state.user.role === "admin") {
       ["setConcurrency","setHeadless","setCronFileRouter","setCronQueueManager","setImgWait","setImgMax","setDescImg","setDescAttr"]
@@ -4134,8 +4293,9 @@ async function loadCrawlSettings() {
     const data = await (await fetch("/admin/api/crawl/settings")).json();
     $("#crawlSetConc").value = data.concurrency;
     $("#crawlSetHeadless").value = String(data.headless);
+    $("#crawlSetPages").value = data.searchPages ?? 2;
     if (state.user.role === "admin") {
-      ["crawlSetConc", "crawlSetHeadless"].forEach((id) => {
+      ["crawlSetConc", "crawlSetHeadless", "crawlSetPages"].forEach((id) => {
         const el = $("#" + id); if (el) el.onchange = () => autoSave("crawlSettings", saveCrawlSettings);
       });
     }
@@ -4147,7 +4307,7 @@ async function saveCrawlSettings() {
   try {
     const res = await fetch("/admin/api/crawl/settings", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ concurrency: Number($("#crawlSetConc").value), headless: $("#crawlSetHeadless").value === "true" }),
+      body: JSON.stringify({ concurrency: Number($("#crawlSetConc").value), headless: $("#crawlSetHeadless").value === "true", searchPages: Number($("#crawlSetPages").value) }),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error);
@@ -4160,6 +4320,7 @@ async function saveSettings() {
   try {
     const body = {
       autoCron: $("#setAutoCron").checked,
+      autoSource: $("#setAutoSource").checked,
       concurrency: Number($("#setConcurrency").value),
       headless: $("#setHeadless").value === "true",
       fileRouterCron: $("#setCronFileRouter").value,
@@ -4386,8 +4547,24 @@ function openShopPrefs(shop) {
     : (inherit
         ? `<div style="background:rgba(99,102,241,.1); border-radius:8px; padding:8px 12px; margin-bottom:12px; font-size:0.83rem; color:var(--accent);">↪ Đang <b>ăn theo Mặc định chung</b>. Lưu để cấu hình riêng cho shop này.</div>`
         : "");
+  const nicheField = isDefault ? "" : `
+    <label class="field" style="margin-bottom:14px;">
+      <span>🎯 Ngách <span style="color:var(--text-mute);">(chọn NHIỀU — auto-sourcer xoay từng ngách tới 100 listing)</span></span>
+      <div id="spNicheChips" style="display:flex; flex-wrap:wrap; gap:6px; margin-bottom:6px;"></div>
+      <div style="display:flex; gap:8px;">
+        <select id="spNicheCat" onchange="if(this.value){spAddNiche(this.value); this.value='';}" style="flex:1;">
+          <option value="">＋ Thêm từ danh mục…</option>
+        </select>
+        <button type="button" class="btn btn-ghost" id="spInferBtn" style="white-space:nowrap;" onclick="spInferNiche('${escapeHtml(shop)}')">🔮 AI đoán</button>
+      </div>
+      <div style="display:flex; gap:8px; margin-top:6px;">
+        <input id="spNicheFree" placeholder="hoặc gõ ngách tự do rồi Enter (vd: váy nữ dự tiệc y2k)" onkeydown="if(event.key==='Enter'){event.preventDefault(); spAddNiche(this.value); this.value='';}" style="flex:1;" />
+        <button type="button" class="btn btn-primary" style="white-space:nowrap;" onclick="spSaveNiche('${escapeHtml(shop)}')">💾 Lưu</button>
+      </div>
+    </label>`;
   $("#modalBody").innerHTML = `
     ${brandField}
+    ${nicheField}
     ${note}
     <div style="font-weight:600; margin-bottom:8px;">Tính năng listing ${isDefault ? "mặc định" : "cho shop này"}: <span style="color:var(--text-mute); font-weight:400; font-size:0.82rem;">(click ảnh để xem to)</span></div>
     ${SHOP_FEATURES.map((f) => `
@@ -4404,6 +4581,21 @@ function openShopPrefs(shop) {
       </div>
     </div>`;
   $("#modalBg").classList.add("show");
+  if (!isDefault) {
+    aiCategories().then((data) => {
+      const sel = $("#spNicheCat");
+      if (!sel) return;
+      const addOpt = (parent, c) => { const o = document.createElement("option"); o.value = c; o.textContent = c; parent.appendChild(o); };
+      if (data.groups && data.groups.length) {
+        data.groups.forEach((g) => {
+          const og = document.createElement("optgroup"); og.label = g.label;
+          (g.items || []).forEach((c) => addOpt(og, c));
+          sel.appendChild(og);
+        });
+      } else (data.categories || []).forEach((c) => addOpt(sel, c));
+    });
+    spLoadNiche(shop);
+  }
 }
 
 // Xoá cấu hình riêng của shop → quay lại ăn theo Mặc định chung

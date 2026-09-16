@@ -403,9 +403,17 @@ async function inPageScrape(opts: ScrapeOptions): Promise<ScrapeResult> {
     }) ||
     document.querySelector('[class*="size-guide"]') ||
     document.querySelector('[class*="size-chart"]');
+  // GUARD: nếu "size guide" match nhằm 1 thẻ <a> có href thật (vd link bài help
+  // /How-to-choose-your-size-a-748.html) thì KHÔNG click — click sẽ ĐIỀU HƯỚNG rời trang sp,
+  // hỏng cả lần cào. Drawer size thật là div/span/button, không phải <a> điều hướng.
+  const isNavLink = (el: any): boolean => {
+    if (!el || el.tagName !== "A") return false;
+    const href = (el.getAttribute("href") || "").trim();
+    return !!href && !/^(#|javascript:)/i.test(href);
+  };
   // skipSizeChart (V2): size_chart/measure/fit là PRODUCT-LEVEL (giống nhau mọi màu) → chỉ mở
   // drawer ở màu ĐẦU. Bỏ qua ở màu 2..N tiết kiệm ~10s/màu (drawer poll tới 8s).
-  if (sizeBtn && !opts.skipSizeChart) {
+  if (sizeBtn && !opts.skipSizeChart && !isNavLink(sizeBtn)) {
     await forceClick(sizeBtn);
     // Drawer Size Guide load ASYNC → POLL chờ NỘI DUNG (bảng / measure-guide / unit-toggle), tối đa ~8s.
     //   KHÔNG click lại để "thử mở": click lần 2 TOGGLE ĐÓNG drawer → đọc rỗng. Nếu sau 8s vẫn trống

@@ -22,6 +22,9 @@ export interface ColorRef {
   goodsId: string;
   /** Tên màu đọc từ label lúc thu (có thể trùng → dedupe khi merge). */
   name: string;
+  /** FULL URL (slug) của màu — bắt từ location.href khi click swatch (link SHEIN thật, ít captcha
+   *  hơn hẳn URL tự dựng "-p-<id>.html" theo goodsId). Pass 2 goto link này. */
+  url?: string;
 }
 
 /** Số liệu chắc chắn lấy từ BFF realtime_data của MỘT màu. */
@@ -118,11 +121,13 @@ export async function collectColorIds(page: Page, opts: { maxColors?: number; de
       // CHỜ URL ĐỔI (luôn đáng tin) — KHÔNG chờ DOM/ảnh.
       for(var t=0;t<20;t++){ await wait(150); if(idOf()!==before) break; }
       var name=(document.querySelector('.color-block .sub-title, [class*="color-block"] .sub-title')||{}).innerText||"";
-      return {id:idOf(), name:String(name).trim(), changed: idOf()!==before};
+      return {id:idOf(), name:String(name).trim(), changed: idOf()!==before, href: location.href};
     })()`) as any;
     if (r?.id && !seen.has(r.id)) {
       seen.add(r.id);
-      refs.push({ goodsId: String(r.id), name: r.name || `Color ${i + 1}` });
+      // Lấy FULL URL slug (bỏ query) — link thật SHEIN, ít captcha hơn URL dựng "-p-<id>.html".
+      const fullUrl = typeof r.href === "string" && /-p-\d+\.html/.test(r.href) ? String(r.href).split(/[?#]/)[0] : undefined;
+      refs.push({ goodsId: String(r.id), name: r.name || `Color ${i + 1}`, url: fullUrl });
     }
     await page.waitForTimeout(delay + Math.floor(Math.random() * 400)); // pacing nhẹ
   }
@@ -172,7 +177,9 @@ export async function scrapeSheinProductV2(
 
   for (let i = 0; i < colors.length; i++) {
     const c = colors[i];
-    const url = `${host}/-p-${c.goodsId}.html`;
+    // Ưu tiên FULL URL slug bắt được khi click swatch (link SHEIN thật) → ít captcha hơn hẳn
+    // URL tự dựng theo goodsId. Fallback dựng "-p-<id>.html" nếu không bắt được.
+    const url = c.url || `${host}/-p-${c.goodsId}.html`;
     const rt = catchRealtime(page);
     log(`   [${i + 1}/${colors.length}] màu "${c.name}" → goto ${c.goodsId}`);
     await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60_000 }).catch((e) => log(`      goto warn: ${e?.message}`));

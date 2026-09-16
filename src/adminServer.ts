@@ -24,7 +24,6 @@ import { scanListings, scanShopsSummary, resolveListingPath, scanHub, resolveHub
 import { validatePath, detectDirConflicts, getUserDirsByName, getShopOwner } from "./state/userDirs";
 import { processFile } from "./queue/queueManager";
 import { eventBus } from "./state/eventBus";
-import { registerTikcrmRoutes } from "./services/tikcrm/routes"; // TikCRM: nhận mirror từ extension TikCheck + report/dashboard (mount lại 14/09/2026, từng archive 25/08)
 import { workerConfig, reloadAppConfig, isAutoSourceOn } from "./config/appConfig";
 import { configCookie, configCookieForAccount, userCookiePath } from "./utils/configCookie";
 import {
@@ -105,7 +104,6 @@ export const startAdminServer = async () => {
   app.use(requireAuth);
   // Ảnh preview tính năng listing (Settings → card shop) — sau requireAuth nên cần login
   app.use("/admin/previews", express.static(path.join(__dirname, "public", "previews")));
-  registerTikcrmRoutes(app);
 
   // ── Static HTML routes ─────────────────────────────────────
   app.get("/admin/login", (_req, res) => {
@@ -918,20 +916,8 @@ export const startAdminServer = async () => {
         fetchShopImages(sessionUser.username),
       ]);
 
-      // Health (shop_analysis, tiktok.db) — best-effort
+      // Health shop (TikCRM) đã gỡ khỏi homie → không còn dữ liệu health, để Map rỗng.
       const healthByShop = new Map<string, any>();
-      try {
-        const { TiktokDb } = await import("./services/tiktok/db");
-        const tdb = new TiktokDb();
-        try {
-          for (const a of tdb.listShopAnalysis()) {
-            healthByShop.set(String(a.shop).toLowerCase(), {
-              overall: a.overall ?? null,
-              alerts: (() => { try { return JSON.parse(a.alerts_json).length; } catch { return 0; } })(),
-            });
-          }
-        } finally { tdb.close(); }
-      } catch { /* chưa có phân tích */ }
 
       // Promotion (scan gần nhất — cron mỗi 2 giờ tự cào)
       const { getLastPromoScan } = await import("./core/promotionScan");

@@ -132,6 +132,7 @@
       .back-bar .crumb { flex: 1 1 auto; min-width: 0; }
       #listStatus { min-width: 110px !important; width: auto !important; }
       #listSearch { flex: 1 1 140px; width: auto !important; min-width: 0 !important; }
+      #shopSearch { flex: 1 1 140px; width: auto !important; min-width: 0 !important; }
     }
 
     .card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 14px; padding: 20px; }
@@ -606,7 +607,8 @@
           <h1>Listings</h1>
           <div class="subtitle" id="listingsSubtitle">Click shop để xem danh sách listing</div>
         </div>
-        <div style="display: flex; gap: 8px;">
+        <div style="display: flex; gap: 8px; align-items: center;">
+          <input id="shopSearch" placeholder="🔍 Tìm shop..." oninput="renderListingProgress()" style="width: 200px;" />
           <button class="btn btn-primary" id="createShopBtn" onclick="openCreateShop()">+ Tạo shop</button>
           <button class="btn btn-ghost" id="listingsRefreshBtn" onclick="refreshListings()">Refresh</button>
         </div>
@@ -2065,9 +2067,12 @@ function renderListingProgress() {
   const pendingShops = rows.filter((s) => (s.pending || 0) > 0).length;
   let view = state.lpHideDone ? sorted.filter((s) => s.cnt < LP_TARGET) : sorted;
   if (state.lpOnlyPending) view = view.filter((s) => (s.pending || 0) > 0);
+  // Ô "Tìm shop" ở page-head — lọc theo tên shop + owner (49 shop, cuộn tìm bằng mắt rất mệt).
+  const q = (($("#shopSearch") || {}).value || "").toLowerCase().trim();
+  if (q) view = view.filter((s) => `${s.folder} ${s.owner || ""}`.toLowerCase().includes(q));
 
   const sub = $("#listingsSubtitle");
-  if (sub) sub.innerHTML = `${rows.length} shop &nbsp;·&nbsp; <b>${totalCnt}</b>/${totalTarget} listing (${overallPct}%) &nbsp;·&nbsp; <span style="color:var(--success);">✅ ${done} đạt target</span> &nbsp;·&nbsp; <span style="color:var(--warn);">⏳ ${pendingSum} chờ</span>`;
+  if (sub) sub.innerHTML = `${q ? `<b>${view.length}</b>/${rows.length}` : rows.length} shop${q ? ` khớp "${escapeHtml(q)}"` : ""} &nbsp;·&nbsp; <b>${totalCnt}</b>/${totalTarget} listing (${overallPct}%) &nbsp;·&nbsp; <span style="color:var(--success);">✅ ${done} đạt target</span> &nbsp;·&nbsp; <span style="color:var(--warn);">⏳ ${pendingSum} chờ</span>`;
 
   // KPI tổng (không còn list bar riêng — progress nằm trong từng card bên dưới)
   if (el) el.innerHTML = `
@@ -2111,6 +2116,9 @@ function renderListingProgress() {
   }).join("") + "</div>";
 }
 
+// LƯU Ý: hàm này hiện KHÔNG được gọi ở đâu — lưới shop thật do renderListingProgress()
+// dựng (cùng ghi vào #shopsGrid, lấy từ _lpShops). Ô "Tìm shop" gắn vào hàm kia, đừng
+// thêm lọc ở đây kẻo hai chỗ cùng vẽ một lưới.
 function renderShops() {
   const shops = state.listings.shops;
   const totals = shops.reduce(

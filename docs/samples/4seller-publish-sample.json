@@ -1,0 +1,213 @@
+{
+  "id": "",
+  "requireMessage": "",
+  "isGlobal": 0,
+  "shopId": 233041,
+  "currentShopId": 233041,
+  "region": "LOCAL TO LOCAL",
+  "shopCurrency": "",
+  "isMultiWarehouse": 0,
+  "mainShop": 0,
+  "productName": "VYNCE Lace-Up Collar Casual Dress Long Sleeve Solid Color Versatile Outfit",
+  "categoryId": "601281",
+  "categoryName": "Casual Dresses",
+  "categoryPath": "Womenswear & Underwear/Women's Dresses/Casual Dresses",
+  "categoryIdPath": "601152/842504/601281",
+  "hasVariation": 1,
+  "identifierCodeType": 3,
+  "identifierCode": "",
+  "erpSku": "",
+  "erpSkuId": "",
+  "sellerSku": "",
+  "description": "<h3><strong>✨ Why You'll Love It</strong></h3><p><strong>Lace-Up Tie Neck Flare Sleeve Casual Dress</strong></p><figure class=\"image\"><img src=\"https://pub-0155ec46e898447c8cdc0fa86df43c72.r2.dev/img/362f4ddadc90eaa6759f1d82fc024762.png\" alt=\"Tie Neck Flare Dress\"></figure><p>• <strong>Feature:</strong> Flared ruffle hem and flare sleeves add playful movement — cute smock silhouette for effortless style.</p><p>• <strong>Style:</strong> Tie neck lace-up detail stands out — loose fit flatters all day without clinching.</p><h3><strong>🧵 Material &amp; Care</strong></h3><p>• <strong>Material:</strong> Breathable viscose blend keeps you comfortable all day — 80% viscose, 20% polyester woven fabric.</p><figure class=\"image\"><img src=\"https://pub-0155ec46e898447c8cdc0fa86df43c72.r2.dev/img/445ada37bc7678786f9c12dcbd6a0d5d.png\" alt=\"Tie Neck Flare Dress\"></figure><h3><strong>👗 Style It Your Way</strong></h3><p>• <strong>Occasion &amp; Match:</strong> Perfect for birthday parties and holiday celebrations — versatile casual dress for multiple seasons.</p><h3><strong>📏 Size Guide — Find Your Fit</strong></h3><figure class=\"image\"><img src=\"https://pub-0155ec46e898447c8cdc0fa86df43c72.r2.dev/img/44c8082ba47e37d2b1748c98f223dadb.png\" alt=\"Size Guide\"></figure><figure class=\"image\"><img src=\"https://i.ibb.co/BKQqTVhx/853d3a29260c.png\" alt=\"Shop with confidence\"></figure><h3><strong>📸 Details Up Close</strong></h3><figure class=\"image\"><img src=\"https://img.ltwebstatic.com/images3_pi/2024/09/20/2e/1726809473ee1fff132a7065999e7619f07edb55c4.webp\" alt=\"Product image 1\"></figure><figure class=\"image\"><img src=\"https://img.ltwebstatic.com/images3_pi/2024/09/20/a4/1726809486b773d0ce97d1ee6de8e336189ffee8a2.webp\" alt=\"Product image 2\"></figure><figure class=\"image\"><img src=\"https://img.ltwebstatic.com/images3_pi/2024/09/20/76/17268094898f4b6e5293deec2d786e966707a00e43.webp\" alt=\"Product image 3\"></figure><figure class=\"image\"><img src=\"https://img.ltwebstatic.com/images3_pi/2024/09/20/d7/1726809478b2938989efadc04e25ae9e2f196bdc64.webp\" alt=\"Product image 4\"></figure><figure class=\"image\"><img src=\"https://img.ltwebstatic.com/images3_pi/2024/09/20/3b/1726809476a2a793407b49ae4fc58f865a5e6414b1.webp\" alt=\"Product image 5\"></figure><figure class=\"image\"><img src=\"https://img.ltwebstatic.com/images3_pi/2024/09/20/86/1726809483ffcb268ffb6d125bffc928051a98302d.webp\" alt=\"Product image 6\"></figure><figure class=\"image\"><img src=\"https://img.ltwebstatic.com/images3_pi/2024/09/20/6b/17268094712339625c5ccf29502d20e73bf9486246.webp\" alt=\"Product image 7\"></figure><figure class=\"image\"><img src=\"https://img.ltwebstatic.com/images3_pi/2025/02/27/58/1740644391d344b491fe01e902b0b5bf2de3a77c55.webp\" alt=\"Product image 8\"></figure>",
+  "packageWeight": "0.3",
+  "packageLength": "9",
+  "packageWidth": "1",
+  "packageHeight": "6",
+  "dimensionUnit": "CENTIMETER",
+  "weightUnit": "KILOGRAM",
+  "spu": "",
+  "spuId": "",
+  "hasSkuPackage": 0,
+  "searchTerms": [
+    "tie neck dress",
+    "flare sleeve dress",
+    "smock dress casual",
+    "lace-up collar dress",
+    "holiday party dress",
+    "long sleeve casual dress",
+    "ruffle hem dress",
+    "loose fit dress",
+    "versatile dress women",
+    "viscose blend dress"
+  ],
+  "productHighlights": [
+    "Flowy flare sleeves and ruffle hem",
+    "Soft viscose-blend woven fabric",
+    "Loose comfortable smock fit",
+    "Decorative tie neck detail",
+    "Ideal for parties and holidays"
+  ],
+  "productAttributes": "[{\"attributeId\":\"100198\",\"attributeName\":\"Pattern\",\"values\":[{\"valueId\":\"1001182\",\"valueName\":\"Plain\"}]},{\"attributeId\":\"100392\",\"attributeName\":\"Occasion\",\"values\":[{\"valueId\":\"1001533\",\"valueName\":\"Birthday\"}]},{\"attributeId\":\"100393\",\"attributeName\":\"Neckline\",\"values\":[{\"valueId\":\"1003660\",\"valueName\":\"Tie neck\"}]},{\"attributeId\":\"100395\",\"attributeName\":\"Sleeve length\",\"values\":[{\"valueId\":\"1001144\",\"valueName\":\"Long sleeve\"}]},{\"attributeId\":\"100396\",\"attributeName\":\"Sleeve type\",\"values\":[{\"valueId\":\"1001157\",\"valueName\":\"Flare sleeve\"}]},{\"attributeId\":\"100398\",\"attributeName\":\"Style\",\"values\":[{\"valueId\":\"1001171\",\"valueName\":\"Cute\"}]},{\"attributeId\":\"100401\",\"attributeName\":\"Washing instructions\",\"values\":[{\"valueId\":\"1001196\",\"valueName\":\"Dry clean\"}]},{\"attributeId\":\"100650\",\"attributeName\":\"Fit type\",\"values\":[{\"valueId\":\"1002682\",\"valueName\":\"Loose\"}]},{\"attributeId\":\"100701\",\"attributeName\":\"Material\",\"values\":[{\"valueId\":\"1005846\",\"valueName\":\"Woven\"}]},{\"attributeId\":\"100757\",\"attributeName\":\"Design\",\"values\":[{\"valueId\":\"1003681\",\"valueName\":\"Ruffle\"}]},{\"attributeId\":\"101303\",\"attributeName\":\"Care instructions\",\"values\":[{\"valueId\":\"1021557\",\"valueName\":\"Machine wash or professional dry clean\"}]},{\"attributeId\":\"101395\",\"attributeName\":\"CA prop 65: repro. chems\",\"values\":[{\"valueId\":\"1000059\",\"valueName\":\"No\",\"isShow\":true}]},{\"attributeId\":\"101400\",\"attributeName\":\"CA prop 65: carcinogens\",\"values\":[{\"valueId\":\"1000059\",\"valueName\":\"No\",\"isShow\":true}]},{\"attributeId\":\"101619\",\"attributeName\":\"Dangerous goods or hazardous materials\",\"values\":[{\"valueId\":\"1000059\",\"valueName\":\"No\",\"isShow\":true}]}]",
+  "brandId": "0",
+  "brandInfo": "{\"name\":\"No Brand\",\"id\":\"0\"}",
+  "option1": "{\"100000\":\"Color\"}",
+  "option1Value": "[{\"1001063\":\"Black\"}]",
+  "option2": "{\"100007\":\"Size\"}",
+  "option2Value": "[{\"1003578\":\"XS\"},{\"1003579\":\"S\"},{\"1003580\":\"M\"},{\"1003581\":\"L\"}]",
+  "variation": [
+    {
+      "keyId": 5,
+      "type": "auto",
+      "erpSku": "",
+      "sellerSku": "181740709",
+      "attrs": [
+        "Black",
+        "XS"
+      ],
+      "identifierCodeType": 3,
+      "identifierCode": "",
+      "availableStock": "20",
+      "originalPrice": "101.99",
+      "currency": "USD",
+      "newAdd": true,
+      "globalPrice": "",
+      "globalStock": 0,
+      "unitType": "meter",
+      "unitTypeNum": 1,
+      "skuUnitCount": "",
+      "globalStockInfoList": [],
+      "packageWeight": "",
+      "weightUnit": "KILOGRAM",
+      "packageLength": "",
+      "packageWidth": "",
+      "packageHeight": "",
+      "dimensionUnit": "CENTIMETER",
+      "stockInfoList": [
+        {
+          "warehouse_id": "7491288371164776234",
+          "available_stock": "20"
+        }
+      ],
+      "priceAndInventoryList": [],
+      "option1": "Black",
+      "option2": "XS"
+    },
+    {
+      "keyId": 6,
+      "type": "auto",
+      "erpSku": "",
+      "sellerSku": "181740709",
+      "attrs": [
+        "Black",
+        "S"
+      ],
+      "identifierCodeType": 3,
+      "identifierCode": "",
+      "availableStock": "20",
+      "originalPrice": "101.99",
+      "currency": "USD",
+      "newAdd": true,
+      "globalPrice": "",
+      "globalStock": 0,
+      "unitType": "meter",
+      "unitTypeNum": 1,
+      "skuUnitCount": "",
+      "globalStockInfoList": [],
+      "packageWeight": "",
+      "weightUnit": "KILOGRAM",
+      "packageLength": "",
+      "packageWidth": "",
+      "packageHeight": "",
+      "dimensionUnit": "CENTIMETER",
+      "stockInfoList": [
+        {
+          "warehouse_id": "7491288371164776234",
+          "available_stock": "20"
+        }
+      ],
+      "priceAndInventoryList": [],
+      "option1": "Black",
+      "option2": "S"
+    },
+    {
+      "keyId": 7,
+      "type": "auto",
+      "erpSku": "",
+      "sellerSku": "181740709",
+      "attrs": [
+        "Black",
+        "M"
+      ],
+      "identifierCodeType": 3,
+      "identifierCode": "",
+      "availableStock": "20",
+      "originalPrice": "101.99",
+      "currency": "USD",
+      "newAdd": true,
+      "globalPrice": "",
+      "globalStock": 0,
+      "unitType": "meter",
+      "unitTypeNum": 1,
+      "skuUnitCount": "",
+      "globalStockInfoList": [],
+      "packageWeight": "",
+      "weightUnit": "KILOGRAM",
+      "packageLength": "",
+      "packageWidth": "",
+      "packageHeight": "",
+      "dimensionUnit": "CENTIMETER",
+      "stockInfoList": [
+        {
+          "warehouse_id": "7491288371164776234",
+          "available_stock": "20"
+        }
+      ],
+      "priceAndInventoryList": [],
+      "option1": "Black",
+      "option2": "M"
+    },
+    {
+      "keyId": 8,
+      "type": "auto",
+      "erpSku": "",
+      "sellerSku": "181740709",
+      "attrs": [
+        "Black",
+        "L"
+      ],
+      "identifierCodeType": 3,
+      "identifierCode": "",
+      "availableStock": "20",
+      "originalPrice": "101.99",
+      "currency": "USD",
+      "newAdd": true,
+      "globalPrice": "",
+      "globalStock": 0,
+      "unitType": "meter",
+      "unitTypeNum": 1,
+      "skuUnitCount": "",
+      "globalStockInfoList": [],
+      "packageWeight": "",
+      "weightUnit": "KILOGRAM",
+      "packageLength": "",
+      "packageWidth": "",
+      "packageHeight": "",
+      "dimensionUnit": "CENTIMETER",
+      "stockInfoList": [
+        {
+          "warehouse_id": "7491288371164776234",
+          "available_stock": "20"
+        }
+      ],
+      "priceAndInventoryList": [],
+      "option1": "Black",
+      "option2": "L"
+    }
+  ],
+  "mainImage": "https://4seller-res1.meiyunji.net/europe-erp/23578/tiktok/20260916/0/112153670916/04aa2731b9304f26b2559c1584968107.jpg|https://4seller-res1.meiyunji.net/europe-erp/23578/tiktok/20260916/0/112153680916/df2427b918a0402f889d48d5539769a0.jpg|https://4seller-res1.meiyunji.net/europe-erp/23578/tiktok/20260916/0/112153690916/7110612bb65a4e9dbe281f7c5561a8f7.jpg|https://4seller-res1.meiyunji.net/europe-erp/23578/tiktok/20260916/0/112153730916/0d995824f5e744caa2c4b3295ab2e9cf.jpg|https://4seller-res1.meiyunji.net/europe-erp/23578/tiktok/20260916/0/112153700916/54327809aa0b438da95f818f2c91719e.jpg|https://4seller-res1.meiyunji.net/europe-erp/23578/tiktok/20260916/0/112153720916/8c55827e2da4456882565786bb6c3799.jpg|https://4seller-res1.meiyunji.net/europe-erp/23578/tiktok/20260916/0/112153710916/d64f0c7a2a8d4d07901cda79224dde0b.jpg|https://4seller-res1.meiyunji.net/europe-erp/23578/tiktok/20260916/0/112153740916/53fefc8e721d46e58592536fb82af9df.jpg",
+  "skuImgs": "[{\"attrName\":\"Color\",\"img_url\":\"https://4seller-res1.meiyunji.net/europe-erp/23578/tiktok/20260916/0/112153800916/adcbc8021eed49f8a4e03097cf0ca72a.jpg|https://4seller-res1.meiyunji.net/europe-erp/23578/tiktok/20260916/0/112153780916/71813c1d51604b1fa962838fd4855ad2.jpg|https://4seller-res1.meiyunji.net/europe-erp/23578/tiktok/20260916/0/112153790916/0161cf0f1cfa48a5986aa47aec4dcae9.jpg|https://4seller-res1.meiyunji.net/europe-erp/23578/tiktok/20260916/0/112153820916/77862281a8cc429d8b2f4fdeb2120bb4.jpg|https://4seller-res1.meiyunji.net/europe-erp/23578/tiktok/20260916/0/112153760916/31b6b3703ac24dce98d63e748fff1aa7.jpg|https://4seller-res1.meiyunji.net/europe-erp/23578/tiktok/20260916/0/112153810916/518b594ca4074f9790b030b3670918e2.jpg|https://4seller-res1.meiyunji.net/europe-erp/23578/tiktok/20260916/0/112153770916/3d5bf004ac2e4ad3a3101d15c78be311.jpg|https://4seller-res1.meiyunji.net/europe-erp/23578/tiktok/20260916/0/112153830916/f8b405d80939479d829778ea1bc1c31c.jpg|https://4seller-res1.meiyunji.net/europe-erp/23578/tiktok/20260916/0/112153840916/d69176b5b052436eb90c05b6e9de7de5.jpg\",\"custom_value\":\"Black\"}]",
+  "sizeChart": "https://4seller-res1.meiyunji.net/europe-erp/23578/tiktok/20260916/0/112153940916/a0111d411a294647bf4272a6d8c35a1c.png",
+  "productCertifications": "[]",
+  "sourceUrl": "https://us.shein.com/Women-s-Solid-Color-Lace-Up-Collar-Casual-Versatile-Long-Sleeve-Dress-p-181740709.html?src_identifier=st%3D2%60sc%3D432712149%60sr%3D0%60ps%3D1&src_module=search&src_tab_page_id=page_goods_detail1788252713745&mallCode=1&pageListType=4&detailBusinessFrom=0-2&imgRatio=3-4&detailBusinessFrom=0-2&pageListType=4"
+}

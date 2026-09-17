@@ -75,7 +75,7 @@ OUTPUT JSON SHAPE:
 
   const prompt = `
 Product: "${productName}"
-Unit: ${sizeChart?.unit || "inch"}
+Unit: inch
 Fit feedback: trueToSize=${fit?.trueToSizePct ?? "?"}%, small=${fit?.smallPct ?? "?"}%, large=${fit?.largePct ?? "?"}%
 Size chart sections:
 ${sections

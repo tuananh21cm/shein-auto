@@ -348,7 +348,9 @@ export const generateSizeGuideImageHtml = (
   sections: SizeChartSection[],
   measureGuide?: MeasureGuide | null,
   unit: string = "inch",
-  sizeSuggestion?: SizeSuggestion | null
+  sizeSuggestion?: SizeSuggestion | null,
+  /** Data URI ảnh sản phẩm làm dải hero (xem sizeChartHero.ts). Null → header đặc như cũ. */
+  hero?: string | null
 ) => {
   const t = THEMES[Math.floor(Math.random() * THEMES.length)];
   const shown = sections.slice(0, 2);
@@ -451,9 +453,20 @@ export const generateSizeGuideImageHtml = (
 body { width: 1200px; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; }
 .card { width: 1200px; background: #fff; border: 6px solid ${border}; }
 .head { text-align: center; padding: 26px 40px 18px; border-bottom: 2px solid ${light}; }
-.head .kicker { color: ${t.unitColor}; font-size: 14px; letter-spacing: 7px; text-transform: uppercase; font-weight: 600; margin-bottom: 8px; }
-.head h1 { color: ${t.thColor}; font-size: 46px; font-weight: 800; letter-spacing: 7px; text-transform: uppercase; line-height: 1; }
-.head .unit { display: inline-block; margin-top: 11px; color: #fff; background: ${t.cornerColor}; font-size: 14px; letter-spacing: 2px; font-weight: 700; padding: 5px 18px; border-radius: 20px; text-transform: uppercase; }
+/* ----- Hero: ảnh sản phẩm + lớp phủ tối dần, chữ nằm ở vùng tối phía dưới ----- */
+.head-hero { position: relative; height: 215px; padding: 0; overflow: hidden; background: #111; border-bottom: none; }
+.head-hero .hero-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: center 30%; }
+.head-hero .hero-scrim { position: absolute; inset: 0; background: linear-gradient(180deg, rgba(6,10,6,.06) 0%, rgba(6,10,6,.40) 42%, rgba(6,10,6,.90) 100%); }
+.head-hero .head-txt { position: absolute; left: 0; right: 0; bottom: 0; padding: 0 40px 16px; text-shadow: 0 2px 12px rgba(0,0,0,.85); }
+/* Dùng .head.head-hero (2 class) để THẮNG các quy tắc .head .kicker/h1/.unit khai báo bên
+   dưới: cùng độ đặc hiệu thì quy tắc sau thắng, chữ sẽ giữ màu tối của theme và chìm nghỉm
+   trên nền ảnh (đã dính đúng lỗi này: chữ xanh lá trên hero nền đỏ). */
+.head.head-hero .kicker { color: #d8ecd4; }
+.head.head-hero h1 { color: #fff; }
+.head.head-hero .unit { background: rgba(255,255,255,.16); color: #fff; }
+.head .kicker { color: ${t.unitColor}; font-size: 14px; letter-spacing: 3px; text-transform: uppercase; font-weight: 700; margin-bottom: 8px; }
+.head h1 { color: ${t.thColor}; font-size: 46px; font-weight: 800; letter-spacing: 1px; text-transform: uppercase; line-height: 1; }
+.head .unit { display: inline-block; margin-top: 11px; color: #fff; background: ${t.cornerColor}; font-size: 15px; letter-spacing: 1px; font-weight: 700; padding: 6px 20px; border-radius: 20px; text-transform: uppercase; }
 /* ----- Hàng 2 cột: chart | measure ----- */
 .main { display: flex; align-items: stretch; }
 .col { padding: 26px 32px; }
@@ -464,14 +477,14 @@ body { width: 1200px; font-family: 'Helvetica Neue', Helvetica, Arial, sans-seri
 .sec-title { color: ${t.thColor}; font-size: 18px; font-weight: 800; letter-spacing: 2px; text-transform: uppercase; padding: 0 0 7px 10px; border-left: 4px solid ${t.cornerColor}; margin-bottom: 6px; }
 table { width: 100%; border-collapse: collapse; table-layout: fixed; }
 thead tr { background: ${t.rowEvenBg}; border-bottom: 2px solid ${t.thBorder}; }
-th { color: ${t.thColor}; font-size: 13px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; padding: 10px 5px; text-align: center; }
+th { color: ${t.thColor}; font-size: 15px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; padding: 13px 5px; text-align: center; }
 th:first-child { color: #fff; background: ${t.cornerColor}; }
 tbody tr { border-bottom: 1px solid ${t.rowEvenBg.replace("0.06", "0.3")}; }
 tbody tr:nth-child(even) { background: ${t.rowEvenBg}; }
 tbody tr:last-child { border-bottom: none; }
-td { color: ${t.tdColor}; font-size: 16px; font-weight: 600; padding: 11px 5px; text-align: center; font-variant-numeric: tabular-nums; white-space: ${hasLongCells ? "normal" : "nowrap"}; word-break: break-word; }
+td { color: ${t.tdColor}; font-size: 22px; font-weight: 700; padding: 14px 5px; text-align: center; font-variant-numeric: tabular-nums; white-space: ${hasLongCells ? "normal" : "nowrap"}; word-break: break-word; }
 td:first-child { color: ${t.tdFirst}; font-weight: 800; background: ${t.rowEvenBg.replace("0.06", "0.16")}; }
-td:nth-child(2) { color: ${t.tdSecond}; font-weight: 800; font-size: 18px; }
+td:nth-child(2) { color: ${t.tdSecond}; font-weight: 800; font-size: 24px; }
 /* ----- Layout CHIP (bra size...) ----- */
 .chip-head { color: ${t.thColor}; font-size: 14px; font-weight: 800; text-transform: uppercase; letter-spacing: 1.5px; text-align: center; padding-bottom: 8px; border-bottom: 2px solid ${t.thBorder}; margin-bottom: 4px; }
 .chip-row { display: flex; align-items: center; gap: 12px; padding: 10px 6px; border-bottom: 1px solid ${t.rowEvenBg.replace("0.06", "0.3")}; }
@@ -499,20 +512,25 @@ td:nth-child(2) { color: ${t.tdSecond}; font-weight: 800; font-size: 18px; }
 .sg-table tbody tr:nth-child(even) { background: ${t.rowEvenBg}; }
 .sg-table td { font-size: 24px; font-weight: 700; color: ${t.tdColor}; text-align: center; padding: 15px 12px; border-bottom: 1px solid ${t.rowEvenBg.replace("0.06", "0.3")}; font-variant-numeric: tabular-nums; }
 .sg-table .sg-sz { color: ${t.thColor}; font-weight: 800; font-size: 28px; }
-.sg-advice { text-align: center; font-style: italic; color: ${t.footerText}; font-size: 18px; margin-top: 16px; }
+.sg-advice { text-align: center; color: ${t.footerText}; font-size: 18px; font-weight: 500; margin-top: 16px; }
 .foot { text-align: center; padding: 14px 40px; background: ${t.rowEvenBg}; }
-.foot p { color: ${t.footerText}; font-size: 13px; font-style: italic; }
+.foot p { color: ${t.footerText}; font-size: 14px; font-weight: 500; }
+/* Không có "How To Measure" → bảng chiếm trọn chiều ngang, khỏi để nửa phải trống. */
+.col-full { border-right: none !important; flex: 1 !important; }
 </style></head>
 <body>
   <div class="card">
-    <div class="head">
-      <div class="kicker">Measurements</div>
-      <h1>Size Guide</h1>
-      <div class="unit">Unit: ${unit}</div>
+    <div class="head${hero ? " head-hero" : ""}">
+      ${hero ? `<img class="hero-img" src="${hero}" alt=""><div class="hero-scrim"></div>` : ""}
+      <div class="head-txt">
+        <div class="kicker">Measurements</div>
+        <h1>Size Guide</h1>
+        <div class="unit">Unit: ${unit}</div>
+      </div>
     </div>
     <div class="main">
-      <div class="col col-chart"><div class="col-head">Size Chart</div>${shown.map(renderSection).join("")}</div>
-      <div class="col col-measure"><div class="col-head">How To Measure</div>${mgInner}</div>
+      <div class="col col-chart${mgInner ? "" : " col-full"}"><div class="col-head">Size Chart</div>${shown.map(renderSection).join("")}</div>
+      ${mgInner ? `<div class="col col-measure"><div class="col-head">How To Measure</div>${mgInner}</div>` : ""}
     </div>
     ${sg}
     <div class="foot"><p>* Please refer to the measurements above for the best fit.</p></div>
@@ -549,13 +567,14 @@ export const buildSizeGuideImageFile = async (
   sections: SizeChartSection[],
   measureGuide: MeasureGuide | null | undefined,
   unit: string,
-  sizeSuggestion?: SizeSuggestion | null
+  sizeSuggestion?: SizeSuggestion | null,
+  hero?: string | null
 ): Promise<string> => {
   const id = crypto.randomBytes(8).toString("hex");
   const outPath = path.join(__dirname, `temp_size_guide_${id}.png`);
   await renderHtmlToImage({
     output: outPath,
-    html: generateSizeGuideImageHtml(sections, measureGuide, unit, sizeSuggestion),
+    html: generateSizeGuideImageHtml(sections, measureGuide, unit, sizeSuggestion, hero),
     viewport: { width: 1200, height: 1000 },
   });
   return outPath;
@@ -598,7 +617,8 @@ export const handleSizeChartUpload = async (page: any, jsonData: any): Promise<v
       console.log(`🎨 Tạo ảnh từ JSON (ID: ${uniqueId}, sections: ${sections.length})`);
       await renderHtmlToImage({
         output: tempPath,
-        html: generateSizeChartHtml(sections, sc.unit || "inch"),
+        // LUÔN inch — `sc.unit` trong data không đáng tin (xem ghi chú ở handleSizeChart.ts).
+        html: generateSizeChartHtml(sections, "inch"),
         viewport: { width: 900, height: 900 },
       });
     } else if (jsonData.size_chart_img) {

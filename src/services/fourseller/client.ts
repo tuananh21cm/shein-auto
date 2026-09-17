@@ -89,7 +89,7 @@ const COMMON_HEADERS = {
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36",
 };
 
-async function fourSellerPost<T = any>(
+export async function fourSellerPost<T = any>(
   username: string,
   pathSeg: string,
   body: any,
@@ -123,7 +123,7 @@ async function fourSellerPost<T = any>(
   }
 }
 
-async function fourSellerGet<T = any>(
+export async function fourSellerGet<T = any>(
   username: string,
   pathSeg: string
 ): Promise<T> {

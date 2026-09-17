@@ -17,20 +17,8 @@ import { uploadProductImages, uploadVariantImages } from "./steps/uploadImages";
 import { handleBrand } from "./steps/handleBrand";
 import { fillSpecifics } from "./steps/fillSpecifics";
 import { buildColorShowcaseImageFile } from "./steps/colorShowcase";
-import {
-  fillDescription,
-  generateDescriptionHtml,
-  generateMeasureGuideHtml,
-  selectDescriptionImages,
-} from "./steps/fillDescription";
-import { analyzeFitForSize, renderFitGuideHtml } from "../services/gemini/analyzeFitForSize";
-import { generateRichDescription, composeRichHtml } from "../services/gemini/generateRichDescription";
-import { buildBannerFile, buildTrustBannerFile, diverseImagesFromVariants } from "./steps/marketingBanner";
-import { extractSizeChartSections, buildSizeGuideImageFile } from "./steps/sizeGuideImage";
-import { processMeasureGuideImage } from "./steps/measureGuideImage";
-import { uploadToImgbb, verifyImageUrl } from "../utils/uploadToImgbb";
-import { uploadToImgbbCached } from "../utils/imgbbCache";
-import { config as globalConfig } from "../config";
+import { fillDescription, generateDescriptionHtml } from "./steps/fillDescription";
+import { buildDescriptionHtml } from "./buildDescriptionHtml";
 import { fillShippingAndCertification } from "./steps/fillShipping";
 import { fillSourceUrl } from "./steps/fillSourceUrl";
 import { fillSearchTermsAndHighlights } from "./steps/fillSearchHighlights";
@@ -84,6 +72,34 @@ export const listing4sellerShein = async (
     console.warn(`⚠️ [Dialog] type="${dialog.type()}" msg="${dialog.message()}" → tự động accept`);
     await dialog.accept();
   });
+
+  // 🕵️ CAPTURE API 4Seller (discovery: tìm endpoint upload ảnh + save listing để migrate sang API).
+  // Bật bằng flag file data/capture-4seller-api.flag; ghi mọi POST/PUT /api/* + response → JSONL.
+  const captureFlag = path.join(process.cwd(), "data", "capture-4seller-api.flag");
+  if (fs.existsSync(captureFlag)) {
+    const captureOut = path.join(process.cwd(), "data", "4seller-api-capture.jsonl");
+    page.on("response", async (res) => {
+      try {
+        const r = res.request();
+        const m = r.method();
+        // Bắt: mọi /api/* của 4seller (kể cả GET → lộ attribute-schema/warehouse) + PUT lên COS (upload ảnh).
+        const is4s = /4seller\.com\/api\//.test(r.url());
+        const isCos = /meiyunji\.net|myqcloud\.com/.test(r.url()) && (m === "PUT" || m === "POST");
+        if (!is4s && !isCos) return;
+        const buf = r.postDataBuffer();
+        const reqBody = r.postData() ?? (buf ? `<multipart ${buf.length} bytes>` : null);
+        let respBody: string | null = null;
+        try { respBody = (await res.text()).slice(0, 20000); } catch { /* binary/aborted */ }
+        fs.appendFileSync(captureOut, JSON.stringify({
+          t: new Date().toISOString(), method: m, url: r.url(),
+          reqContentType: r.headers()["content-type"] || "",
+          reqBody: reqBody ? String(reqBody).slice(0, 20000) : null,
+          status: res.status(), respBody,
+        }) + "\n");
+      } catch { /* ignore */ }
+    });
+    console.log(`🕵️ [capture] ghi API 4Seller → ${captureOut}`);
+  }
 
   try {
     console.log(`📄 Đọc file: ${jsonFile}`);
@@ -200,115 +216,8 @@ export const listing4sellerShein = async (
       await assertNoErrors(page, "fillSpecifics");
     }
 
-    // Mô tả (port từ main): [Rich marketing bullets + banner AI] → [ảnh Size Guide gộp] → fallback text.
-    // richDesc tắt theo shop → mô tả attributes đơn giản (không gọi Gemini).
-    const [rich, fitGuide] = await Promise.all([
-      prefOn("richDesc") ? generateRichDescription(data.product_name, data.attributes) : Promise.resolve(null),
-      prefOn("sizeGuide") ? analyzeFitForSize(data.product_name, data.fit_reviews, data.size_chart) : Promise.resolve(null),
-    ]);
-    let richHtml = "";
-    if (rich) {
-      const bannerUrls: (string | null)[] = [];
-      // Ảnh banner lấy ĐA MÀU (round-robin variant_images) → khoe nhiều màu. Fallback product_images.
-      const diverse = diverseImagesFromVariants(data.variant_images);
-      const bannerImgs = diverse.length >= 2 ? diverse : data.product_images;
-      // Build banner + host imgbb (chỉ khi có IMGBB_API_KEY) → URL public chèn vào mô tả.
-      if (globalConfig.imgbbApiKey) {
-        for (const style of ["collage", "feature"] as const) {
-          // Banner theo shop: collage (ảnh slide nhiều màu) / feature (hero + checkmark) bật tắt riêng.
-          // Tắt → push null giữ đúng SLOT ([0]=collage, [1]=feature — composeRichHtml đọc theo vị trí).
-          if (style === "collage" ? !prefOn("bannerCollage") : !prefOn("bannerFeature")) {
-            bannerUrls.push(null);
-            continue;
-          }
-          let bp: string | null = null;
-          try {
-            bp = await buildBannerFile(bannerImgs, style, rich.bannerTitle, rich.bannerTagline, rich.highlights);
-            // Verify URL sống trước khi chèn — URL chết render thành khoảng trống trong mô tả.
-            const bUrl = bp ? await uploadToImgbb(bp) : null;
-            if (bUrl && !(await verifyImageUrl(bUrl))) {
-              console.warn(`⚠️ banner ${style}: URL imgbb không serve được → bỏ slot (${bUrl})`);
-              bannerUrls.push(null);
-            } else {
-              bannerUrls.push(bUrl);
-            }
-          } catch (e: any) {
-            console.warn("⚠️ banner lỗi:", e?.message);
-            bannerUrls.push(null);
-          } finally {
-            if (bp) { try { fs.unlinkSync(bp); } catch { /* ignore */ } }
-          }
-        }
-      }
-      richHtml = composeRichHtml(rich, bannerUrls, { heroFirst: workerConfig().descriptionHeroFirst === true });
-    } else {
-      // Gemini lỗi → fallback mô tả attributes cũ, không để mô tả rỗng.
-      richHtml = generateDescriptionHtml(data.product_name, data.attributes, data.sizes_available, data.listing_variations?.colors || []);
-    }
-
-    // Ảnh GỘP Size Guide (size chart + How To Measure + Size Suggestion) → imgbb → chèn mô tả.
-    let sizeGuideHtml = "";
-    const guideSections = prefOn("sizeGuide") ? extractSizeChartSections(data.size_chart) : [];
-    if (globalConfig.imgbbApiKey && guideSections.length > 0) {
-      let gf: string | null = null;
-      try {
-        const mgImg = await processMeasureGuideImage(data.measure_guide?.image); // che watermark
-        const mg = data.measure_guide ? { items: data.measure_guide.items, image: mgImg } : undefined;
-        gf = await buildSizeGuideImageFile(guideSections, mg, data.size_chart?.unit || "inch", fitGuide || undefined);
-        const url = gf ? await uploadToImgbb(gf) : null;
-        if (url && (await verifyImageUrl(url))) {
-          sizeGuideHtml =
-            `<h3><strong>📏 Size Guide — Find Your Fit</strong></h3>` +
-            `<figure class="image"><img src="${url}" alt="Size Guide"></figure>`;
-        } else if (url) {
-          console.warn(`⚠️ Size Guide: URL imgbb không serve được → fallback text (${url})`);
-        }
-      } catch (e: any) {
-        console.warn("⚠️ ảnh Size Guide lỗi:", e?.message);
-      } finally {
-        if (gf) { try { fs.unlinkSync(gf); } catch { /* ignore */ } }
-      }
-    }
-    // Fallback text nếu không tạo được ảnh (không có imgbb key / size_chart). Shop tắt sizeGuide → bỏ hẳn.
-    if (!sizeGuideHtml && prefOn("sizeGuide")) {
-      sizeGuideHtml =
-        (fitGuide ? renderFitGuideHtml(fitGuide) : "") +
-        generateMeasureGuideHtml(data.measure_guide ? { items: data.measure_guide.items, image: null } : undefined);
-    }
-
-    // Trust banner (shipping/quality/returns) — tĩnh → uploadToImgbbCached: 1 lần, sau đó cache hit.
-    let trustHtml = "";
-    if (globalConfig.imgbbApiKey && workerConfig().descriptionTrustBanner !== false) {
-      let tf: string | null = null;
-      try {
-        tf = await buildTrustBannerFile();
-        const tUrl = tf ? await uploadToImgbbCached(tf) : null;
-        if (tUrl && (await verifyImageUrl(tUrl))) {
-          trustHtml = `<figure class="image"><img src="${tUrl}" alt="Shop with confidence"></figure>`;
-        }
-      } catch (e: any) {
-        console.warn("⚠️ trust banner lỗi (bỏ qua):", e?.message);
-      } finally {
-        if (tf) { try { fs.unlinkSync(tf); } catch { /* ignore */ } }
-      }
-    }
-
-    // Ảnh sản phẩm chèn ở CUỐI mô tả, gộp vào 1 LẦN PASTE duy nhất → thứ tự cố định:
-    // [text + banner AI] → [size guide] → [trust] → [📸 Details Up Close + ảnh variant].
-    // (Trước đây paste ảnh riêng bằng Ctrl+End — cursor kẹt ở widget ảnh là chèn sai chỗ.)
-    let descImagesHtml = "";
-    if (data.variant_images && data.variant_images.length > 0) {
-      const descImages = selectDescriptionImages(data.variant_images);
-      console.log(`📸 Đã chọn ${descImages.length} ảnh cho mô tả từ ${data.variant_images.length} variants`);
-      if (descImages.length) {
-        descImagesHtml =
-          `<h3><strong>📸 Details Up Close</strong></h3>` +
-          descImages
-            .map((u: string, i: number) => `<figure class="image"><img src="${u}" alt="Product image ${i + 1}"></figure>`)
-            .join("");
-      }
-    }
-    const descHtml = richHtml + sizeGuideHtml + trustHtml + descImagesHtml;
+    // Mô tả: helper dùng chung với đường API (src/core/buildDescriptionHtml.ts).
+    const { descHtml, rich } = await buildDescriptionHtml(data, prefOn);
     await fillDescription(page, descHtml);
 
     // 2 field TikTok mới: Search terms (backend keywords) + Product highlights — AI sinh kèm rich desc

@@ -113,9 +113,9 @@ export const buildDescriptionHtml = async (
       }
     } catch (e: any) {
       console.warn("⚠️ trust banner lỗi (bỏ qua):", e?.message);
-    } finally {
-      if (tf) { try { fs.unlinkSync(tf); } catch { /* ignore */ } }
     }
+    // KHÔNG xoá tf: trust banner là ảnh tĩnh được cache lại để khỏi mở Chromium vẽ lại
+    // cho từng listing (xem buildTrustBannerFile). Xoá ở đây là huỷ luôn cache.
   }
 
   // Ảnh sản phẩm chèn ở CUỐI mô tả → thứ tự cố định: [text + banner] → [size guide] → [trust] → [📸 variant].

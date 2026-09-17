@@ -5,7 +5,7 @@
   "concurrency": 6,
   "headless": true,
   "fileRouterCron": "*/30 * * * * *",
-  "queueManagerCron": "*/1 * * * *",
+  "queueManagerCron": "*/30 * * * * *",
   "imageUploadWaitPerImageMs": 7000,
   "imageUploadMaxImages": 9,
   "descriptionImagesCount": 8,

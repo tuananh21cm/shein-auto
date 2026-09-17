@@ -1,3 +1,4 @@
+import fs from "fs";
 import path from "path";
 import crypto from "crypto";
 import { renderHtmlToImage, fetchImagesAsDataUris } from "./htmlToImage";
@@ -118,7 +119,14 @@ ${badges
     )
     .join("")}
 </div></body></html>`;
-  const out = path.join(__dirname, `temp_trust_${crypto.randomBytes(6).toString("hex")}.png`);
+  // Ảnh TĨNH (4 badge cố định, không phụ thuộc sản phẩm/shop) → render 1 LẦN rồi dùng lại
+  // file. Trước đây mỗi listing mở 1 Chromium để vẽ lại đúng ảnh này; cache của
+  // uploadToImgbbCached chỉ tiết kiệm bước UPLOAD, không tiết kiệm bước RENDER.
+  // Caller KHÔNG được xoá file này (buildDescriptionHtml đã bỏ unlink).
+  // Đổi nội dung badge → đổi tên file (v2, v3…) để render lại.
+  const out = path.join(process.cwd(), "data", "tmp", "trust-banner-v1.png");
+  if (fs.existsSync(out)) return out;
+  fs.mkdirSync(path.dirname(out), { recursive: true });
   await renderHtmlToImage({
     output: out,
     html,

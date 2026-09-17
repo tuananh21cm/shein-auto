@@ -155,11 +155,15 @@ const defaultWarehouse = async (principal: string, shopId: number) => {
 // Giới hạn TỔNG số upload COS chạy cùng lúc trong cả tiến trình. Trước đây mỗi nhóm ảnh tự
 // chạy 4 luồng và tất cả các nhóm lại nằm trong 1 Promise.all → sp 35 màu bung ~140 kết nối
 // đồng thời → undici ném "terminated" giữa chừng, hỏng cả listing.
-const UP_LIMIT = 6;
+// Trần này phải CO GIÃN theo concurrency: nó là trần TỔNG, nên để cố định 6 thì tăng
+// concurrency chỉ chia nhỏ luồng cho mỗi listing (6 listing → 1 luồng/listing), tổng số ảnh
+// đẩy lên mỗi giây không đổi — tăng concurrency thành vô nghĩa. Cận trên 24 để không quay
+// lại lỗi undici "terminated" (~140 kết nối đồng thời làm hỏng cả listing).
+const upLimit = () => Math.max(6, Math.min(24, (workerConfig().concurrency || 1) * 2));
 let upActive = 0;
 const upQueue: (() => void)[] = [];
 const upAcquire = async () => {
-  if (upActive >= UP_LIMIT) await new Promise<void>((r) => upQueue.push(r));
+  if (upActive >= upLimit()) await new Promise<void>((r) => upQueue.push(r));
   upActive++;
 };
 const upRelease = () => {

@@ -3,6 +3,7 @@ import os from "os";
 import path from "path";
 import crypto from "crypto";
 import { uploadToImgbb } from "./uploadToImgbb";
+import { workerConfig } from "../config/appConfig";
 
 /**
  * Ảnh SHEIN trả về là .webp. Một số shop TikTok TỪ CHỐI format này trong MÔ TẢ
@@ -32,6 +33,23 @@ export async function hostAsJpeg(url: string): Promise<string> {
   }
 }
 
+/**
+ * Trần TỔNG toàn tiến trình cho convert+host ảnh mô tả. Không có nó thì mức song song là
+ * par × số listing chạy cùng lúc (concurrency 12 → 48 lượt tải + sharp đồng thời) — sharp là
+ * CPU-bound nên đây là chỗ duy nhất trong luồng không bị ghìm bởi trần nào.
+ */
+const jpegLimit = () => Math.max(4, Math.min(16, (workerConfig().concurrency || 1) * 2));
+let jActive = 0;
+const jQueue: (() => void)[] = [];
+const jAcquire = async () => {
+  if (jActive >= jpegLimit()) await new Promise<void>((r) => jQueue.push(r));
+  jActive++;
+};
+const jRelease = () => {
+  jActive--;
+  jQueue.shift()?.();
+};
+
 /** Convert + host cả list, giới hạn song song (ảnh mô tả mặc định 8 cái/listing). */
 export async function hostAllAsJpeg(urls: string[], par = 4): Promise<string[]> {
   const out: string[] = new Array(urls.length);
@@ -40,7 +58,8 @@ export async function hostAllAsJpeg(urls: string[], par = 4): Promise<string[]> 
     Array.from({ length: Math.min(par, urls.length) }, async () => {
       while (i < urls.length) {
         const k = i++;
-        out[k] = await hostAsJpeg(urls[k]);
+        await jAcquire();
+        try { out[k] = await hostAsJpeg(urls[k]); } finally { jRelease(); }
       }
     })
   );

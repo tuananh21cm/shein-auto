@@ -24,6 +24,19 @@ function jitterMs(minSec: number, maxSec: number): number {
   return Math.floor((minSec + Math.random() * Math.max(0, maxSec - minSec)) * 1000);
 }
 
+/**
+ * Shop đã đụng TRẦN LISTING (errMsg Listing.Back.Day_Limit) thì retry bao nhiêu lần cũng vô ích:
+ * đo 17/09 TN Scan43 (active=101, 37 draft) nhận batchPublish suốt 25 phút mà active đứng im,
+ * trong khi TaiAri (95) lên 99 và Urban Noble (97) lên 101. Trần KHÔNG đồng nhất 100
+ * (Calmwell 411, MaeBLa 200) nên không hardcode ngưỡng được — thay vào đó nhận diện bằng
+ * dấu hiệu thực nghiệm: shop mà MỌI draft đều publish_failed (không có draft mới nào) coi như
+ * đã đầy, chỉ thử lại mỗi RETRY_COLD_MS thay vì mỗi cycle 25-35 phút.
+ * Có draft mới về → publish ngay, không dính backoff.
+ */
+const RETRY_COLD_MS = 6 * 3_600_000;
+// ponytail: Map in-memory, mất khi restart — chấp nhận, restart hiếm hơn nhiều so với cycle.
+const coldShop = new Map<string, number>();
+
 export interface DripOptions {
   cookieUser: string;
   perShopPerCycle?: number;
@@ -71,9 +84,21 @@ export async function runDripCycle(opts: DripOptions): Promise<DripCycleResult> 
         if (busy) log(`  ⏳ ${shop.shopName}: ${busy} draft đang 'publishing' → bỏ qua cycle`);
         continue;
       }
+      // Draft MỚI (chưa từng fail) ưu tiên đăng trước hàng tồn.
+      const fresh = drafts.filter((d) => d.publishStatus !== "publish_failed");
+      if (!fresh.length) {
+        const key = `${opts.cookieUser}/${shop.id}`;
+        const last = coldShop.get(key) ?? 0;
+        const waited = Date.now() - last;
+        if (waited < RETRY_COLD_MS) {
+          log(`  ❄️ ${shop.shopName}: ${drafts.length} draft toàn publish_failed (nghi đầy trần) → chờ ${Math.round((RETRY_COLD_MS - waited) / 3600_000)}h nữa`);
+          continue;
+        }
+        coldShop.set(key, Date.now());
+      }
       const retryN = drafts.filter((d) => d.publishStatus === "publish_failed").length;
       if (retryN) log(`  ↻ ${shop.shopName}: ${retryN}/${drafts.length} draft là publish_failed → đăng lại`);
-      const batch = drafts.slice(0, per);
+      const batch = [...fresh, ...drafts.filter((d) => d.publishStatus === "publish_failed")].slice(0, per);
       const ids = batch.map((d) => d.id);
       await batchPublish(opts.cookieUser, ids as any);
       published += ids.length;

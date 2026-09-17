@@ -9,6 +9,7 @@
  */
 import { getShopList, getDraftPage, batchPublish, type FourSellerShop } from "../services/fourseller/client";
 import { publishConfig } from "../config/appConfig";
+import { listAccounts } from "../state/fourSellerAccounts";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -103,12 +104,32 @@ export function scheduleDripPublisher(): void {
     running = true;
     try {
       console.log("[drip] ▶ cycle bắt đầu…");
-      const r = await runDripCycle({
-        cookieUser: cfg.cookieUser,
-        perShopPerCycle: cfg.perShopPerCycle,
-        interShopJitterSec: [cfg.interShopJitterMinSec, cfg.interShopJitterMaxSec],
-        onLog: (m) => console.log("[drip]", m),
-      });
+      // Duyệt MỌI tài khoản 4Seller, không chỉ cfg.cookieUser: trước đây drip chạy duy nhất
+      // 1 principal nên shop của các tài khoản khác không ai publish (đo 17/09: 164/183 draft
+      // kẹt nằm ở acct 53770051197 — ngoài tầm với của drip dù bộ lọc đã sửa).
+      // cfg.cookieUser chỉ còn là fallback khi chưa có account nào lưu cookie.
+      let principals = [cfg.cookieUser];
+      try {
+        const accs = await listAccounts();
+        if (accs.length) principals = accs.map((a) => `acct:${a.uid}`);
+      } catch (e: any) {
+        console.warn("[drip] ⚠ Không đọc được danh sách account → dùng cfg.cookieUser:", e?.message ?? e);
+      }
+      const r = { published: 0, remaining: 0 };
+      for (const principal of principals) {
+        if (principals.length > 1) console.log(`[drip] ── ${principal}`);
+        const one = await runDripCycle({
+          cookieUser: principal,
+          perShopPerCycle: cfg.perShopPerCycle,
+          interShopJitterSec: [cfg.interShopJitterMinSec, cfg.interShopJitterMaxSec],
+          onLog: (m) => console.log("[drip]", m),
+        }).catch((e: any) => {
+          console.error(`[drip] ✗ ${principal}: ${e?.message ?? e}`);
+          return { published: 0, remaining: 0, perShop: {} };
+        });
+        r.published += one.published;
+        r.remaining += one.remaining;
+      }
       console.log(`[drip] cycle xong: publish ${r.published}, còn ~${r.remaining} draft`);
       if (r.published === 0 && r.remaining === 0) {
         // Hết draft mọi shop → KHÔNG dừng vĩnh viễn (crawl/list vẫn đổ draft mới về).

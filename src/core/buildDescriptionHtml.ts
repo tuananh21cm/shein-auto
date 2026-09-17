@@ -9,6 +9,7 @@ import { extractSizeChartSections, buildSizeGuideImageFile } from "./steps/sizeG
 import { buildSizeChartHero, heroCandidates } from "./steps/sizeChartHero";
 import { processMeasureGuideImage } from "./steps/measureGuideImage";
 import { uploadToImgbb, verifyImageUrl } from "../utils/uploadToImgbb";
+import { hostAllAsJpeg } from "../utils/hostAsJpeg";
 import { uploadToImgbbCached } from "../utils/imgbbCache";
 
 export type RichDesc = Awaited<ReturnType<typeof generateRichDescription>>;
@@ -123,9 +124,14 @@ export const buildDescriptionHtml = async (
     const descImages = selectDescriptionImages(data.variant_images);
     console.log(`📸 Đã chọn ${descImages.length} ảnh cho mô tả từ ${data.variant_images.length} variants`);
     if (descImages.length) {
+      // URL SHEIN là .webp — vài shop TikTok từ chối format này trong mô tả, ảnh hiện ra
+      // khoảng trắng. Convert JPEG + host lại (R2) thay vì nhúng thẳng URL gốc.
+      const hosted = await hostAllAsJpeg(descImages);
+      const conv = hosted.filter((u, i) => u !== descImages[i]).length;
+      if (conv) console.log(`🔄 Ảnh mô tả: convert ${conv}/${hosted.length} webp → JPEG`);
       descImagesHtml =
         `<h3><strong>📸 Details Up Close</strong></h3>` +
-        descImages
+        hosted
           .map((u: string, i: number) => `<figure class="image"><img src="${u}" alt="Product image ${i + 1}"></figure>`)
           .join("");
     }

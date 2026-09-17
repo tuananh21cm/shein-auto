@@ -32,6 +32,36 @@ export const fillShippingAndCertification = async (page: any): Promise<void> => 
     }
     console.log(`✅ Đã điền Dimensions L/W/H (scope: ${dimScoped ? "Product Dimensions row" : "toàn trang"})`);
 
+    // ĐƠN VỊ: trước đây KHÔNG đụng 2 dropdown này nên luôn để mặc định kg/cm của 4Seller →
+    // 0.3 và 9/1/6 bị hiểu thành kg/cm thay vì lb/inch (mọi listing cũ đều dính). Chọn theo config.
+    const UNIT_TEXT: Record<string, string> = { POUND: "lb", KILOGRAM: "kg", INCH: "inch", CENTIMETER: "cm" };
+    const pickUnit = async (label: string, unit: string) => {
+      const want = UNIT_TEXT[unit] ?? unit;
+      const row = page.locator(".el-form-item").filter({ hasText: label }).first();
+      if ((await row.count()) === 0) return;
+      const sel = row.locator(".el-select").last();
+      if ((await sel.count()) === 0) return;
+      const cur = (await sel.locator("input").first().inputValue().catch(() => "")) || "";
+      if (cur.trim().toLowerCase() === want.toLowerCase()) return; // đã đúng, khỏi click
+      await sel.scrollIntoViewIfNeeded().catch(() => {});
+      await sel.click();
+      await page.waitForTimeout(400);
+      const opt = page
+        .locator(".el-select-dropdown:visible .el-select-dropdown__item")
+        .filter({ hasText: new RegExp(`^\\s*${want}\\s*$`, "i") })
+        .first();
+      if ((await opt.count()) > 0) {
+        await opt.click();
+        console.log(`✅ Đơn vị ${label}: ${cur || "?"} → ${want}`);
+      } else {
+        await page.keyboard.press("Escape");
+        console.warn(`⚠️ Không thấy option "${want}" cho ${label} — giữ nguyên "${cur}"`);
+      }
+      await page.waitForTimeout(300);
+    };
+    await pickUnit("Weight with Package", p.weightUnit ?? "POUND");
+    await pickUnit("Product Dimensions", p.dimensionUnit ?? "INCH");
+
     for (const labelText of CERT_FIELDS) {
       const formItem = page.locator(".el-form-item").filter({ hasText: labelText });
       // "Dangerous Goods" có 2 input trong 1 form-item: ô select chính + ô phụ

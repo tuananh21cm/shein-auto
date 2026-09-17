@@ -320,8 +320,8 @@ export const listing4sellerApi = async (
       variation.push({
         keyId: keyId++, type: "auto", erpSku: "", sellerSku: sku, attrs: [c, s], identifierCodeType: 3, identifierCode: "",
         availableStock: stock, originalPrice: price, currency: "USD", newAdd: true, globalPrice: "", globalStock: 0,
-        unitType: "meter", unitTypeNum: 1, skuUnitCount: "", globalStockInfoList: [], packageWeight: "", weightUnit: "KILOGRAM",
-        packageLength: "", packageWidth: "", packageHeight: "", dimensionUnit: "CENTIMETER",
+        unitType: "meter", unitTypeNum: 1, skuUnitCount: "", globalStockInfoList: [], packageWeight: "", weightUnit: pricing().weightUnit ?? "POUND",
+        packageLength: "", packageWidth: "", packageHeight: "", dimensionUnit: pricing().dimensionUnit ?? "INCH",
         stockInfoList: [{ warehouse_id: warehouseId, available_stock: stock }], priceAndInventoryList: [], option1: c, option2: s,
       });
     }
@@ -368,7 +368,7 @@ export const listing4sellerApi = async (
     productName, ...cat, hasVariation: 1, identifierCodeType: 3, identifierCode: "", erpSku: "", erpSkuId: "", sellerSku: "",
     description: descHtml,
     packageWeight: p.defaultWeight, packageLength: p.defaultDimensions.length, packageWidth: p.defaultDimensions.width, packageHeight: p.defaultDimensions.height,
-    dimensionUnit: "CENTIMETER", weightUnit: "KILOGRAM", spu: "", spuId: "", hasSkuPackage: 0,
+    dimensionUnit: p.dimensionUnit ?? "INCH", weightUnit: p.weightUnit ?? "POUND", spu: "", spuId: "", hasSkuPackage: 0,
     searchTerms: rich?.searchTerms ?? [], productHighlights: rich?.productHighlights ?? [],
     productAttributes: buildProductAttributes(schema, data.attributes || {}), brandId: "0", brandInfo: JSON.stringify({ name: "No Brand", id: "0" }),
     option1: JSON.stringify({ [sales.color.attrId]: sales.color.attrName }), option1Value: JSON.stringify(colorVals.map((v) => ({ [v.key]: v.name }))),

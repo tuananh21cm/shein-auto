@@ -23,6 +23,12 @@ interface PricingFile {
   defaultQty: number;
   defaultWeight: string;
   defaultDimensions: { length: string; width: string; height: string };
+  /**
+   * Đơn vị gửi lên 4Seller. Shop US dùng POUND/INCH — TRƯỚC ĐÂY hardcode KILOGRAM/CENTIMETER
+   * nên 0.3 và 9/1/6 bị gắn nhầm thành kg/cm trên MỌI listing (cả Playwright lẫn API).
+   */
+  weightUnit?: string;
+  dimensionUnit?: string;
 }
 interface WorkerFile {
   autoCron: boolean;

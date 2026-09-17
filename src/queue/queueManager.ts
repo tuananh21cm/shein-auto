@@ -2,6 +2,7 @@ import * as fs from "fs-extra";
 import * as path from "path";
 import { workerConfig, isAutoCronOn } from "../config/appConfig";
 import { listing4sellerShein } from "../core/listing4sellerShein";
+import { listing4sellerApi } from "../core/listing4sellerApi";
 import { getProfileNameFromFolder } from "../core/steps/randomUtils";
 import { workerState } from "../state/workerState";
 import { refreshQueueSnapshot } from "../state/queueState";
@@ -126,11 +127,34 @@ export const processFile = async (
       // Owner có thể dạng "userA,userB" do dedup baseDir → lấy user đầu.
       const primaryOwner = owner.split(",")[0];
       const effective = await getEffectiveSettings(primaryOwner);
-      await listing4sellerShein(claimedPath, {
-        cookieUser: primaryOwner,
-        headless: effective.headless,
-        pricing: effective.pricing,
-      });
+      const viaPlaywright = () =>
+        listing4sellerShein(claimedPath, {
+          cookieUser: primaryOwner,
+          headless: effective.headless,
+          pricing: effective.pricing,
+        });
+
+      if (workerConfig().listingApi === false) {
+        await viaPlaywright();
+      } else {
+        // API TRƯỚC (~27s vs ~135s). Lỗi API → rơi về Playwright để không mất listing.
+        try {
+          const r = await listing4sellerApi(claimedPath, {
+            cookieUser: primaryOwner,
+            pricing: effective.pricing,
+          });
+          console.log(`⚡ [${owner}/${folderName}] API: listingId=${r.listingId}`);
+        } catch (apiErr: any) {
+          const msg = String(apiErr?.message ?? apiErr);
+          // File cào hỏng (thiếu product_name/category, thiếu colors/sizes) → Playwright cũng
+          // hỏng y vậy, fallback chỉ phí thêm ~2 phút rồi vẫn vào Fail. Ném luôn.
+          if (/JSON hỏng|Thiếu colors\/sizes/i.test(msg)) throw apiErr;
+          console.warn(
+            `⚠️ [${owner}/${folderName}] API lỗi → fallback Playwright: ${msg.slice(0, 140)}`
+          );
+          await viaPlaywright();
+        }
+      }
       publishOk = true; // publish thành công trên 4Seller
     } catch (err: any) {
       publishOk = false;

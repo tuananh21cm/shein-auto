@@ -27,6 +27,11 @@ interface PricingFile {
 interface WorkerFile {
   autoCron: boolean;
   autoSource?: boolean; // master-switch cho auto-sourcer (AI tự tìm hàng tới 100 listing/shop)
+  /**
+   * Đăng listing bằng HTTP API 4Seller (~27s) thay Playwright (~135s). Mặc định BẬT;
+   * API lỗi → tự rơi về Playwright. Đặt false để tắt hẳn khi 4Seller đổi API.
+   */
+  listingApi?: boolean;
   concurrency: number;
   headless: boolean;
   fileRouterCron: string;

@@ -1895,10 +1895,18 @@ export const startAdminServer = async () => {
     if (crawlJob.log.length > 800) crawlJob.log.shift();
   };
 
+  // Đếm số lượt 1 sp cào ra dữ liệu THIẾU → thử lại bằng IP/phiên khác tối đa MAX_CRAWL_MISS
+  // lượt rồi mới chịu thua, tránh cào lại vô hạn 1 sp mà SHEIN luôn giấu.
+  // ponytail: đếm in-memory, reset khi restart server — đủ chặn lặp trong 1 phiên.
+  const crawlMiss = new Map<string, number>();
+  const MAX_CRAWL_MISS = 3;
+
   // CORE: cào 1 list link. Caller phải set crawlJob TRƯỚC (running/done do wrapper quản).
+  // Trả về goodsId đã XỬ LÝ XONG = ghi được file, hoặc bỏ cuộc sau MAX_CRAWL_MISS lượt. Caller
+  // dùng để đánh dấu dedupe → sp thiếu dữ liệu KHÔNG nằm trong đây nên cycle sau còn cào lại.
   async function crawlLinksCore(opts: {
     links: string[]; proxies?: string; output: "hub" | "shop"; shop?: string; headless?: boolean; concurrency?: number;
-  }): Promise<void> {
+  }): Promise<string[]> {
       const { loadProxies, parseProxyLine, startBridges } = await import("./core/proxyPool");
       const { scrapeBatchViaProxyPool } = await import("./core/scrapeViaProxyPool");
       // Link → {goodsId, url}
@@ -1925,8 +1933,34 @@ export const startAdminServer = async () => {
         shopBaseDir = dirs?.baseSheinAutoDir || null;
         if (!shopBaseDir) throw new Error(`Shop "${opts.shop}" chưa cấu hình baseSheinAutoDir`);
       }
+      const settled: string[] = [];
+      // GATE dữ liệu: thiếu thì KHÔNG ghi file. File thiếu đăng lên sàn ra listing mô tả TRỐNG /
+      // không có size chart (đo thật trên shop 657: 64/146 file cào bằng pipeline hỏng kiểu này).
+      //   - attributes rỗng = panel Description không mở được (mọi sp SHEIN đều có mục Details).
+      //   - có ≥2 size mà không có bảng size = drawer Size Guide không mở được (sp one-size /
+      //     phụ kiện thì vốn không có bảng → không tính là thiếu).
+      const missingOf = (d: any): string[] => {
+        const miss: string[] = [];
+        if (!d.attributes || !Object.keys(d.attributes).length) miss.push("attributes");
+        const sc = d.size_chart;
+        const hasSc = !!(sc && ((sc.data || []).length || (sc.sections || []).some((s: any) => s?.data?.length)));
+        if ((d.listing_variations?.sizes || []).length >= 2 && !hasSc) miss.push("size_chart");
+        return miss;
+      };
       const onProduct = async (goodsId: string, data: any, error?: string) => {
         if (!data) { clog(`✗ ${goodsId}: ${(error || "fail").slice(0, 80)}`); return; }
+        const miss = missingOf(data);
+        if (miss.length) {
+          const n = (crawlMiss.get(goodsId) ?? 0) + 1;
+          crawlMiss.set(goodsId, n);
+          if (n < MAX_CRAWL_MISS) {
+            clog(`⟳ ${goodsId}: thiếu ${miss.join("+")} → KHÔNG ghi, cào lại IP khác (lượt ${n}/${MAX_CRAWL_MISS})`);
+            return;
+          }
+          clog(`✗ ${goodsId}: vẫn thiếu ${miss.join("+")} sau ${n} lượt → bỏ hẳn sp này`);
+          settled.push(goodsId); // thôi thử lại, khỏi chiếm chỗ mỗi cycle
+          return;
+        }
         try {
           if (opts.output === "shop") {
             const folder = path.join(shopBaseDir!, opts.shop!);
@@ -1937,6 +1971,8 @@ export const startAdminServer = async () => {
             await writeHubFile(data, "crawler");
             clog(`✓ ${goodsId} → Hub (${String(data.product_name || "").slice(0, 40)})`);
           }
+          settled.push(goodsId);
+          crawlMiss.delete(goodsId);
         } catch (e: any) { clog(`✗ ${goodsId} ghi lỗi: ${String(e?.message ?? e).slice(0, 60)}`); }
       };
 
@@ -1957,9 +1993,13 @@ export const startAdminServer = async () => {
         try { await applyFingerprint(ctx, fp); res = await crawlBatchInContext(ctx, { items, useV2: false, onLog: clog, onProduct, tag: "[direct]" }); }
         finally { try { await browser.close(); } catch { /* ignore */ } }
       }
-      const ok = res.filter((r) => r.ok).length;
-      crawlJob!.summary = { total: items.length, ok, fail: items.length - ok };
-      clog(`🎉 XONG: ${ok}/${items.length} OK`);
+      // "ok" tính theo file GHI THẬT, không tính sp cào xong nhưng dữ liệu thiếu (đã bị gate loại).
+      const crawled = res.filter((r) => r.ok).length;
+      const ok = settled.length;
+      const retry = items.length - ok;
+      crawlJob!.summary = { total: items.length, ok, fail: retry, crawled };
+      clog(`🎉 XONG: cào được ${crawled}/${items.length} · ghi file ${ok}${retry ? ` · ${retry} sp thiếu/lỗi → cào lại cycle sau` : ""}`);
+      return settled;
   }
 
   async function runCrawlFromLinks(opts: {
@@ -2073,8 +2113,10 @@ export const startAdminServer = async () => {
       const dest = opts.output === "shop" ? `shop ${opts.shop}` : "Hub";
       clog(`📊 Gom ${candidates.length} sp · lấy ${good.length}${opts.niche ? " (AI chọn)" : opts.minReviews || opts.minRating ? ` (review≥${opts.minReviews}, rating≥${opts.minRating})` : ""} → cào full vào ${dest}…`);
       if (!good.length) { crawlJob!.summary = { total: 0, ok: 0, fail: 0 }; clog("Không sp nào — nới ngưỡng / đổi ngách / kiểm tra link."); return; }
-      await crawlLinksCore({ links: good.map((p) => p.url as string), proxies: opts.proxies, output: opts.output ?? "hub", shop: opts.shop, headless: opts.headless, concurrency: opts.concurrency });
-      if (opts.dedupeShop && good.length) await addSourcedIds(opts.dedupeShop, good.map((p) => p.goodsId));
+      const settled = await crawlLinksCore({ links: good.map((p) => p.url as string), proxies: opts.proxies, output: opts.output ?? "hub", shop: opts.shop, headless: opts.headless, concurrency: opts.concurrency });
+      // CHỈ đánh dấu dedupe sp đã xử lý xong. Trước đây đánh dấu CẢ LÔ nên sp cào hỏng bị loại
+      // vĩnh viễn khỏi mọi cycle sau — đó là lý do hàng thiếu dữ liệu không bao giờ được cào lại.
+      if (opts.dedupeShop && settled.length) await addSourcedIds(opts.dedupeShop, settled);
     } catch (e: any) {
       clog(`❌ ${String(e?.message ?? e)}`);
     } finally {

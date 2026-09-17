@@ -103,9 +103,12 @@ export const processFile = async (
   const claimedPath = absJsonPath + ".processing";
   try {
     await fs.move(absJsonPath, claimedPath, { overwrite: false });
-  } catch {
+  } catch (claimErr: any) {
+    // In KÈM lỗi thật: ENOENT = sai đường dẫn/file không có (khác hẳn "bị tranh mất"), EPERM/EBUSY
+    // = file đang bị khoá. Trước đây chỉ in "đã bị tiến trình khác xử lý" nên sai đường dẫn cũng
+    // hiện y như tranh chấp, mất công đi tìm tiến trình không tồn tại.
     console.warn(
-      `⏭️ [${owner}/${folderName}] Không claim được "${fileName}" (đã bị tiến trình khác xử lý hoặc đã move). Skip.`
+      `⏭️ [${owner}/${folderName}] Không claim được "${fileName}" (${claimErr?.code ?? "?"}: ${String(claimErr?.message ?? claimErr).slice(0, 120)}). Skip.`
     );
     folderLocks.delete(key);
     runningCount--;

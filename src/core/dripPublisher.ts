@@ -55,14 +55,23 @@ export async function runDripCycle(opts: DripOptions): Promise<DripCycleResult> 
       // 4Seller trả data=null khi shop không còn draft (hoặc shop đóng) → coi như 0 draft.
       const resp = await getDraftPage(opts.cookieUser, { shopId: shop.id });
       const all = (resp?.records ?? []) as any[];
-      // CHỈ publish draft đang "publishable". Draft "publishing" (đang publish dở) → batch-publish
-      // báo "status does not support modification" → nếu lấy nhầm sẽ KẸT vĩnh viễn ở draft đầu.
-      const drafts = all.filter((d) => d.publishStatus === "publishable" || !d.publishStatus);
+      // Nhặt cả "publishable" LẪN "publish_failed": đa số publish_failed là
+      // Listing.Back.Day_Limit (hết hạn mức đăng/ngày của shop) — hôm sau đăng lại được.
+      // Trước đây bộ lọc chỉ lấy "publishable" nên đám này KHÔNG AI nhặt lại, đọng vĩnh viễn
+      // (đo 17/09: 183 draft kẹt trên 2 tài khoản, 0 cái drip lấy được).
+      // Đã verify batchPublish CHẤP NHẬN chúng: publish_failed → publishing.
+      // LOẠI "publishing" (đang publish dở → batch-publish báo "status does not support
+      // modification", lấy nhầm sẽ KẸT vĩnh viễn ở draft đầu) và "unpublishable" (thiếu dữ
+      // liệu, đăng lại vẫn hỏng nên chỉ quay vòng vô ích).
+      const SKIP = new Set(["publishing", "unpublishable", "normal"]);
+      const drafts = all.filter((d) => !SKIP.has(String(d.publishStatus ?? "")));
       if (!drafts.length) {
-        const stuck = all.filter((d) => d.publishStatus === "publishing").length;
-        if (stuck) log(`  ⏳ ${shop.shopName}: ${stuck} draft đang 'publishing', 0 publishable → bỏ qua cycle`);
+        const busy = all.filter((d) => d.publishStatus === "publishing").length;
+        if (busy) log(`  ⏳ ${shop.shopName}: ${busy} draft đang 'publishing' → bỏ qua cycle`);
         continue;
       }
+      const retryN = drafts.filter((d) => d.publishStatus === "publish_failed").length;
+      if (retryN) log(`  ↻ ${shop.shopName}: ${retryN}/${drafts.length} draft là publish_failed → đăng lại`);
       const batch = drafts.slice(0, per);
       const ids = batch.map((d) => d.id);
       await batchPublish(opts.cookieUser, ids as any);

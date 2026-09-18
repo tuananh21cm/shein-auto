@@ -19,6 +19,9 @@ import { preprocessData } from "./steps/preprocessData";
 import { buildColorShowcaseImageFile } from "./steps/colorShowcase";
 import { generateSizeChartHtml } from "./steps/handleSizeChart";
 import { buildDescriptionHtml } from "./buildDescriptionHtml";
+import { joinSearchTerms, joinHighlights } from "./steps/fillSearchHighlights";
+
+const splitKept = (joined: string, sep: string) => (joined ? joined.split(sep) : []);
 
 type Attr = { attrId: string | number; attrName: string; attrType: number; isCustomized?: number; valueList?: string };
 
@@ -373,7 +376,10 @@ export const listing4sellerApi = async (
     description: descHtml,
     packageWeight: p.defaultWeight, packageLength: p.defaultDimensions.length, packageWidth: p.defaultDimensions.width, packageHeight: p.defaultDimensions.height,
     dimensionUnit: p.dimensionUnit ?? "INCH", weightUnit: p.weightUnit ?? "POUND", spu: "", spuId: "", hasSkuPackage: 0,
-    searchTerms: rich?.searchTerms ?? [], productHighlights: rich?.productHighlights ?? [],
+    // Cắt như đường Playwright (joinSearchTerms/joinHighlights): API gửi nguyên mảng AI sinh thì
+    // có listing vượt 250 ký tự → unpublishable "Listing.Back.Search_Terms_More_Than_250".
+    searchTerms: splitKept(joinSearchTerms(rich?.searchTerms ?? []), ", "),
+    productHighlights: splitKept(joinHighlights(rich?.productHighlights ?? []), "\n"),
     productAttributes: buildProductAttributes(schema, data.attributes || {}), brandId: "0", brandInfo: JSON.stringify({ name: "No Brand", id: "0" }),
     option1: JSON.stringify({ [sales.color.attrId]: sales.color.attrName }), option1Value: JSON.stringify(colorVals.map((v) => ({ [v.key]: v.name }))),
     option2: JSON.stringify({ [sales.size.attrId]: sales.size.attrName }), option2Value: JSON.stringify(sizeVals.map((v) => ({ [v.key]: v.name }))),

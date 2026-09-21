@@ -476,3 +476,62 @@ export const getListingPage = (
       groupId: "",
     }
   );
+
+/* ============= Return / Refund (Order → After sales manage) ============= */
+// Dò từ trang /web/order/after-sales-manage/index.html. CHỈ ĐỌC — không có hàm nào đổi trạng thái case.
+
+/** 1 case hậu mãi TikTok. Thời gian dạng "YYYY-MM-DD HH:mm:ss" theo MÚI GIỜ TÀI KHOẢN (getUserZone). */
+export interface ReturnCase {
+  id: number;
+  returnId: string;
+  platformOrderId: string;
+  shopId: number;
+  returnType: string;            // RETURN_AND_REFUND | REFUND | REPLACEMENT | EXCHANGE
+  status: string;                // nhóm tab 4Seller: awaiting_return_package_receipt | disputed | completed | other …
+  platformReturnStatus: string;  // trạng thái gốc TikTok: BUYER_SHIPPED_ITEM, AWAITING_BUYER_SHIP …
+  returnStatus: string;          // mô tả dễ đọc
+  returnReason: string;
+  returnTrackingNumber: string;
+  currency: string;
+  refundTotal: number;
+  platformCreateTime: string;
+  platformUpdateTime: string;
+  /** Hạn seller phải xử lý. Chỉ có khi case đang chờ seller (vd chờ xác nhận nhận hàng hoàn). */
+  deadlineTime: string | null;
+  productList: { quantity: number; skuName: string; productName: string; sellerSku: string; imageUrl: string }[];
+}
+
+export interface ReturnStatusCount {
+  returnPendingCount: number;
+  refundPendingCount: number;
+  replacementPendingCount: number;
+  exchangePendingCount: number;
+  awaitingReturnPackageReceiptCount: number;
+  completedCount: number;
+  disputedCount: number;
+  otherCount: number;
+  allCount: number;
+}
+
+/** Số case theo từng tab trạng thái (khớp số hiện trên trang 4Seller). */
+export const getReturnStatusCount = (principal: string) =>
+  fourSellerPost<ReturnStatusCount>(principal, "/api/returns/tiktok/get-status-count", {});
+
+/** 1 trang case hậu mãi. status "" = tất cả. */
+export const getReturnPage = (
+  principal: string,
+  opts?: { pageCurrent?: number; pageSize?: number; status?: string }
+) =>
+  fourSellerPost<{ records: ReturnCase[]; total: number }>(principal, "/api/returns/tiktok/page", {
+    pageCurrent: opts?.pageCurrent ?? 1,
+    pageSize: opts?.pageSize ?? 100,
+    orderBy: "platformCreateTime",
+    desc: "desc",
+    status: opts?.status ?? "",
+  });
+
+/** Múi giờ IANA của tài khoản 4Seller (vd "America/Los_Angeles") — mọi mốc giờ API trả về theo múi này. */
+export const getUserZone = async (principal: string): Promise<string | null> => {
+  const u = await fourSellerGet<{ zone?: string }>(principal, "/api/user/user-info");
+  return u?.zone || null;
+};

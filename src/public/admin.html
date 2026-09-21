@@ -544,6 +544,9 @@
     <div class="nav-item" data-view="promotions">
       <span class="ico">🏷️</span><span>Promotions</span>
     </div>
+    <div class="nav-item" data-view="returns">
+      <span class="ico">↩️</span><span>Return / Refund</span>
+    </div>
     <div class="nav-item" data-view="video">
       <span class="ico">🎬</span><span>Video</span>
     </div>
@@ -1060,6 +1063,22 @@
       <div class="card"><div id="promoTableWrap"><div class="empty">Chưa có data — bấm "Sync + Cào mới"</div></div></div>
     </section>
 
+    <!-- ───── RETURN / REFUND (4Seller After sales manage — chỉ đọc) ───── -->
+    <section class="view" id="view-returns">
+      <div class="page-head">
+        <div>
+          <h1>↩️ Return / Refund</h1>
+          <div class="subtitle">Case hậu mãi TikTok đang mở, ưu tiên case sắp hết hạn xử lý. Chỉ đọc — xử lý case trên 4Seller.</div>
+        </div>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <a href="https://www.4seller.com/web/order/after-sales-manage/index.html" target="_blank" class="btn btn-ghost">Mở 4Seller ↗</a>
+          <button class="btn btn-primary" id="retScanBtn" onclick="scanReturns()">🔄 Quét mới</button>
+        </div>
+      </div>
+      <div id="retSummary" style="margin-bottom: 12px;"></div>
+      <div class="card"><div id="retTableWrap"><div class="empty">Chưa có data — bấm "Quét mới"</div></div></div>
+    </section>
+
     <!-- ───── COOKIE (đa tài khoản 4Seller — port từ main) ───── -->
     <!-- ───── DOMAIN (Cloudflare Tunnel) ───── -->
     <section class="view" id="view-domain">
@@ -1253,6 +1272,7 @@ function goToView(view, push) {
   if (view === "users") renderUsers();
   if (view === "settings") { loadSettings(); loadBrands(); loadPricing(); loadImgbbStatus(); loadMyToken(); }
   if (view === "promotions") loadPromotions();
+  if (view === "returns") loadReturns();
   if (view === "cookie") loadCookieStatus();
   closeNav(); // đóng drawer sau khi chọn (mobile)
 }
@@ -4789,6 +4809,108 @@ async function testImgbbKeys() {
 }
 
 // ─── Promotions (port từ main) ─────────────────────────
+// ─── Return / Refund: case sắp hết hạn xử lý (mặc định 7 ngày) ───
+let _retData = null;
+const RET_WINDOW_H = 24 * 7;
+
+async function loadReturns() {
+  try {
+    const res = await fetch("/admin/api/returns");
+    const d = await res.json();
+    if (d.running) {
+      $("#retTableWrap").innerHTML = '<div class="empty">⏳ Đang quét…</div>';
+      setTimeout(loadReturns, 4000);
+      return;
+    }
+    if (d.result) { _retData = d.result; renderReturns(); }
+  } catch (err) {
+    toast("Lỗi tải return/refund: " + err.message, "error");
+  }
+}
+
+async function scanReturns() {
+  const btn = $("#retScanBtn");
+  btn.disabled = true; btn.textContent = "⏳ Đang quét…";
+  $("#retTableWrap").innerHTML = '<div class="empty">⏳ Đang kéo case từ 4Seller…</div>';
+  try {
+    const res = await fetch("/admin/api/returns/scan", { method: "POST" });
+    const d = await res.json();
+    if (!res.ok) throw new Error(d.error);
+    _retData = d.result; renderReturns();
+    toast(`✓ Quét xong ${d.result.rows.length} case đang mở`);
+  } catch (err) {
+    toast(err.message, "error");
+    $("#retTableWrap").innerHTML = `<div class="empty">Lỗi: ${escapeHtml(err.message)}</div>`;
+  } finally {
+    btn.disabled = false; btn.textContent = "🔄 Quét mới";
+  }
+}
+
+function renderReturns() {
+  const r = _retData;
+  if (!r) return;
+  const now = Date.now();
+  const hoursLeft = (x) => (x.deadlineAt ? (x.deadlineAt - now) / 36e5 : null);
+  const overdue = r.rows.filter((x) => x.deadlineAt && x.deadlineAt < now);
+  const soon = r.rows.filter((x) => { const h = hoursLeft(x); return h != null && h >= 0 && h <= RET_WINDOW_H; });
+  const within24 = soon.filter((x) => hoursLeft(x) < 24);
+  const showAll = state.retShowAll === true;
+  const shopFilter = state.retShop || "";
+  let view = showAll ? r.rows : [...overdue, ...soon];
+  if (shopFilter) view = view.filter((x) => x.shop === shopFilter);
+  const shops = [...new Set(r.rows.map((x) => x.shop))].sort();
+  const counts = (r.accounts || []).map((a) => a.counts).filter(Boolean);
+  const sum = (k) => counts.reduce((s, c) => s + (c[k] || 0), 0);
+
+  const kpi = (cls, val, label) => `<div class="kpi ${cls}"><div class="kpi-v">${val}</div><div class="kpi-k">${label}</div></div>`;
+  $("#retSummary").innerHTML = `
+    <div class="kpis" style="margin-bottom:10px;">
+      ${kpi("fail", overdue.length, "🔴 Đã quá hạn")}
+      ${kpi("fail", within24.length, "⏰ Hết hạn < 24h")}
+      ${kpi("pending", soon.length, "⏳ Hết hạn trong 7 ngày")}
+      ${kpi("pending", sum("disputedCount"), "⚖️ Tranh chấp")}
+      ${kpi("shops", r.rows.length, "Case đang mở")}
+    </div>
+    <div style="display:flex; gap:14px; align-items:center; flex-wrap:wrap; font-size:0.82rem; color:var(--text-mute);">
+      <label style="display:inline-flex; width:auto; margin:0; gap:6px; align-items:center; cursor:pointer; white-space:nowrap;"><input type="checkbox" style="width:auto; margin:0;" ${showAll ? "checked" : ""} onchange="state.retShowAll=this.checked; renderReturns()"> Xem tất cả case đang mở</label>
+      <select onchange="state.retShop=this.value; renderReturns()" style="width:auto; min-width:200px; padding:4px 8px; margin:0;">
+        <option value="">Tất cả shop</option>
+        ${shops.map((s) => `<option ${s === shopFilter ? "selected" : ""}>${escapeHtml(s)}</option>`).join("")}
+      </select>
+      <span>Quét lúc ${new Date(r.scannedAt).toLocaleString()} · ${(r.accounts || []).map((a) => escapeHtml(a.label)).join(", ")}</span>
+      ${r.errors?.length ? `<span style="color:var(--danger);">⚠️ ${escapeHtml(r.errors.join(" · "))}</span>` : ""}
+    </div>`;
+
+  if (!view.length) {
+    $("#retTableWrap").innerHTML = `<div class="empty">${showAll ? "Không có case nào đang mở" : "✓ Không có case nào hết hạn trong 7 ngày tới"}</div>`;
+    return;
+  }
+  const fmtLeft = (h) => {
+    if (h == null) return '<span style="color:var(--text-mute);">—</span>';
+    if (h < 0) return `<b style="color:var(--danger);">quá hạn ${Math.round(-h)}h</b>`;
+    const color = h < 24 ? "var(--danger)" : h < 72 ? "#f97316" : h <= RET_WINDOW_H ? "var(--warn)" : "var(--text-mute)";
+    const txt = h < 48 ? `${Math.floor(h)}h ${Math.round((h % 1) * 60)}p` : `${(h / 24).toFixed(1)} ngày`;
+    return `<b style="color:${color};">${txt}</b>`;
+  };
+  const th = (t) => `<th style="text-align:left; padding:8px 10px; font-size:0.75rem; color:var(--text-mute); font-weight:600; white-space:nowrap;">${t}</th>`;
+  const td = (t, extra = "") => `<td style="padding:8px 10px; border-top:1px solid var(--border); font-size:0.83rem; vertical-align:top; ${extra}">${t}</td>`;
+  $("#retTableWrap").innerHTML = `<div style="overflow-x:auto;"><table style="width:100%; border-collapse:collapse;">
+    <thead><tr>${th("Còn lại")}${th("Hạn")}${th("Shop")}${th("Sản phẩm")}${th("Lý do")}${th("Trạng thái")}${th("Tiền")}${th("Mã đơn")}</tr></thead>
+    <tbody>${view.map((x) => {
+      const it = x.items?.[0] || {};
+      return `<tr>
+        ${td(fmtLeft(hoursLeft(x)), "white-space:nowrap;")}
+        ${td(x.deadlineAt ? new Date(x.deadlineAt).toLocaleString() : "—", "white-space:nowrap; color:var(--text-mute);")}
+        ${td(escapeHtml(x.shop), "white-space:nowrap;")}
+        ${td(`<div style="display:flex; gap:8px; align-items:center;">${it.image ? `<img src="${escapeHtml(it.image)}" style="width:36px; height:36px; object-fit:cover; border-radius:6px;" loading="lazy">` : ""}<div><div style="max-width:320px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${escapeHtml(it.name || "")}">${escapeHtml(it.name || "")}</div><div style="color:var(--text-mute); font-size:0.75rem;">${escapeHtml(it.variant || "")}${x.items.length > 1 ? ` · +${x.items.length - 1} sp` : ""}</div></div></div>`)}
+        ${td(escapeHtml(x.reason || ""), "min-width:170px;")}
+        ${td(escapeHtml(x.statusText || x.status), "white-space:nowrap;")}
+        ${td(`${x.amount.toFixed(2)} ${escapeHtml(x.currency)}`, "white-space:nowrap;")}
+        ${td(`<code style="font-size:0.75rem;">${escapeHtml(x.orderId)}</code>`)}
+      </tr>`;
+    }).join("")}</tbody></table></div>`;
+}
+
 async function loadPromotions() {
   try {
     const res = await fetch("/admin/api/promotions");

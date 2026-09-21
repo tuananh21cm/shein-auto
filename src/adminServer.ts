@@ -118,7 +118,7 @@ export const startAdminServer = async () => {
   });
 
   // Route theo màn: /admin/video, /admin/hub... → cùng SPA admin.html (deep-link + refresh giữ màn).
-  const SPA_VIEWS = new Set(["dashboard", "listings", "hub", "video", "niche", "settings", "promotions", "cookie", "domain"]);
+  const SPA_VIEWS = new Set(["dashboard", "listings", "hub", "video", "niche", "settings", "promotions", "returns", "cookie", "domain"]);
   app.get("/admin/:view", (req, res, next) => {
     if (!SPA_VIEWS.has(req.params.view)) return next();
     if (req.session && (req.session as any).user) return res.sendFile(path.join(__dirname, "public", "admin.html"));
@@ -1031,6 +1031,25 @@ export const startAdminServer = async () => {
     } catch (err: any) {
       const busy = /Đang scan/.test(err?.message ?? "");
       res.status(busy ? 409 : 500).json({ error: err?.message ?? "Lỗi scan promotion" });
+    }
+  });
+
+  // ── Return / Refund (Order → After sales manage) — chỉ đọc, xem case sắp hết hạn xử lý ──
+  app.get("/admin/api/returns", async (_req, res) => {
+    const { getLastReturnScan, isReturnScanRunning } = await import("./core/returnRefundScan");
+    res.json({ ok: true, running: isReturnScanRunning(), result: await getLastReturnScan() });
+  });
+
+  app.post("/admin/api/returns/scan", async (req, res) => {
+    try {
+      const sessionUser = (req.session as any).user as SessionUser;
+      if (sessionUser.role === "viewer") return res.status(403).json({ error: "Viewer không thể quét" });
+      const { runAndStoreReturnScan } = await import("./core/returnRefundScan");
+      const result = await runAndStoreReturnScan({ onLog: (m) => console.log("[returns]", m) });
+      res.json({ ok: true, result });
+    } catch (err: any) {
+      const busy = /Đang quét/.test(err?.message ?? "");
+      res.status(busy ? 409 : 500).json({ error: err?.message ?? "Lỗi quét return/refund" });
     }
   });
 

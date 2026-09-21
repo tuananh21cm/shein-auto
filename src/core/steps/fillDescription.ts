@@ -103,6 +103,14 @@ export const selectDescriptionImages = (variantImages: any[], maxImages?: number
   return selected;
 };
 
+/**
+ * Chèn ảnh vào mô tả bằng một lần paste riêng. HIỆN KHÔNG CÒN ĐƯỢC GỌI — luồng chính gộp
+ * ảnh vào cùng lần paste với phần text (xem listing4sellerShein).
+ *
+ * Nếu dùng lại: `imageUrls` phải là URL ảnh ĐÃ HOST dạng jpg/png (hostImagesAsJpeg).
+ * Đưa thẳng URL .webp của SHEIN vào đây là TikTok chặn publish với lỗi
+ * "Description image format is incorrect".
+ */
 export const uploadDescriptionImages = async (page: any, imageUrls: string[]): Promise<void> => {
   if (!imageUrls || imageUrls.length === 0) return;
 

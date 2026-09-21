@@ -30,6 +30,8 @@ import { extractSizeChartSections, buildSizeGuideImageFile } from "./steps/sizeG
 import { processMeasureGuideImage } from "./steps/measureGuideImage";
 import { uploadToImgbb, verifyImageUrl } from "../utils/uploadToImgbb";
 import { uploadToImgbbCached } from "../utils/imgbbCache";
+import { hostImagesAsJpeg } from "../utils/hostImageAsJpeg";
+import { r2Configured } from "../utils/uploadToR2";
 import { config as globalConfig } from "../config";
 import { fillShippingAndCertification } from "./steps/fillShipping";
 import { fillSourceUrl } from "./steps/fillSourceUrl";
@@ -296,16 +298,28 @@ export const listing4sellerShein = async (
     // Ảnh sản phẩm chèn ở CUỐI mô tả, gộp vào 1 LẦN PASTE duy nhất → thứ tự cố định:
     // [text + banner AI] → [size guide] → [trust] → [📸 Details Up Close + ảnh variant].
     // (Trước đây paste ảnh riêng bằng Ctrl+End — cursor kẹt ở widget ảnh là chèn sai chỗ.)
+    //
+    // Ảnh SHEIN đều là .webp, mà TikTok TỪ CHỐI webp trong mô tả:
+    //   [Publish Failed] Description image format is incorrect
+    // Ảnh gallery không dính lỗi này vì được tải về FILE rồi đẩy qua ô upload; còn mô tả
+    // thì chèn bằng URL → phải chuyển sang JPEG và host lại, đúng đường mà size-guide và
+    // trust-banner đang đi.
     let descImagesHtml = "";
     if (data.variant_images && data.variant_images.length > 0) {
-      const descImages = selectDescriptionImages(data.variant_images);
-      console.log(`📸 Đã chọn ${descImages.length} ảnh cho mô tả từ ${data.variant_images.length} variants`);
-      if (descImages.length) {
-        descImagesHtml =
-          `<h3><strong>📸 Details Up Close</strong></h3>` +
-          descImages
-            .map((u: string, i: number) => `<figure class="image"><img src="${u}" alt="Product image ${i + 1}"></figure>`)
-            .join("");
+      if (!globalConfig.imgbbApiKeys.length && !r2Configured()) {
+        // Thà thiếu ảnh mô tả còn hơn publish fail cả listing.
+        console.warn("⚠️ Chưa cấu hình imgbb/R2 → bỏ ảnh mô tả (dán thẳng .webp của SHEIN là fail).");
+      } else {
+        const picked = selectDescriptionImages(data.variant_images);
+        console.log(`📸 Đã chọn ${picked.length} ảnh cho mô tả từ ${data.variant_images.length} variants`);
+        const descImages = await hostImagesAsJpeg(picked);
+        if (descImages.length) {
+          descImagesHtml =
+            `<h3><strong>📸 Details Up Close</strong></h3>` +
+            descImages
+              .map((u: string, i: number) => `<figure class="image"><img src="${u}" alt="Product image ${i + 1}"></figure>`)
+              .join("");
+        }
       }
     }
     const descHtml = richHtml + sizeGuideHtml + trustHtml + descImagesHtml;

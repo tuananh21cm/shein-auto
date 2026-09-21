@@ -68,12 +68,13 @@ const parseListingFile = async (
   filePath: string,
   owner: string,
   folder: string,
-  status: ListingStatus
+  status: ListingStatus,
+  /** Đã đọc sẵn (scanHub cần thêm field raw) → khỏi đọc + parse file lần 2. */
+  pre?: { stat: fs.Stats; data: any }
 ): Promise<ListingCard | null> => {
   try {
-    const stat = await fs.stat(filePath);
-    const raw = await fs.readFile(filePath, "utf-8");
-    const data = JSON.parse(raw);
+    const stat = pre?.stat ?? (await fs.stat(filePath));
+    const data = pre?.data ?? JSON.parse(await fs.readFile(filePath, "utf-8"));
     const file = path.basename(filePath);
     const id = buildId(owner, folder, status, file);
 
@@ -164,51 +165,57 @@ const listJsonsIn = async (dir: string): Promise<string[]> => {
   return entries.filter((f) => f.toLowerCase().endsWith(".json"));
 };
 
-const countJsons = async (dir: string): Promise<{ count: number; mtimeMs: number }> => {
-  if (!(await fs.pathExists(dir))) return { count: 0, mtimeMs: 0 };
-  try {
-    const entries = await fs.readdir(dir);
-    const jsons = entries.filter((f) => f.toLowerCase().endsWith(".json"));
-    let mtimeMs = 0;
-    for (const f of jsons) {
-      try {
-        const s = await fs.stat(path.join(dir, f));
-        if (s.mtimeMs > mtimeMs) mtimeMs = s.mtimeMs;
-      } catch {
-        // ignore
-      }
-    }
-    return { count: jsons.length, mtimeMs };
-  } catch {
-    return { count: 0, mtimeMs: 0 };
-  }
+/**
+ * 1 lần readdir + stat SONG SONG → số file .json + file mới nhất, dùng chung cho đếm và ảnh bìa.
+ * Trước đây countJsons và pickCoverImage mỗi cái stat lại TỪNG file, tuần tự (await trong vòng for)
+ * → ~5000 file Success x2 = ~10k lượt chờ đĩa nối đuôi → /listings/progress mất ~2.4s.
+ */
+const dirStats = async (dir: string): Promise<{ count: number; mtimeMs: number; newest: string | null }> => {
+  let jsons: string[];
+  try { jsons = (await fs.readdir(dir)).filter((f) => f.toLowerCase().endsWith(".json")); }
+  catch { return { count: 0, mtimeMs: 0, newest: null }; }
+  const mts = await Promise.all(jsons.map((f) => fs.stat(path.join(dir, f)).then((st) => st.mtimeMs, () => 0)));
+  let i = -1;
+  mts.forEach((m, k) => { if (i < 0 || m > mts[i]) i = k; });
+  return { count: jsons.length, mtimeMs: i < 0 ? 0 : mts[i], newest: i < 0 ? null : path.join(dir, jsons[i]) };
 };
 
-const pickCoverImage = async (folderPath: string): Promise<string | null> => {
-  for (const dir of [folderPath, path.join(folderPath, "Success"), path.join(folderPath, "Fail")]) {
-    if (!(await fs.pathExists(dir))) continue;
-    try {
-      const files = (await fs.readdir(dir)).filter((f) => f.toLowerCase().endsWith(".json"));
-      let newest: { file: string; mtimeMs: number } | null = null;
-      for (const f of files) {
-        const s = await fs.stat(path.join(dir, f));
-        if (!newest || s.mtimeMs > newest.mtimeMs) newest = { file: f, mtimeMs: s.mtimeMs };
-      }
-      if (!newest) continue;
-      const raw = await fs.readFile(path.join(dir, newest.file), "utf-8");
-      const data = JSON.parse(raw);
-      if (Array.isArray(data.product_images) && data.product_images.length > 0) {
-        return data.product_images[0];
-      }
-      if (Array.isArray(data.variant_images) && data.variant_images.length > 0) {
-        const urls = Object.values(data.variant_images[0])[0];
-        if (Array.isArray(urls) && urls.length > 0) return urls[0] as string;
-      }
-    } catch {
-      // ignore
+/** Ảnh bìa folder = ảnh đầu của file mới nhất. Cache theo folder+(file,mtime) → chỉ parse lại khi có file mới. */
+const coverCache = new Map<string, { key: string; img: string | null }>();
+const coverOf = async (folderPath: string, file: string, mtimeMs: number): Promise<string | null> => {
+  const key = `${file}|${mtimeMs}`;
+  const hit = coverCache.get(folderPath);
+  if (hit && hit.key === key) return hit.img;
+  let img: string | null = null;
+  try {
+    const data = JSON.parse(await fs.readFile(file, "utf-8"));
+    if (Array.isArray(data.product_images) && data.product_images.length > 0) img = data.product_images[0];
+    else if (Array.isArray(data.variant_images) && data.variant_images.length > 0) {
+      const urls = Object.values(data.variant_images[0])[0];
+      if (Array.isArray(urls) && urls.length > 0) img = urls[0] as string;
     }
-  }
-  return null;
+  } catch { /* file hỏng → không có ảnh */ }
+  coverCache.set(folderPath, { key, img });
+  return img;
+};
+
+/**
+ * Card đã parse, dùng lại khi file không đổi (mtime+size; Fail tính thêm mtime file .error.log vì
+ * errorMessage đọc từ đó). Trước đây scanListings parse lại TỪNG file, tuần tự, mỗi lần gọi (~1s).
+ * ponytail: entry của file đã chuyển/xoá vẫn nằm lại (vài nghìn card nhỏ) — dọn khi thấy RAM đáng kể.
+ */
+const CARD_BATCH = 100;
+const cardCache = new Map<string, { sig: string; card: ListingCard | null }>();
+const cachedCard = async (fp: string, owner: string, folder: string, status: ListingStatus): Promise<ListingCard | null> => {
+  const st = await fs.stat(fp).catch(() => null);
+  if (!st) return null;
+  let sig = `${st.mtimeMs}:${st.size}:${owner}:${folder}:${status}`;
+  if (status === "fail") sig += `|${(await fs.stat(`${fp}.error.log`).catch(() => null))?.mtimeMs ?? 0}`;
+  const hit = cardCache.get(fp);
+  if (hit && hit.sig === sig) return hit.card;
+  const card = await parseListingFile(fp, owner, folder, status);
+  cardCache.set(fp, { sig, card });
+  return card;
 };
 
 /**
@@ -272,9 +279,11 @@ const scanListingsInDir = async (
           ? folderPath
           : path.join(folderPath, status === "success" ? "Success" : "Fail");
       const files = await listJsonsIn(dir);
-      for (const file of files) {
-        const card = await parseListingFile(path.join(dir, file), username, folderName, status);
-        if (card) cards.push(card);
+      for (let i = 0; i < files.length; i += CARD_BATCH) {
+        const batch = await Promise.all(
+          files.slice(i, i + CARD_BATCH).map((file) => cachedCard(path.join(dir, file), username, folderName, status))
+        );
+        for (const card of batch) if (card) cards.push(card);
       }
     }
   }
@@ -317,7 +326,8 @@ export const scanShopsSummary = async (opts?: {
       folders = entries.filter((n) => !n.startsWith(".") && n !== "Success" && n !== "Fail");
     }
 
-    for (const folderName of folders) {
+    // Các shop độc lập nhau → quét SONG SONG thay vì lần lượt từng shop.
+    await Promise.all(folders.map(async (folderName) => {
       const folderPath = path.join(baseSheinAutoDir, folderName);
       let isDir = false;
       try {
@@ -332,15 +342,19 @@ export const scanShopsSummary = async (opts?: {
             lastActivityMs: 0, cover: null, todayCount: 0, yesterdayCount: 0,
           });
         }
-        continue;
+        return;
       }
 
       const [pending, success, fail] = await Promise.all([
-        countJsons(folderPath),
-        countJsons(path.join(folderPath, "Success")),
-        countJsons(path.join(folderPath, "Fail")),
+        dirStats(folderPath),
+        dirStats(path.join(folderPath, "Success")),
+        dirStats(path.join(folderPath, "Fail")),
       ]);
-      const cover = await pickCoverImage(folderPath);
+      // Giữ thứ tự ưu tiên cũ: file mới nhất của pending → Success → Fail, cái nào ra ảnh trước thì lấy.
+      let cover: string | null = null;
+      for (const d of [pending, success, fail]) {
+        if (d.newest && (cover = await coverOf(folderPath, d.newest, d.mtimeMs))) break;
+      }
 
       summaries.push({
         owner: username,
@@ -354,7 +368,7 @@ export const scanShopsSummary = async (opts?: {
         todayCount: 0,
         yesterdayCount: 0,
       });
-    }
+    }));
   }
 
   // Đếm listing đăng thành công hôm nay / hôm qua theo mốc ngày GMT-7 (cố định)
@@ -492,20 +506,58 @@ export const removeHubMeta = async (files: string[]): Promise<void> => {
   for (const f of files) await fs.remove(metaPathOf(f)).catch(() => {});
 };
 
-/** Quét toàn bộ sản phẩm trong Hub (config.hubDir). Tái dùng parseListingFile. */
-export const scanHub = async (): Promise<HubItem[]> => {
+/**
+ * Chỉ mục Hub trong RAM: mỗi lần gọi chỉ `stat`, và CHỈ parse lại file có chữ ký (mtime+size của
+ * file JSON + mtime sidecar meta) thay đổi. Trước đây mỗi lần gọi parse lại đủ ~4500 file/63MB,
+ * mỗi file ĐỌC 2 LẦN → ~2.7s và khoá event loop tới ~600ms liền (JSON.parse đồng bộ) → cả server
+ * khựng khi mở tab Hub/Ngách. Không cần hook xoá cache: thêm/xoá file đổi readdir, list sang shop
+ * đổi mtime sidecar → tự bắt được.
+ * ponytail: cache sống trong tiến trình; nhiều máy dùng chung HUB_DIR vẫn đúng vì so theo mtime.
+ */
+const hubIndex = new Map<string, { sig: string; item: HubItem | null }>();
+let hubInflight: Promise<HubItem[]> | null = null;
+const HUB_BATCH = 100; // nhường event loop giữa các lô → lần quét lạnh không khoá server liền mạch
+
+/** Quét toàn bộ sản phẩm trong Hub (config.hubDir). Người gọi đồng thời dùng chung 1 lần quét. */
+export const scanHub = (): Promise<HubItem[]> =>
+  (hubInflight ??= scanHubIndexed().finally(() => { hubInflight = null; }));
+
+const scanHubIndexed = async (): Promise<HubItem[]> => {
   const dir = config.hubDir;
-  if (!(await fs.pathExists(dir))) return [];
-  const files = (await fs.readdir(dir)).filter(
-    (f) => f.toLowerCase().endsWith(".json") && !isHubMetaFile(f)
-  );
-  const items = await Promise.all(
-    files.map(async (f) => {
-      const card = await parseListingFile(path.join(dir, f), "hub", "hub", "success");
+  if (!(await fs.pathExists(dir))) { hubIndex.clear(); return []; }
+  const all = await fs.readdir(dir);
+  const metas = new Set(all.filter(isHubMetaFile));
+  const files = all.filter((f) => f.toLowerCase().endsWith(".json") && !isHubMetaFile(f));
+  const alive = new Set(files);
+  for (const k of hubIndex.keys()) if (!alive.has(k)) hubIndex.delete(k);
+
+  const out: HubItem[] = [];
+  for (let i = 0; i < files.length; i += HUB_BATCH) {
+    const batch = await Promise.all(files.slice(i, i + HUB_BATCH).map((f) => hubEntry(dir, f, metas)));
+    for (const it of batch) if (it) out.push(it);
+    await new Promise((r) => setImmediate(r));
+  }
+  return out.sort((a, b) => b.mtimeMs - a.mtimeMs);
+};
+
+const hubEntry = async (dir: string, f: string, metas: Set<string>): Promise<HubItem | null> => {
+  const stat = await fs.stat(path.join(dir, f)).catch(() => null);
+  if (!stat) return null;
+  const metaStat = metas.has(f + HUB_META_SUFFIX) ? await fs.stat(metaPathOf(f)).catch(() => null) : null;
+  const sig = `${stat.mtimeMs}:${stat.size}|${metaStat?.mtimeMs ?? 0}`;
+  const hit = hubIndex.get(f);
+  if (hit && hit.sig === sig) return hit.item;
+  const item = await buildHubItem(dir, f, stat);
+  hubIndex.set(f, { sig, item });
+  return item;
+};
+
+const buildHubItem = async (dir: string, f: string, stat: fs.Stats): Promise<HubItem | null> => {
+      const raw = await fs.readJson(path.join(dir, f)).catch(() => null);
+      if (!raw) return null;
+      const card = await parseListingFile(path.join(dir, f), "hub", "hub", "success", { stat, data: raw });
       if (!card) return null;
       const m = await readOneMeta(f);
-      // niche đã suy trong parseListingFile (card.niche); raw chỉ để lấy addedBy/url.
-      const raw = await fs.readJson(path.join(dir, f)).catch(() => ({} as any));
       return {
         id: f,
         file: f,
@@ -525,9 +577,6 @@ export const scanHub = async (): Promise<HubItem[]> => {
         listedShops: m ? m.shops : [],
         lastListedMs: m ? m.lastAt : 0,
       } as HubItem;
-    })
-  );
-  return items.filter((x): x is HubItem => x !== null).sort((a, b) => b.mtimeMs - a.mtimeMs);
 };
 
 /** Đường dẫn tuyệt đối 1 file hub (guard traversal). null nếu tên không hợp lệ. */

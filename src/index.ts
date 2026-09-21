@@ -48,6 +48,9 @@ const bootstrap = async () => {
 
   schedulePromotionCron(); // cào promotion 4Seller (Flash/Discount) mỗi 2 giờ
   scheduleCookieAutoRefresh(); // cookie hết hạn → tự login lại (account đã lưu user/pass)
+
+  // Làm nóng chỉ mục Hub (quét lạnh ~1s) → lần đầu mở tab Hub/Ngách không phải chờ.
+  import("./state/listingScan").then((m) => m.scanHub()).catch(() => {});
 };
 bootstrap().catch((err) => {
   console.error("❌ Bootstrap failed:", err?.message ?? err);

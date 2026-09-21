@@ -18,6 +18,7 @@ import {
 import { config } from "./config";
 import { workerState } from "./state/workerState";
 import { SwrCache } from "./utils/swrCache";
+import { gzipJson } from "./utils/gzipJson";
 import { refreshQueueSnapshot } from "./state/queueState";
 import { historyStore } from "./state/historyStore";
 import { scanListings, scanShopsSummary, resolveListingPath, scanHub, resolveHubFile, recordHubListings, removeHubMeta, isHubMetaFile, ListingStatus } from "./state/listingScan";
@@ -102,6 +103,8 @@ export const startAdminServer = async () => {
     return res.redirect("/admin/login");
   };
   app.use(requireAuth);
+  // Nén JSON lớn (tab Hub ~3.4MB → ~770KB) — sau requireAuth để không nén trang login/redirect.
+  app.use("/admin/api", gzipJson);
   // Ảnh preview tính năng listing (Settings → card shop) — sau requireAuth nên cần login
   app.use("/admin/previews", express.static(path.join(__dirname, "public", "previews")));
 

@@ -125,7 +125,7 @@ export const startAdminServer = async () => {
   });
 
   // Route theo màn: /admin/video, /admin/hub... → cùng SPA admin.html (deep-link + refresh giữ màn).
-  const SPA_VIEWS = new Set(["dashboard", "listings", "hub", "video", "niche", "settings", "promotions", "returns", "cookie", "domain"]);
+  const SPA_VIEWS = new Set(["dashboard", "listings", "hub", "video", "niche", "settings", "promotions", "returns", "ops", "cookie", "domain"]);
   app.get("/admin/:view", (req, res, next) => {
     if (!SPA_VIEWS.has(req.params.view)) return next();
     if (req.session && (req.session as any).user) return res.sendFile(path.join(__dirname, "public", "admin.html"));
@@ -1046,6 +1046,32 @@ export const startAdminServer = async () => {
       const busy = /Đang quét/.test(err?.message ?? "");
       res.status(busy ? 409 : 500).json({ error: err?.message ?? "Lỗi quét return/refund" });
     }
+  });
+
+  // ── Vận hành (Đợt 1): Sức khoẻ shop + Lãi lỗ SKU. Ưu tiên CRM, không có thì dữ liệu local ──
+  app.get("/admin/api/ops/health", async (req, res) => {
+    try {
+      const { getShopHealth, crmSettings } = await import("./core/opsBoard");
+      const r = await getShopHealth(req.query.refresh === "1");
+      res.json({ ok: true, ...r, crmEnabled: crmSettings().enabled });
+    } catch (err: any) { res.status(500).json({ error: err?.message ?? "Lỗi sức khoẻ shop" }); }
+  });
+
+  app.get("/admin/api/ops/sku", async (_req, res) => {
+    try {
+      const { getSkuPnl } = await import("./core/opsBoard");
+      res.json({ ok: true, ...getSkuPnl() });
+    } catch (err: any) { res.status(500).json({ error: err?.message ?? "Lỗi lãi lỗ SKU" }); }
+  });
+
+  app.post("/admin/api/ops/sku/refresh", async (req, res) => {
+    try {
+      const sessionUser = (req.session as any).user as SessionUser;
+      if (sessionUser.role === "viewer") return res.status(403).json({ error: "Viewer không thể làm mới" });
+      const { refreshSkuFromCrm } = await import("./core/opsBoard");
+      const n = await refreshSkuFromCrm();
+      res.json({ ok: true, count: n });
+    } catch (err: any) { res.status(500).json({ error: err?.message ?? "Lỗi kéo dữ liệu CRM" }); }
   });
 
   // ── Cấu hình listing THEO SHOP (config/shop-listing.json) ──

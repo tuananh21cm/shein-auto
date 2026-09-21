@@ -51,6 +51,7 @@ const bootstrap = async () => {
 
   // Làm nóng chỉ mục Hub (quét lạnh ~1s) → lần đầu mở tab Hub/Ngách không phải chờ.
   import("./state/listingScan").then((m) => m.scanHub()).catch(() => {});
+  import("./core/opsBoard").then((m) => m.getShopHealth()).catch(() => {}); // sức khoẻ shop: dựng lạnh ~2s
 };
 bootstrap().catch((err) => {
   console.error("❌ Bootstrap failed:", err?.message ?? err);

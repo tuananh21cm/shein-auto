@@ -547,6 +547,9 @@
     <div class="nav-item" data-view="returns">
       <span class="ico">↩️</span><span>Return / Refund</span>
     </div>
+    <div class="nav-item" data-view="ops">
+      <span class="ico">📈</span><span>Vận hành</span>
+    </div>
     <div class="nav-item" data-view="video">
       <span class="ico">🎬</span><span>Video</span>
     </div>
@@ -1079,6 +1082,27 @@
       <div class="card"><div id="retTableWrap"><div class="empty">Chưa có data — bấm "Quét mới"</div></div></div>
     </section>
 
+    <section class="view" id="view-ops">
+      <div class="page-head">
+        <div>
+          <h1>📈 Vận hành</h1>
+          <div class="subtitle">Shop nào đang gặp nguy, tiền đang bị giữ ở đâu, SKU nào lãi hay lỗ. Chỉ đọc.</div>
+        </div>
+        <div class="seg">
+          <button id="opsTabHealth" class="seg-btn active" onclick="setOpsTab('health')">🩺 Sức khoẻ shop</button>
+          <button id="opsTabSku" class="seg-btn" onclick="setOpsTab('sku')">💰 Lãi lỗ SKU</button>
+        </div>
+      </div>
+      <div id="opsHealth">
+        <div id="opsHealthHead"></div>
+        <div class="card"><div id="opsHealthTable"><div class="empty">Đang tải…</div></div></div>
+      </div>
+      <div id="opsSku" hidden>
+        <div id="opsSkuHead"></div>
+        <div class="card"><div id="opsSkuTable"><div class="empty">Đang tải…</div></div></div>
+      </div>
+    </section>
+
     <!-- ───── COOKIE (đa tài khoản 4Seller — port từ main) ───── -->
     <!-- ───── DOMAIN (Cloudflare Tunnel) ───── -->
     <section class="view" id="view-domain">
@@ -1273,6 +1297,7 @@ function goToView(view, push) {
   if (view === "settings") { loadSettings(); loadBrands(); loadPricing(); loadImgbbStatus(); loadMyToken(); }
   if (view === "promotions") loadPromotions();
   if (view === "returns") loadReturns();
+  if (view === "ops") loadOps();
   if (view === "cookie") loadCookieStatus();
   closeNav(); // đóng drawer sau khi chọn (mobile)
 }
@@ -4937,6 +4962,183 @@ function renderReturns() {
         ${td(`<code style="font-size:0.75rem;">${escapeHtml(x.orderId)}</code>`)}
       </tr>`;
     }).join("")}</tbody></table></div>`;
+}
+
+// ─── Vận hành (Đợt 1): Sức khoẻ shop + Lãi lỗ SKU ───────────────────────
+// Chỉ tải khi mở tab, KHÔNG tự poll. Bảng ≤ 500 dòng, SKU hiện 100 dòng/lần ("Xem thêm") → không lag.
+let _opsTab = "health", _opsHealth = null, _opsSku = null;
+const opsF = { lvl: "", q: "", skuQ: "", skuTier: "", skuRisk: "", skuSort: "profit", skuShown: 100 };
+const OPS_LVL = {
+  red: { kpi: "fail", label: "Nguy hiểm", color: "var(--danger)" },
+  yellow: { kpi: "pending", label: "Cần chú ý", color: "var(--warn)" },
+  green: { kpi: "live", label: "Ổn", color: "var(--success)" },
+  none: { kpi: "unc", label: "Chưa có dữ liệu", color: "var(--text-mute)" },
+};
+const opsAgo = (ms) => {
+  if (!ms) return "chưa có";
+  const d = (Date.now() - ms) / 864e5;
+  return d < 1 ? `${Math.max(1, Math.round(d * 24))} giờ trước` : `${Math.round(d)} ngày trước`;
+};
+const opsStale = (ms, days) => (ms && (Date.now() - ms) / 864e5 > days ? "color:var(--warn); font-weight:600;" : "");
+const opsMoney = (v, dec = 0) => (v == null ? '<span style="color:var(--text-mute);">—</span>' : "$" + Number(v).toLocaleString("en-US", { minimumFractionDigits: dec, maximumFractionDigits: dec }));
+const opsDash = (v) => (v == null || v === "" ? '<span style="color:var(--text-mute);">—</span>' : escapeHtml(String(v)));
+const opsChip = (color, label) => `<span style="display:inline-flex; align-items:center; gap:6px; font-size:0.78rem; font-weight:600; color:${color}; white-space:nowrap;"><span style="width:8px; height:8px; border-radius:50%; background:${color}; flex:none;"></span>${escapeHtml(label)}</span>`;
+const opsTh = (t, right) => `<th style="text-align:${right ? "right" : "left"}; padding:8px 10px; font-size:0.75rem; color:var(--text-mute); font-weight:600; white-space:nowrap;">${t}</th>`;
+const opsTd = (t, extra = "") => `<td style="padding:8px 10px; border-top:1px solid var(--border); font-size:0.83rem; vertical-align:top; ${extra}">${t}</td>`;
+const opsNum = "text-align:right; white-space:nowrap; font-variant-numeric:tabular-nums;";
+
+function loadOps() { setOpsTab(_opsTab); }
+function setOpsTab(t) {
+  _opsTab = t;
+  $("#opsTabHealth").classList.toggle("active", t === "health");
+  $("#opsTabSku").classList.toggle("active", t === "sku");
+  $("#opsHealth").hidden = t !== "health";
+  $("#opsSku").hidden = t !== "sku";
+  if (t === "health" && !_opsHealth) loadOpsHealth();
+  if (t === "sku" && !_opsSku) loadOpsSku();
+}
+
+/* ── Sức khoẻ shop ── */
+async function loadOpsHealth(refresh) {
+  $("#opsHealthTable").innerHTML = '<div class="empty">⏳ Đang tải sức khoẻ shop…</div>';
+  try {
+    const d = await (await fetch("/admin/api/ops/health" + (refresh ? "?refresh=1" : ""))).json();
+    if (d.error) throw new Error(d.error);
+    _opsHealth = d;
+    renderOpsHealth();
+  } catch (err) {
+    $("#opsHealthTable").innerHTML = `<div class="empty">Lỗi: ${escapeHtml(err.message)}</div>`;
+  }
+}
+function renderOpsHealth() {
+  const d = _opsHealth;
+  if (!d) return;
+  const cnt = { red: 0, yellow: 0, green: 0, none: 0 };
+  d.rows.forEach((r) => cnt[r.level]++);
+  const hold = d.rows.reduce((s, r) => s + (r.onHold || 0), 0);
+  const newest = Math.max(0, ...d.rows.map((r) => (r.updatedAt ? Date.parse(r.updatedAt) : 0)));
+  const kpi = (lvl) => {
+    const L = OPS_LVL[lvl], on = opsF.lvl === lvl;
+    return `<div class="kpi ${L.kpi}" role="button" tabindex="0" onkeydown="if(event.key==='Enter')this.click()" title="Bấm để lọc" style="cursor:pointer;${on ? " outline:2px solid var(--accent);" : ""}" onclick="opsF.lvl=opsF.lvl==='${lvl}'?'':'${lvl}'; renderOpsHealth()"><div class="kpi-v">${cnt[lvl]}</div><div class="kpi-k">${L.label}</div></div>`;
+  };
+  $("#opsHealthHead").innerHTML = `
+    <div class="kpis" style="margin-bottom:10px;">
+      ${kpi("red")}${kpi("yellow")}${kpi("green")}${kpi("none")}
+      <div class="kpi"><div class="kpi-v">${opsMoney(hold)}</div><div class="kpi-k">Tiền đang bị giữ (on hold)</div></div>
+    </div>
+    <div class="filter-bar" style="align-items:center;">
+      <input placeholder="🔍 Tìm shop, tên TikTok, mã shop…" value="${escapeHtml(opsF.q)}" oninput="opsF.q=this.value; renderOpsHealthTable()">
+      ${opsF.lvl ? `<button class="btn btn-ghost" onclick="opsF.lvl=''; renderOpsHealth()">✕ Bỏ lọc "${OPS_LVL[opsF.lvl].label}"</button>` : ""}
+      <span style="font-size:0.8rem; color:var(--text-mute); ${opsStale(newest, 3)}">Nguồn: ${d.source === "crm" ? "CRM KBT" : "snapshot addon TikCheck"} · dữ liệu mới nhất ${opsAgo(newest)}${d.crmError ? ` · ⚠️ CRM lỗi: ${escapeHtml(d.crmError)}` : ""}${d.crmEnabled ? "" : " · chưa nối CRM"}</span>
+      <button class="btn btn-ghost" style="margin-left:auto;" onclick="loadOpsHealth(true)">🔄 Làm mới</button>
+    </div>`;
+  renderOpsHealthTable();
+}
+function renderOpsHealthTable() {
+  const d = _opsHealth;
+  const q = opsF.q.trim().toLowerCase();
+  const rows = d.rows.filter((r) => (!opsF.lvl || r.level === opsF.lvl) && (!q || [r.shop, r.tiktokName, r.shopCode].some((x) => String(x || "").toLowerCase().includes(q))));
+  if (!rows.length) { $("#opsHealthTable").innerHTML = '<div class="empty">Không có shop nào khớp bộ lọc</div>'; return; }
+  $("#opsHealthTable").innerHTML = `<div style="overflow-x:auto;"><table style="width:100%; border-collapse:collapse;">
+    <thead><tr>${opsTh("Mức")}${opsTh("Shop")}${opsTh("Trạng thái TikTok")}${opsTh("On hold", 1)}${opsTh("Net", 1)}${opsTh("Reserve", 1)}${opsTh("SP bị hạn chế", 1)}${opsTh("Listing active", 1)}${opsTh("Đơn/ngày", 1)}${opsTh("Cập nhật")}</tr></thead>
+    <tbody>${rows.map((r) => {
+      const L = OPS_LVL[r.level], upd = r.updatedAt ? Date.parse(r.updatedAt) : 0;
+      return `<tr>
+        ${opsTd(opsChip(L.color, L.label))}
+        ${opsTd(`<div style="font-weight:600;">${escapeHtml(r.shop)}</div><div style="color:var(--text-mute); font-size:0.75rem;">${escapeHtml(r.account)}${r.tiktokName ? " · " + escapeHtml(r.tiktokName) : ""}${r.shopCode ? ` · <code>${escapeHtml(r.shopCode)}</code>` : ""}</div>`)}
+        ${opsTd(`${opsDash(r.status)}${r.severity ? `<div style="color:var(--text-mute); font-size:0.75rem;">severity: ${escapeHtml(r.severity)}</div>` : ""}`, "min-width:160px;")}
+        ${opsTd(opsMoney(r.onHold), opsNum)}
+        ${opsTd(opsMoney(r.net), opsNum)}
+        ${opsTd(opsMoney(r.reserve), opsNum)}
+        ${opsTd(opsDash(r.restricted), opsNum + (r.restricted > 0 ? " color:var(--warn); font-weight:600;" : ""))}
+        ${opsTd(opsDash(r.activeListings), opsNum)}
+        ${opsTd(opsDash(r.dailyOrders), opsNum)}
+        ${opsTd(opsAgo(upd), "white-space:nowrap; font-size:0.78rem; " + (opsStale(upd, 3) || "color:var(--text-mute);"))}
+      </tr>`;
+    }).join("")}</tbody></table></div>`;
+}
+
+/* ── Lãi lỗ SKU ── */
+async function loadOpsSku() {
+  $("#opsSkuTable").innerHTML = '<div class="empty">⏳ Đang tải lãi lỗ SKU…</div>';
+  try {
+    const d = await (await fetch("/admin/api/ops/sku")).json();
+    if (d.error) throw new Error(d.error);
+    _opsSku = d;
+    renderOpsSku();
+  } catch (err) {
+    $("#opsSkuTable").innerHTML = `<div class="empty">Lỗi: ${escapeHtml(err.message)}</div>`;
+  }
+}
+async function refreshOpsSku(btn) {
+  btn.disabled = true; btn.textContent = "⏳ Đang kéo từ CRM…";
+  try {
+    const res = await fetch("/admin/api/ops/sku/refresh", { method: "POST" });
+    const d = await res.json();
+    if (!res.ok) throw new Error(d.error);
+    toast(`✓ Đã kéo ${d.count} SKU từ CRM`);
+    await loadOpsSku();
+  } catch (err) {
+    toast(err.message, "error");
+    btn.disabled = false; btn.textContent = "🔄 Kéo lại từ CRM";
+  }
+}
+const OPS_RISK = { safe: ["var(--success)", "An toàn"], medium: ["var(--warn)", "Trung bình"], high: ["var(--danger)", "Cao"] };
+const opsProfit = (r) => (r.margin_usd == null ? null : r.margin_usd * (r.orders || 0));
+function renderOpsSku() {
+  const d = _opsSku;
+  if (!d) return;
+  const all = d.rows;
+  const totalOrders = all.reduce((s, r) => s + (r.orders || 0), 0);
+  const totalProfit = all.reduce((s, r) => s + (opsProfit(r) || 0), 0);
+  const highRisk = all.filter((r) => r.risk === "high").length;
+  const tiers = [...new Set(all.map((r) => r.tier).filter(Boolean))].sort();
+  const sel = (val, cur, label) => `<option value="${escapeHtml(val)}" ${val === cur ? "selected" : ""}>${escapeHtml(label)}</option>`;
+  $("#opsSkuHead").innerHTML = `
+    <div class="kpis" style="margin-bottom:10px;">
+      <div class="kpi"><div class="kpi-v">${all.length}</div><div class="kpi-k">SKU có đơn</div></div>
+      <div class="kpi live"><div class="kpi-v">${totalOrders.toLocaleString("en-US")}</div><div class="kpi-k">Tổng đơn</div></div>
+      <div class="kpi live"><div class="kpi-v">${opsMoney(totalProfit)}</div><div class="kpi-k">Lãi ước tính (lãi/đơn × đơn)</div></div>
+      <div class="kpi fail" role="button" tabindex="0" onkeydown="if(event.key==='Enter')this.click()" title="Bấm để lọc" style="cursor:pointer;${opsF.skuRisk === "high" ? " outline:2px solid var(--accent);" : ""}" onclick="opsF.skuRisk=opsF.skuRisk==='high'?'':'high'; opsF.skuShown=100; renderOpsSku()"><div class="kpi-v">${highRisk}</div><div class="kpi-k">SKU refund rủi ro cao</div></div>
+    </div>
+    <div class="filter-bar" style="align-items:center;">
+      <input placeholder="🔍 Tìm tên SP, goods_id, ngách…" value="${escapeHtml(opsF.skuQ)}" oninput="opsF.skuQ=this.value; opsF.skuShown=100; renderOpsSkuTable()">
+      <select onchange="opsF.skuTier=this.value; opsF.skuShown=100; renderOpsSkuTable()">${sel("", opsF.skuTier, "Mọi tier")}${tiers.map((t) => sel(t, opsF.skuTier, t)).join("")}</select>
+      <select onchange="opsF.skuRisk=this.value; opsF.skuShown=100; renderOpsSku()">${sel("", opsF.skuRisk, "Mọi mức rủi ro")}${sel("safe", opsF.skuRisk, "Rủi ro: An toàn")}${sel("medium", opsF.skuRisk, "Rủi ro: Trung bình")}${sel("high", opsF.skuRisk, "Rủi ro: Cao")}</select>
+      <select onchange="opsF.skuSort=this.value; renderOpsSkuTable()">${sel("profit", opsF.skuSort, "Xếp: lãi tổng")}${sel("orders", opsF.skuSort, "Xếp: số đơn")}${sel("margin", opsF.skuSort, "Xếp: % lãi")}${sel("refund", opsF.skuSort, "Xếp: % refund")}</select>
+      <span style="font-size:0.8rem; color:var(--text-mute); ${opsStale(d.fetchedAt, 7)}">Dữ liệu CRM · cửa sổ ${d.windowDays ?? "?"} ngày · lấy ${opsAgo(d.fetchedAt)}</span>
+      <button class="btn btn-ghost" style="margin-left:auto;" ${d.crmEnabled ? "" : 'disabled title="Chưa nối CRM: cần đặt CRM_BRIDGE_SECRET trong .env"'} onclick="refreshOpsSku(this)">🔄 Kéo lại từ CRM</button>
+    </div>`;
+  renderOpsSkuTable();
+}
+function renderOpsSkuTable() {
+  const d = _opsSku;
+  const q = opsF.skuQ.trim().toLowerCase();
+  const key = { profit: (r) => opsProfit(r) ?? -Infinity, orders: (r) => r.orders || 0, margin: (r) => r.margin_pct ?? -Infinity, refund: (r) => r.effective_refund_rate_pct ?? -Infinity }[opsF.skuSort];
+  const rows = d.rows
+    .filter((r) => (!opsF.skuTier || r.tier === opsF.skuTier) && (!opsF.skuRisk || r.risk === opsF.skuRisk) && (!q || [r.title, r.goods_id, r.niche].some((x) => String(x || "").toLowerCase().includes(q))))
+    .sort((a, b) => key(b) - key(a));
+  if (!rows.length) { $("#opsSkuTable").innerHTML = '<div class="empty">Không có SKU nào khớp bộ lọc</div>'; return; }
+  const shown = rows.slice(0, opsF.skuShown);
+  $("#opsSkuTable").innerHTML = `<div style="overflow-x:auto;"><table style="width:100%; border-collapse:collapse;">
+    <thead><tr>${opsTh("Sản phẩm")}${opsTh("Tier")}${opsTh("Rủi ro refund")}${opsTh("Đơn", 1)}${opsTh("Đơn/tháng", 1)}${opsTh("Giá bán TB", 1)}${opsTh("Giá vốn", 1)}${opsTh("Lãi/đơn", 1)}${opsTh("Lãi tổng", 1)}${opsTh("Shop", 1)}</tr></thead>
+    <tbody>${shown.map((r) => {
+      const R = OPS_RISK[r.risk] || ["var(--text-mute)", r.risk || "—"];
+      const shops = Array.isArray(r.shops) ? r.shops : [];
+      return `<tr>
+        ${opsTd(`<div style="max-width:360px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:600;" title="${escapeHtml(r.title || "")}">${escapeHtml(r.title || "")}</div><div style="color:var(--text-mute); font-size:0.75rem;"><code>${escapeHtml(r.goods_id)}</code>${r.niche ? " · " + escapeHtml(r.niche) : ""}${r.has_oos ? ' · <span style="color:var(--warn);">có màu/size hết hàng</span>' : ""}</div>`)}
+        ${opsTd(opsDash(r.tier), "white-space:nowrap;")}
+        ${opsTd(`${opsChip(R[0], R[1])}<div style="color:var(--text-mute); font-size:0.75rem;">${r.effective_refund_rate_pct != null ? r.effective_refund_rate_pct.toFixed(1) + "% · " : ""}${r.refund_count || 0} refund</div>`)}
+        ${opsTd(`${(r.orders || 0).toLocaleString("en-US")}${r.orders_prev ? `<div style="color:var(--text-mute); font-size:0.75rem;">kỳ trước ${r.orders_prev}</div>` : ""}`, opsNum)}
+        ${opsTd(r.monthly_velocity != null ? r.monthly_velocity.toFixed(1) : opsDash(null), opsNum)}
+        ${opsTd(opsMoney(r.revenue_avg, 2), opsNum)}
+        ${opsTd(opsMoney(r.fulfill_price, 2), opsNum)}
+        ${opsTd(`${opsMoney(r.margin_usd, 2)}${r.margin_pct != null ? `<div style="color:var(--text-mute); font-size:0.75rem;">${r.margin_pct.toFixed(0)}%</div>` : ""}`, opsNum)}
+        ${opsTd(`<b>${opsMoney(opsProfit(r))}</b>`, opsNum)}
+        ${opsTd(`<span title="${escapeHtml(shops.join(", "))}">${shops.length}</span>`, opsNum)}
+      </tr>`;
+    }).join("")}</tbody></table></div>
+    ${rows.length > shown.length ? `<div style="text-align:center; padding:12px;"><button class="btn btn-ghost" onclick="opsF.skuShown+=100; renderOpsSkuTable()">Xem thêm (${rows.length - shown.length} SKU nữa)</button></div>` : `<div style="text-align:center; padding:10px; font-size:0.78rem; color:var(--text-mute);">${rows.length} SKU</div>`}`;
 }
 
 async function loadPromotions() {

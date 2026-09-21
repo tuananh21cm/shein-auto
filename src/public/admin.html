@@ -1849,17 +1849,34 @@ function connectSSE() {
 }
 
 const MAX_LOG_LINES = 500;
+// Gom log theo KHUNG HÌNH: server đẩy mọi console.log qua SSE (lúc cào/đăng tới hàng chục dòng/giây).
+// Trước đây MỖI dòng chèn DOM + đặt scrollTop = scrollHeight → ép trình duyệt tính lại layout từng
+// dòng → cuộn giật. Nay chèn 1 lần/khung hình, và chỉ tự cuộn khi đang đứng ở cuối khung log.
+let _logBuf = [];
+let _logRaf = 0;
 function appendLog(entry) {
-  const panel = $("#logPanel");
-  const ts = new Date(entry.ts).toLocaleTimeString();
-  const line = document.createElement("div");
-  line.className = `log-line ${entry.level}`;
-  line.innerHTML = `<span class="ts">${ts}</span>${escapeHtml(entry.message)}`;
-  panel.appendChild(line);
-  while (panel.children.length > MAX_LOG_LINES) panel.removeChild(panel.firstChild);
-  panel.scrollTop = panel.scrollHeight;
+  _logBuf.push(entry);
+  if (_logBuf.length > MAX_LOG_LINES) _logBuf.splice(0, _logBuf.length - MAX_LOG_LINES);
+  if (!_logRaf) _logRaf = requestAnimationFrame(flushLogs);
 }
-const clearLogs = () => $("#logPanel").innerHTML = "";
+function flushLogs() {
+  _logRaf = 0;
+  const panel = $("#logPanel");
+  if (!panel) { _logBuf = []; return; }
+  const atBottom = panel.scrollHeight - panel.scrollTop - panel.clientHeight < 40;
+  const frag = document.createDocumentFragment();
+  for (const entry of _logBuf) {
+    const line = document.createElement("div");
+    line.className = `log-line ${entry.level}`;
+    line.innerHTML = `<span class="ts">${new Date(entry.ts).toLocaleTimeString()}</span>${escapeHtml(entry.message)}`;
+    frag.appendChild(line);
+  }
+  _logBuf = [];
+  panel.appendChild(frag);
+  for (let extra = panel.children.length - MAX_LOG_LINES; extra > 0; extra--) panel.removeChild(panel.firstChild);
+  if (atBottom) panel.scrollTop = panel.scrollHeight;
+}
+const clearLogs = () => { _logBuf = []; $("#logPanel").innerHTML = ""; };
 
 // ─── History ──────────────────────────────────────────
 async function loadHistory() {
@@ -2026,13 +2043,13 @@ function renderQueueProgress(d) {
 
   const slots = Array.from({ length: concurrency }, (_, i) => `<span class="qp-slot${i < inProgress ? " on" : ""}"></span>`).join("");
   const jobs = active.length
-    ? active.map((j) => `<span class="qp-job"><span class="qp-dot"></span>${escapeHtml(nicheCleanShop(j.profile))} <b>${fmtElapsed(now - j.startedAt)}</b></span>`).join("")
+    ? active.map((j) => `<span class="qp-job"><span class="qp-dot"></span>${escapeHtml(nicheCleanShop(j.profile))} <b class="qp-el" data-start="${Number(j.startedAt) || 0}">${fmtElapsed(now - j.startedAt)}</b></span>`).join("")
     : '<span class="qp-idle">Không có listing nào đang chạy</span>';
   const maxP = Math.max(1, ...folders.map((f) => f.pendingCount));
   const topPending = folders.slice().sort((a, b) => b.pendingCount - a.pendingCount).slice(0, 6)
     .map((f) => `<div class="qp-prow"><span class="qp-pname" title="${escapeHtml(f.name)}">${escapeHtml(nicheCleanShop(f.name))}</span><span class="qp-pbar"><span style="width:${Math.round(f.pendingCount / maxP * 100)}%"></span></span><b>${f.pendingCount}</b></div>`).join("");
 
-  el.innerHTML = `
+  const html = `
     <div class="card qp-card">
       <div class="qp-head">
         <h3 style="margin:0;">🚀 Queue listing ${inProgress ? '<span class="qp-live">● live</span>' : ''}</h3>
@@ -2048,10 +2065,21 @@ function renderQueueProgress(d) {
       ${topPending ? `<div class="qp-ptitle">Chờ nhiều nhất</div><div class="qp-pending">${topPending}</div>` : ''}
     </div>`;
 
+  // Chỉ dựng lại thẻ khi NỘI DUNG đổi (bỏ phần giây đang chạy khỏi chữ ký). Trước đây vòng 1s và
+  // mỗi sự kiện SSE worker/queue đều thay nguyên innerHTML của thẻ → trang giật khi đang cuộn.
+  const sig = html.replace(/<b class="qp-el"[^>]*>[^<]*<\/b>/g, "");
+  if (sig !== el._qpSig) { el.innerHTML = html; el._qpSig = sig; }
+
   clearInterval(_qpTick); _qpTick = null;
   if (inProgress && document.getElementById("view-listings")?.classList.contains("active")) {
-    _qpTick = setInterval(() => renderQueueProgress(_lastDashConfig), 1000);
+    _qpTick = setInterval(tickQueueElapsed, 1000);
   }
+}
+// Vòng 1s: chỉ sửa chữ "đã chạy Xs" của từng job, không đụng phần còn lại của thẻ.
+function tickQueueElapsed() {
+  if (!document.getElementById("view-listings")?.classList.contains("active")) { clearInterval(_qpTick); _qpTick = null; return; }
+  const now = Date.now();
+  document.querySelectorAll("#queueProgress .qp-el").forEach((b) => { b.textContent = fmtElapsed(now - Number(b.dataset.start)); });
 }
 
 // ── Dashboard tiến độ đăng — target 100 listing/shop (TẤT CẢ shop 4Seller, vai seller) ──

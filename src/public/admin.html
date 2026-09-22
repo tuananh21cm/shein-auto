@@ -425,6 +425,9 @@
     .ops-bar { height: 12px; border-radius: 0 4px 4px 0; background: var(--accent); min-width: 2px; }
     .ops-track:hover .ops-bar { filter: brightness(1.2); }
     .ops-val { font-variant-numeric: tabular-nums; color: var(--text); white-space: nowrap; text-align: right; }
+    .ops-meter { height: 12px; background: color-mix(in srgb, var(--accent) 18%, transparent); border-radius: 4px; overflow: hidden; }
+    .ops-meter > i { display: block; height: 100%; background: var(--accent); border-radius: 0 4px 4px 0; }
+    .ops-hero { font-size: 2.6rem; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; color: var(--text); }
     .snc-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(305px, 1fr)); gap: 14px; }
     .snc-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 14px; padding: 14px 16px; }
     .snc-head { font-weight: 700; font-size: 0.92rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -5371,7 +5374,7 @@ function renderPromotions(r) {
   const rel = (ms) => {
     if (!ms) return "—";
     const h = Math.round((ms - now) / 3600e3);
-    if (h < -1) return `${-h}h trước`;
+    if (h < -1) return -h < 48 ? `${-h}h trước` : `${Math.round(-h / 24)} ngày trước`; // "766h trước" khó đọc
     if (h <= 0) return "vừa xong";
     return h < 48 ? `còn ${h}h` : `còn ${Math.round(h / 24)} ngày`;
   };
@@ -5427,21 +5430,23 @@ function renderPromotions(r) {
       ${!noDiscount.length && !uncoveredShops.length && !discountSoon.length ? '<div class="empty" style="padding:12px;">✓ Discount phủ đủ mọi shop</div>' : ""}
     </div>`;
 
-  const uncRows = rows.filter((x) => (x.uncoveredProducts ?? 0) > 0 || x.discountOngoing === 0)
-    .sort((a, b) => (b.uncoveredProducts ?? 0) - (a.uncoveredProducts ?? 0));
-  const maxUnc = Math.max(1, ...uncRows.map((x) => x.uncoveredProducts ?? 0));
-  const chart = uncRows.length ? `
-    <div class="card" style="margin-top:14px;">
-      <h3 style="margin:0 0 10px;">📦 Sản phẩm chưa chạy discount theo shop</h3>
-      <div style="display:flex; flex-direction:column; gap:6px;">
-        ${uncRows.map((x) => `
-          <div class="bar-row" style="cursor:default;">
-            <div class="bn" title="${escapeHtml(x.shop)}">${escapeHtml(x.shop.replace(/^T[AN] Scan\s*/i, "").slice(0, 18))}</div>
-            <div class="bar-track"><div class="bar-seg" style="width:${((x.uncoveredProducts ?? 0) / maxUnc * 100).toFixed(1)}%;background:var(--warn);" title="${x.uncoveredProducts} sp"></div></div>
-            <div class="bt">${x.uncoveredProducts ?? 0}</div>
-          </div>`).join("")}
-      </div>
-    </div>` : "";
+  // Biểu đồ (khuôn chung màn Vận hành). Thay biểu đồ cũ "SP chưa chạy discount" — liệt kê MỌI shop ở cuối
+  // trang, tô màu cảnh báo cho một đại lượng — bằng lưới biểu đồ ngay dưới KPI.
+  const act = rows.reduce((t, x) => t + (x.activeListings || 0), 0);
+  const covAct = rows.reduce((t, x) => { const a = x.activeListings || 0; return t + Math.max(0, Math.min(a, a - (x.uncoveredProducts ?? 0))); }, 0);
+  const withListings = rows.filter((x) => (x.activeListings || 0) > 0);
+  const shopsDisc = withListings.filter((x) => x.discountOngoing > 0).length;
+  const meter = (label, n, d, tip) => { const pct = d ? Math.round((n / d) * 100) : 0; return `<div style="margin-bottom:16px;" title="${escapeHtml(tip)}"><div style="display:flex; justify-content:space-between; gap:10px; font-size:0.8rem; margin-bottom:6px;"><span>${label}</span><span class="ops-val"><b>${pct}%</b> <span style="color:var(--text-mute);">${n.toLocaleString("en-US")}/${d.toLocaleString("en-US")}</span></span></div><div class="ops-meter"><i style="width:${pct}%;"></i></div></div>`; };
+  const uItems = rows.filter((x) => (x.uncoveredProducts ?? 0) > 0).map((x) => ({ name: x.shop.replace(/_US$/, ""), value: x.uncoveredProducts, active: x.activeListings || 0, tip: `${x.uncoveredProducts}/${x.activeListings || 0} sản phẩm chưa có discount${x.discountOngoing === 0 ? " · shop chưa có discount nào" : ""}` })).sort((p, q) => q.value - p.value).slice(0, 10);
+  const eItems = rows.filter((x) => x.nextDiscountEnd && x.nextDiscountEnd > now).map((x) => ({ name: x.shop.replace(/_US$/, ""), value: (x.nextDiscountEnd - now) / 864e5, end: x.nextDiscountEnd, tip: `hết lúc ${fmtT(x.nextDiscountEnd)}` })).sort((p, q) => p.value - q.value).slice(0, 8);
+  const flashLive = rows.filter((x) => x.flashOngoing > 0 || x.flashUpcoming > 0).length;
+  const lastFlash = Math.max(0, ...rows.map((x) => x.lastFlashEnd || 0));
+  const promoCharts = `<div class="ops-charts">${[
+    opsCard("🏷️ Độ phủ discount", `${rows.length - withListings.length} shop chưa có listing active không tính`, meter("Sản phẩm active đang có discount", covAct, act, "active − sản phẩm chưa vào discount, cộng mọi shop") + meter("Shop có discount đang chạy", shopsDisc, withListings.length, "shop có ít nhất 1 Product Discount đang chạy")),
+    opsCard("⚡ Flash deal", "Shop có flash đang hoặc sắp chạy", `<div style=\"display:flex; align-items:baseline; gap:8px; margin:6px 0 10px;\"><span class=\"ops-hero\">${flashLive}</span><span style=\"color:var(--text-mute); font-size:1.1rem; font-weight:700;\">/${rows.length} shop</span></div><div style=\"font-size:0.82rem; color:var(--text);\">${flashLive ? `${rows.length - flashLive} shop không có flash nào` : "<b>Không shop nào</b> còn flash đang hoặc sắp chạy"}${lastFlash ? ` · flash gần nhất kết thúc <b>${rel(lastFlash)}</b>` : ""}</div>`),
+    opsCard("📦 Sản phẩm chưa vào discount", `Top 10 shop · tổng ${totalUncovered.toLocaleString("en-US")} sản phẩm`, opsBarList(uItems, (i) => `<b>${i.value}</b><span style=\"color:var(--text-mute);\">/${i.active}</span>`, "✓ Mọi sản phẩm đều đã có discount")),
+    opsCard("⏳ Discount sắp hết hạn", "Gấp nhất lên đầu · thanh = thời gian còn lại", opsBarList(eItems, (i) => `<b>${rel(i.end)}</b>`, "Không có discount nào đang chạy")),
+  ].join("")}</div>`;
 
   $("#promoSummary").innerHTML = `
     <div class="attn-bar">
@@ -5451,8 +5456,8 @@ function renderPromotions(r) {
       <span class="it">⚠️ <b>${rows.reduce((a, x) => a + x.alerts.length, 0)}</b> cảnh báo</span>
     </div>
     ${kpis}
-    <div class="grid grid-2">${flashPanel}${discountPanel}</div>
-    ${chart}`;
+    ${promoCharts}
+    <div class="grid grid-2">${flashPanel}${discountPanel}</div>`;
 
   const dot = (ok) => `<span style="color:${ok ? "var(--success)" : "var(--danger)"}">●</span>`;
   $("#promoTableWrap").innerHTML = `

@@ -10,6 +10,7 @@ import { historyStore } from "../state/historyStore";
 import { notifyFail } from "../services/notification/telegram";
 import { getAllUsersForCron, getAllUserDirs, UserDirs, getEffectiveSettings } from "../state/userDirs";
 import { loadAdminConfig } from "../adminConfig";
+import { shopBlockMap, isShopBlocked } from "../core/opsBoard";
 
 const LAST_FOLDER_FILE_NAME = ".last_folder.txt";
 
@@ -253,7 +254,10 @@ const processOldestInFolder = async (
   await processFile(baseDir, folderName, oldestFile, owner);
 };
 
-const tickForUser = async (dirs: UserDirs, slotsAvailable: number): Promise<number> => {
+// Log shop bị chặn tối đa 1 lần/30 phút/shop (tick 30s → không spam log).
+const blockedLoggedAt = new Map<string, number>();
+
+const tickForUser = async (dirs: UserDirs, slotsAvailable: number, blocked: Map<string, string>): Promise<number> => {
   const { username, baseSheinAutoDir, profiles } = dirs;
   if (slotsAvailable <= 0) return 0;
   if (!(await fs.pathExists(baseSheinAutoDir))) return 0;
@@ -299,6 +303,16 @@ const tickForUser = async (dirs: UserDirs, slotsAvailable: number): Promise<numb
     if (folderLocks.has(key)) continue;
     const oldest = await getOldestJsonFile(path.join(baseSheinAutoDir, f));
     if (!oldest) continue;
+    // Shop hết hạn mức listing / bị khoá đăng / treo tiền → đăng vào chỉ ra draft Day_Limit
+    // (tốn AI + upload vô ích). Để file NẰM CHỜ: shop có chỗ lại thì tự chạy tiếp.
+    const why = isShopBlocked(blocked, f);
+    if (why) {
+      if (Date.now() - (blockedLoggedAt.get(f) ?? 0) > 30 * 60_000) {
+        console.log(`⛔ [${username}/${f}] tạm không đăng: ${why} — file giữ nguyên trong hàng chờ`);
+        blockedLoggedAt.set(f, Date.now());
+      }
+      continue;
+    }
 
     lastPicked = f;
     spawned++;
@@ -336,9 +350,10 @@ export const runQueueManagerOnce = async (): Promise<void> => {
   }
 
   let slotsLeft = concurrency - runningCount;
+  const blocked = await shopBlockMap(); // cache 10p, trả ngay — không làm chậm tick
   for (const dirs of allDirs) {
     if (slotsLeft <= 0) break;
-    const spawned = await tickForUser(dirs, slotsLeft);
+    const spawned = await tickForUser(dirs, slotsLeft, blocked);
     slotsLeft -= spawned;
   }
 };

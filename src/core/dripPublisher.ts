@@ -10,6 +10,7 @@
 import { getShopList, getDraftPage, batchPublish, type FourSellerShop } from "../services/fourseller/client";
 import { publishConfig } from "../config/appConfig";
 import { listAccounts } from "../state/fourSellerAccounts";
+import { shopBlockMap, isShopBlocked } from "./opsBoard";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -63,8 +64,13 @@ export async function runDripCycle(opts: DripOptions): Promise<DripCycleResult> 
   let published = 0;
   let remaining = 0;
   const perShop: Record<string, number> = {};
+  const blocked = await shopBlockMap();
 
   for (const shop of list) {
+    // Biết chắc shop hết chỗ / bị khoá đăng (publish_limit) → khỏi thử. coldShop bên dưới vẫn lo
+    // các shop chưa có dữ liệu hạn mức.
+    const why = isShopBlocked(blocked, shop.shopName);
+    if (why) { log(`  ⛔ ${shop.shopName}: ${why} → bỏ qua`); continue; }
     try {
       // 4Seller trả data=null khi shop không còn draft (hoặc shop đóng) → coi như 0 draft.
       const resp = await getDraftPage(opts.cookieUser, { shopId: shop.id });

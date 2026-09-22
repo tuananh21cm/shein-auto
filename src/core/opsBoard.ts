@@ -10,7 +10,7 @@
  */
 import fs from "fs-extra";
 import path from "path";
-import { getShopList } from "../services/fourseller/client";
+import { getShopList, getListingPage } from "../services/fourseller/client";
 import { listAccounts } from "../state/fourSellerAccounts";
 import { getDb } from "../state/db";
 
@@ -24,17 +24,23 @@ export function crmSettings(): { enabled: boolean; url: string; secret: string; 
   return { enabled: Boolean(on && url && secret), url, secret, pullDays: Number(cfg.pullDays) || 30 };
 }
 
-async function crmGet<T>(p: string): Promise<T> {
+export async function crmRequest<T>(p: string, body?: unknown): Promise<T> {
   const s = crmSettings();
   if (!s.enabled) throw new Error("CRM chưa cấu hình (cần CRM_BRIDGE_SECRET)");
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 60_000);
   try {
-    const res = await fetch(`${s.url}${p}`, { headers: { Accept: "application/json", "x-agent-secret": s.secret }, signal: ctrl.signal });
-    if (!res.ok) throw new Error(`CRM ${p} HTTP ${res.status}`);
+    const res = await fetch(`${s.url}${p}`, {
+      method: body === undefined ? "GET" : "POST",
+      headers: { Accept: "application/json", "Content-Type": "application/json", "x-agent-secret": s.secret },
+      body: body === undefined ? undefined : JSON.stringify(body),
+      signal: ctrl.signal,
+    });
+    if (!res.ok) throw new Error(`CRM ${p} HTTP ${res.status}: ${(await res.text().catch(() => "")).slice(0, 160)}`);
     return (await res.json()) as T;
   } finally { clearTimeout(timer); }
 }
+const crmGet = <T>(p: string) => crmRequest<T>(p);
 
 /* ───────────── Sức khoẻ shop ───────────── */
 export type HealthLevel = "red" | "yellow" | "green" | "none";
@@ -45,6 +51,10 @@ export interface HealthRow {
   restricted: number | null; orderLimit: string | null; activeListings: number | null; dailyOrders: number | null;
   /** Hạn mức ĐĂNG MỚI TikTok đặt cho shop (0/20/100/200/1000). Active có thể > limit khi TikTok hạ hạn mức sau này. */
   publishLimit: number | null; limitFrom: "crm" | "local" | null;
+  /** Số listing active: số THẬT từ 4Seller lúc dựng ("4seller"), lỗi thì số TikTok trong snapshot ("tiktok"). */
+  activeFrom: "4seller" | "tiktok" | null;
+  /** Tín hiệu "đừng đổ hàng vào shop này" — CRM bổ sung (payout_frozen / penalty_cluster_active). */
+  payoutFrozen: boolean; penaltyCluster: boolean;
   updatedAt: string | null;
 }
 export interface HealthResult { rows: HealthRow[]; source: "crm" | "local"; builtAt: number; crmError?: string }
@@ -111,6 +121,17 @@ async function buildHealth(): Promise<HealthResult> {
   const needLocal = (source as HealthResult["source"]) === "crm" && [...idx.values()].some((p) => !("publish_limit" in p));
   const localIdx = needLocal ? await localHealthIndex() : null;
 
+  // Số active THẬT từ 4Seller (snapshot TikTok có thể cũ vài ngày → chặn nhầm shop vừa được dọn chỗ).
+  // 6 luồng song song để không dội 4Seller.
+  const live = new Map<number, number>();
+  const jobs = accounts.flatMap((acc, i) => lists[i].map((s) => ({ P: `acct:${acc.uid}`, id: Number(s.id) })));
+  for (let k = 0; k < jobs.length; k += 6) {
+    await Promise.all(jobs.slice(k, k + 6).map(async (j) => {
+      const t = (await getListingPage(j.P, { shopId: j.id, status: "active", pageSize: 1 }).catch(() => null))?.total;
+      if (typeof t === "number") live.set(j.id, t);
+    }));
+  }
+
   const rows: HealthRow[] = [];
   for (const [i, acc] of accounts.entries()) {
     for (const s of lists[i]) {
@@ -122,7 +143,10 @@ async function buildHealth(): Promise<HealthResult> {
         level: levelOf(p), status: p?.shop_status ?? null, severity: p?.shop_severity ?? null,
         violationScore: num(p?.violation_score), net: num(p?.net_earnings), onHold: num(p?.on_hold),
         reserve: num(p?.reserve), totalHolding: num(p?.total_holding), restricted: num(p?.restricted_product_count),
-        orderLimit: p?.order_limit != null ? String(p.order_limit) : null, activeListings: num(p?.total_listings_active),
+        orderLimit: p?.order_limit != null ? String(p.order_limit) : null,
+        activeListings: live.get(Number(s.id)) ?? num(p?.total_listings_active),
+        activeFrom: live.has(Number(s.id)) ? "4seller" : p?.total_listings_active != null ? "tiktok" : null,
+        payoutFrozen: p?.payout_frozen === true, penaltyCluster: p?.penalty_cluster_active === true,
         dailyOrders: num(p?.daily_orders), updatedAt: p?._updatedAt ?? null,
         publishLimit: num(lp?.publish_limit), limitFrom: lp && lp.publish_limit != null ? (own ? source : "local") : null,
       });
@@ -137,11 +161,33 @@ async function buildHealth(): Promise<HealthResult> {
 const HEALTH_TTL = 10 * 60_000;
 let healthCache: HealthResult | null = null;
 let healthInflight: Promise<HealthResult> | null = null;
+const rebuildHealth = () => (healthInflight ??= buildHealth().then((r) => (healthCache = r)).finally(() => { healthInflight = null; }));
+/** Có cache thì trả NGAY (cũ quá TTL thì làm mới ở nền) → queue/drip không bao giờ đứng chờ dựng lại. */
 export async function getShopHealth(force = false): Promise<HealthResult> {
-  if (!force && healthCache && Date.now() - healthCache.builtAt < HEALTH_TTL) return healthCache;
-  healthInflight ??= buildHealth().then((r) => (healthCache = r)).finally(() => { healthInflight = null; });
-  return healthInflight;
+  if (force || !healthCache) return rebuildHealth();
+  if (Date.now() - healthCache.builtAt >= HEALTH_TTL) void rebuildHealth().catch(() => {});
+  return healthCache;
 }
+
+/** Lý do KHÔNG nên đổ hàng vào shop (null = đổ được). Dùng chung cho queue, drip, auto-source. */
+export function blockReason(r: HealthRow): string | null {
+  if (r.payoutFrozen) return "shop bị treo rút tiền";
+  if (r.penaltyCluster) return "shop đang dính đợt phạt huỷ đơn";
+  if (r.publishLimit === 0) return "TikTok khoá đăng mới (hạn mức 0)";
+  if (r.publishLimit != null && r.activeListings != null && r.activeListings >= r.publishLimit)
+    return `hết hạn mức listing (${r.activeListings}/${r.publishLimit})`;
+  return null;
+}
+
+const normShop = (s: string) => String(s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+/** shop (chuẩn hoá tên) → lý do chặn. Lỗi dựng dữ liệu thì trả map rỗng (không chặn gì — an toàn). */
+export async function shopBlockMap(): Promise<Map<string, string>> {
+  const m = new Map<string, string>();
+  try { for (const r of (await getShopHealth()).rows) { const why = blockReason(r); if (why) m.set(normShop(r.shop), why); } }
+  catch { /* không có dữ liệu → không chặn */ }
+  return m;
+}
+export const isShopBlocked = (m: Map<string, string>, shop: string) => m.get(normShop(shop)) ?? null;
 
 /* ───────────── Lãi lỗ SKU ───────────── */
 export interface SkuPnl { rows: any[]; fetchedAt: number | null; windowDays: number | null; crmEnabled: boolean }

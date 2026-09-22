@@ -2400,7 +2400,11 @@ export const startAdminServer = async () => {
       const entries = Object.entries(await loadShopNiche()).filter(([, v]) => shopNiches(v).length);
       if (!entries.length) return;
       const live = await fetchLiveCounts("auto").catch(() => ({} as Record<string, number>));
+      const { shopBlockMap, isShopBlocked } = await import("./core/opsBoard");
+      const blocked = await shopBlockMap();
       for (const [shop, cfg] of entries) {
+        // Shop hết hạn mức listing / bị khoá đăng → cào về cũng chỉ nằm chờ, tốn proxy + AI.
+        if (isShopBlocked(blocked, shop)) continue;
         const liveCnt = live[shop.toLowerCase()] ?? 0;
         if (liveCnt >= AUTO_SOURCE_TARGET) continue;              // shop đã đủ 100
         const backlog = await shopBacklog(shop);

@@ -424,6 +424,9 @@
     .ops-track { height: 14px; display: flex; align-items: center; }
     .ops-bar { height: 12px; border-radius: 0 4px 4px 0; background: var(--accent); min-width: 2px; }
     .ops-track:hover .ops-bar { filter: brightness(1.2); }
+    .ops-scroll { max-height: 300px; overflow-y: auto; padding-right: 6px; overscroll-behavior: contain; }
+    .ops-track-full { background: color-mix(in srgb, var(--accent) 16%, transparent); border-radius: 4px; }
+    .ops-track-full .ops-bar { height: 12px; }
     .ops-val { font-variant-numeric: tabular-nums; color: var(--text); white-space: nowrap; text-align: right; }
     .ops-meter { height: 12px; background: color-mix(in srgb, var(--accent) 18%, transparent); border-radius: 4px; overflow: hidden; }
     .ops-meter > i { display: block; height: 100%; background: var(--accent); border-radius: 0 4px 4px 0; }
@@ -5042,7 +5045,11 @@ function opsBarList(items, fmt, empty) {
   const max = Math.max(...items.map((i) => i.value)) || 1;
   return `<div class="ops-blist">${items.map((i) => `
     <div class="ops-nm" title="${escapeHtml(i.name)}"${opsAct(i)}>${escapeHtml(i.name)}</div>
-    <div class="ops-track" title="${escapeHtml(i.tip || "")}"${opsAct(i)}>${i.value > 0 ? `<div class="ops-bar" style="width:${Math.max(1, (i.value / max) * 100).toFixed(1)}%;"></div>` : ""}</div>
+    <div class="ops-track${i.pct != null ? " ops-track-full" : ""}" title="${escapeHtml(i.tip || "")}"${opsAct(i)}>${(() => {
+      // i.pct: vẽ theo tỷ lệ cố định (vd % hạn mức đã dùng) thay vì so với giá trị lớn nhất.
+      const w = i.pct != null ? Math.min(100, i.pct) : (i.value / max) * 100;
+      return w > 0 ? `<div class="ops-bar" style="width:${Math.max(1, w).toFixed(1)}%;"></div>` : "";
+    })()}</div>
     <div class="ops-val">${fmt(i)}</div>`).join("")}</div>`;
 }
 const opsCard = (title, sub, body) => `<div class="card ops-chart"><h3>${title}</h3><div class="ops-sub">${sub}</div>${body}</div>`;
@@ -5071,10 +5078,12 @@ function renderOpsCharts() {
     // đơn (blocked) vẫn đăng được nên GIỮ.
     const dead = (r) => r.severity === "terminal" || /closed|đóng|terminat|deactiv|banned/i.test(r.status || "");
     const room = d.rows.filter((r) => !dead(r) && r.publishLimit > 0 && r.activeListings != null && r.publishLimit - r.activeListings > 0)
-      .map((r) => ({ name: opsShort(r.shop), value: r.publishLimit - r.activeListings, limit: r.publishLimit, tip: `${r.activeListings}/${r.publishLimit} listing` }))
-      .sort((a, b) => b.value - a.value).slice(0, 10);
+      // Thanh = % hạn mức ĐÃ DÙNG (active/limit): sắp đầy → thanh gần kín, còn trống nhiều → thanh ngắn.
+      // Xếp sắp đầy lên đầu (xếp theo "nhiều chỗ trống nhất" thì gần như toàn thanh rỗng, vd 97/1000 = 10%).
+      .map((r) => ({ name: opsShort(r.shop), value: r.publishLimit - r.activeListings, limit: r.publishLimit, pct: (r.activeListings / r.publishLimit) * 100, tip: `${r.activeListings}/${r.publishLimit} listing · đã dùng ${Math.round((r.activeListings / r.publishLimit) * 100)}% hạn mức` }))
+      .sort((a, b) => b.pct - a.pct || a.value - b.value); // MỌI shop còn chỗ (cắt top 10 thì chỉ còn thanh đầy, mất shop còn thừa nhiều)
     const fullN = d.rows.filter((r) => opsCap(r).full).length;
-    cards.push(opsCard("📦 Giới hạn Listing còn thừa", `Hạn mức listing TikTok − số đang active · không tính shop đã đóng · ${fullN} shop đã hết chỗ`, opsBarList(room, (i) => `còn <b>${i.value}</b><span style="color:var(--text-mute);">/${i.limit}</span>`, "Không shop nào còn chỗ")));
+    cards.push(opsCard("📦 Giới hạn Listing còn thừa", `Thanh = % hạn mức đã dùng · ${room.length} shop còn chỗ, sắp đầy lên đầu · không tính shop đã đóng · ${fullN} shop đã hết chỗ`, `<div class="ops-scroll">${opsBarList(room, (i) => `còn <b>${i.value}</b><span style="color:var(--text-mute);">/${i.limit}</span>`, "Không shop nào còn chỗ")}</div>`));
 
     // 3) Lãi 30 ngày theo shop.
     const pnl = d.rows.filter((r) => r.pnl);

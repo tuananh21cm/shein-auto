@@ -1057,13 +1057,6 @@ export const startAdminServer = async () => {
     } catch (err: any) { res.status(500).json({ error: err?.message ?? "Lỗi sức khoẻ shop" }); }
   });
 
-  app.get("/admin/api/ops/today", async (_req, res) => {
-    try {
-      const { getToday } = await import("./core/opsBoard");
-      res.json({ ok: true, ...(await getToday()) });
-    } catch (err: any) { res.status(500).json({ error: err?.message ?? "Lỗi việc hôm nay" }); }
-  });
-
   app.get("/admin/api/ops/sku", async (_req, res) => {
     try {
       const { getSkuPnl } = await import("./core/opsBoard");

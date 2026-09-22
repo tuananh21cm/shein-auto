@@ -6,6 +6,8 @@
   <title>Homie · Admin</title>
   <style>
     :root[data-theme="dark"] {
+      /* Màu biểu đồ trạng thái — đã chạy validator (CVD/độ tương phản) trên nền card tối. */
+      --ch-bad: #f87171; --ch-warn: #fbbf24; --ch-none: #5e6890; --ch-ok: #4ade80;
       --bg: #0b1020;
       --bg-elev: #131a30;
       --bg-card: #1a2241;
@@ -25,6 +27,8 @@
       --shadow: 0 10px 40px rgba(0, 0, 0, 0.35);
     }
     :root[data-theme="light"] {
+      /* Nền sáng: vàng #f59e0b thay --warn #d97706 (đặt cạnh đỏ chỉ ΔE 14.4 < 15, khó phân biệt). */
+      --ch-bad: #dc2626; --ch-warn: #f59e0b; --ch-none: #94a3b8; --ch-ok: #16a34a;
       --bg: #f4f6fb;
       --bg-elev: #ffffff;
       --bg-card: #ffffff;
@@ -404,6 +408,23 @@
     .seg { display: inline-flex; background: var(--bg-elev); border: 1px solid var(--border); border-radius: 9px; padding: 2px; }
     .seg-btn { background: none; border: none; color: var(--text-mute); font-size: 0.82rem; font-weight: 600; padding: 6px 13px; border-radius: 7px; cursor: pointer; }
     .seg-btn.active { background: var(--accent); color: #fff; }
+    /* Vận hành: biểu đồ HTML thuần. Thanh ≤24px, bo 4px ở đầu dữ liệu, gốc vuông; khe 2px giữa đoạn xếp chồng. */
+    .ops-charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 14px; margin-bottom: 14px; }
+    .ops-chart h3 { margin: 0 0 2px; font-size: 0.95rem; }
+    .ops-sub { font-size: 0.75rem; color: var(--text-mute); margin-bottom: 12px; }
+    .ops-stack { display: flex; gap: 2px; height: 22px; }
+    .ops-stack > div { min-width: 4px; cursor: pointer; }
+    .ops-stack > div:first-child { border-radius: 4px 0 0 4px; } .ops-stack > div:last-child { border-radius: 0 4px 4px 0; }
+    .ops-stack > div:hover, .ops-stack > div:focus-visible { filter: brightness(1.15); outline: 2px solid var(--text); outline-offset: 1px; }
+    .ops-legend { display: flex; flex-wrap: wrap; gap: 8px 16px; margin-top: 12px; font-size: 0.8rem; color: var(--text); }
+    .ops-lg { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+    .ops-sw { width: 10px; height: 10px; border-radius: 2px; flex: none; }
+    .ops-blist { display: grid; grid-template-columns: minmax(80px, 36%) 1fr auto; gap: 7px 10px; align-items: center; font-size: 0.8rem; }
+    .ops-nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
+    .ops-track { height: 14px; display: flex; align-items: center; }
+    .ops-bar { height: 12px; border-radius: 0 4px 4px 0; background: var(--accent); min-width: 2px; }
+    .ops-track:hover .ops-bar { filter: brightness(1.2); }
+    .ops-val { font-variant-numeric: tabular-nums; color: var(--text); white-space: nowrap; text-align: right; }
     .snc-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(305px, 1fr)); gap: 14px; }
     .snc-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 14px; padding: 14px 16px; }
     .snc-head { font-weight: 700; font-size: 0.92rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -1086,25 +1107,27 @@
       <div class="page-head">
         <div>
           <h1>📈 Vận hành</h1>
-          <div class="subtitle">Shop nào đang gặp nguy, tiền đang bị giữ ở đâu, SKU nào lãi hay lỗ. Chỉ đọc.</div>
+          <div class="subtitle">Shop nào đang gặp nguy, tiền đang bị giữ ở đâu, còn chỗ đăng ở đâu, SKU nào lãi. Chỉ đọc.</div>
         </div>
-        <div class="seg">
-          <button id="opsTabToday" class="seg-btn active" onclick="setOpsTab('today')">⏰ Hôm nay</button>
-          <button id="opsTabHealth" class="seg-btn" onclick="setOpsTab('health')">🩺 Sức khoẻ shop</button>
-          <button id="opsTabSku" class="seg-btn" onclick="setOpsTab('sku')">💰 Lãi lỗ SKU</button>
+        <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+          <span id="opsSource" style="font-size:0.8rem; color:var(--text-mute);"></span>
+          <button class="btn btn-ghost" id="opsRefreshBtn" onclick="loadOps(true)">🔄 Làm mới</button>
         </div>
       </div>
-      <div id="opsToday">
-        <div id="opsTodayHead"></div>
-        <div class="card"><div id="opsTodayTable"><div class="empty">Đang tải…</div></div></div>
+      <div id="opsKpis" style="margin-bottom:14px;"></div>
+      <div class="ops-charts" id="opsCharts"></div>
+      <div class="card" style="margin-bottom:14px;">
+        <h3 style="margin:0 0 2px;">⏰ Đơn cần xử lý</h3>
+        <div class="ops-sub">Đơn sắp hoặc đã quá hạn bị phạt (từ CRM), gấp nhất lên đầu.</div>
+        <div id="opsTodayTable"><div class="empty">Đang tải…</div></div>
       </div>
-      <div id="opsHealth" hidden>
+      <div class="card" style="margin-bottom:14px;" id="opsHealthCard">
         <div id="opsHealthHead"></div>
-        <div class="card"><div id="opsHealthTable"><div class="empty">Đang tải…</div></div></div>
+        <div id="opsHealthTable"><div class="empty">Đang tải…</div></div>
       </div>
-      <div id="opsSku" hidden>
+      <div class="card">
         <div id="opsSkuHead"></div>
-        <div class="card"><div id="opsSkuTable"><div class="empty">Đang tải…</div></div></div>
+        <div id="opsSkuTable"><div class="empty">Đang tải…</div></div>
       </div>
     </section>
 
@@ -4986,16 +5009,25 @@ function renderReturns() {
     }).join("")}</tbody></table></div>`;
 }
 
-// ─── Vận hành (Đợt 1): Sức khoẻ shop + Lãi lỗ SKU ───────────────────────
-// Chỉ tải khi mở tab, KHÔNG tự poll. Bảng ≤ 500 dòng, SKU hiện 100 dòng/lần ("Xem thêm") → không lag.
-let _opsTab = "today", _opsHealth = null, _opsSku = null, _opsToday = null;
+// ─── Vận hành (1 màn): KPI + biểu đồ + đơn cần xử lý + sức khoẻ shop + lãi lỗ SKU ───
+// Tải 1 lần khi mở màn (2 nguồn song song), KHÔNG poll. Biểu đồ vẽ bằng HTML thuần từ dữ liệu đã có.
+let _opsHealth = null, _opsSku = null;
 const opsF = { lvl: "", full: false, q: "", skuQ: "", skuTier: "", skuRisk: "", skuSort: "profit", skuShown: 100 };
+// Thứ tự đỏ → vàng → xám → xanh: xanh và vàng KHÔNG đứng cạnh nhau trên thanh xếp chồng (validator:
+// cặp đó chỉ ΔE 7.3 với người mù màu đỏ-lục). Màu biểu đồ = --ch-*, đã kiểm cho cả 2 theme.
 const OPS_LVL = {
-  red: { kpi: "fail", label: "Nguy hiểm", color: "var(--danger)" },
-  yellow: { kpi: "pending", label: "Cần chú ý", color: "var(--warn)" },
-  green: { kpi: "live", label: "Ổn", color: "var(--success)" },
-  none: { kpi: "unc", label: "Chưa có dữ liệu", color: "var(--text-mute)" },
+  red: { kpi: "fail", label: "Nguy hiểm", color: "var(--danger)", chart: "var(--ch-bad)" },
+  yellow: { kpi: "pending", label: "Cần chú ý", color: "var(--warn)", chart: "var(--ch-warn)" },
+  none: { kpi: "unc", label: "Chưa có dữ liệu", color: "var(--text-mute)", chart: "var(--ch-none)" },
+  green: { kpi: "live", label: "Ổn", color: "var(--success)", chart: "var(--ch-ok)" },
 };
+const OPS_KIND = {
+  awaiting_shipment_overdue: ["Quá hạn ship", "var(--danger)"],
+  shipped_no_pickup: ["Có label, carrier chưa lấy hàng", "var(--danger)"],
+  in_transit_stalled: ["Kẹt khi đang giao", "var(--warn)"],
+  no_tracking_48h: ["Chờ tracking quá 48h", "var(--warn)"],
+};
+const OPS_RISK = { safe: ["var(--success)", "An toàn"], medium: ["var(--warn)", "Trung bình"], high: ["var(--danger)", "Cao"] };
 const opsAgo = (ms) => {
   if (!ms) return "chưa có";
   const d = (Date.now() - ms) / 864e5;
@@ -5009,8 +5041,7 @@ const opsChip = (color, label) => `<span style="display:inline-flex; align-items
 const opsTh = (t, right) => `<th style="text-align:${right ? "right" : "left"}; padding:8px 10px; font-size:0.75rem; color:var(--text-mute); font-weight:600; white-space:nowrap;">${t}</th>`;
 const opsTd = (t, extra = "") => `<td style="padding:8px 10px; border-top:1px solid var(--border); font-size:0.83rem; vertical-align:top; ${extra}">${t}</td>`;
 const opsNum = "text-align:right; white-space:nowrap; font-variant-numeric:tabular-nums;";
-// Hạn mức listing: chỗ còn trống để ĐĂNG MỚI = publish_limit − active. limit 0 = TikTok khoá đăng mới.
-// Active có thể > limit (TikTok hạ hạn mức sau khi đã đăng) → vẫn tính là hết chỗ.
+// Hạn mức listing: chỗ trống ĐĂNG MỚI = publish_limit − active. limit 0 = TikTok khoá đăng mới.
 const opsCap = (r) => {
   const a = r.activeListings, l = r.publishLimit;
   if (l == null) return { html: opsDash(a), full: false, style: "" };
@@ -5021,49 +5052,7 @@ const opsCap = (r) => {
   const tight = room <= Math.max(2, l * 0.1);
   return { html: `${a ?? "?"} / ${l}${sub("còn " + room, tight)}`, full: false, style: tight ? "color:var(--warn); font-weight:600;" : "" };
 };
-
-function loadOps() { setOpsTab(_opsTab); }
-function setOpsTab(t) {
-  _opsTab = t;
-  for (const [k, btn, panel] of [["today", "#opsTabToday", "#opsToday"], ["health", "#opsTabHealth", "#opsHealth"], ["sku", "#opsTabSku", "#opsSku"]]) {
-    $(btn).classList.toggle("active", t === k);
-    $(panel).hidden = t !== k;
-  }
-  if (t === "today" && !_opsToday) loadOpsToday();
-  if (t === "health" && !_opsHealth) loadOpsHealth();
-  if (t === "sku" && !_opsSku) loadOpsSku();
-}
-
-/* ── Hôm nay: việc có hạn chót (đơn sắp bị phạt + case Return), gấp nhất lên đầu ── */
-const OPS_KIND = {
-  awaiting_shipment_overdue: ["Quá hạn ship", "var(--danger)"],
-  shipped_no_pickup: ["Có label, carrier chưa lấy hàng", "var(--danger)"],
-  in_transit_stalled: ["Kẹt khi đang giao", "var(--warn)"],
-  no_tracking_48h: ["Chờ tracking quá 48h", "var(--warn)"],
-  return: ["Return / Refund", "#5aa9e6"],
-};
-const opsTodayF = { kind: "", q: "" };
-async function loadOpsToday() {
-  $("#opsTodayTable").innerHTML = '<div class="empty">⏳ Đang tải việc hôm nay…</div>';
-  try {
-    const d = await (await fetch("/admin/api/ops/today")).json();
-    if (d.error) throw new Error(d.error);
-    _opsToday = d;
-    renderOpsToday();
-  } catch (err) {
-    $("#opsTodayTable").innerHTML = `<div class="empty">Lỗi: ${escapeHtml(err.message)}</div>`;
-  }
-}
-async function rescanReturnsForToday(btn) {
-  btn.disabled = true; btn.textContent = "⏳ Đang quét return…";
-  try {
-    const res = await fetch("/admin/api/returns/scan", { method: "POST" });
-    const d = await res.json();
-    if (!res.ok) throw new Error(d.error);
-    toast(`✓ Quét xong ${d.result.rows.length} case return đang mở`);
-    await loadOpsToday();
-  } catch (err) { toast(err.message, "error"); btn.disabled = false; btn.textContent = "🔄 Quét lại Return"; }
-}
+const opsProfit = (r) => (r.margin_usd == null ? null : r.margin_usd * (r.orders || 0));
 const opsLeft = (at) => {
   if (!at) return '<span style="color:var(--text-mute);">—</span>';
   const h = (at - Date.now()) / 36e5;
@@ -5071,85 +5060,149 @@ const opsLeft = (at) => {
   const color = h < 24 ? "var(--danger)" : h < 72 ? "var(--warn)" : "var(--text-mute)";
   return `<b style="color:${color};">${h < 48 ? Math.floor(h) + "h " + Math.round((h % 1) * 60) + "p" : (h / 24).toFixed(1) + " ngày"}</b>`;
 };
-function renderOpsToday() {
-  const d = _opsToday;
-  if (!d) return;
-  const now = Date.now();
-  const overdue = d.items.filter((x) => x.deadlineAt && x.deadlineAt < now).length;
-  const in24 = d.items.filter((x) => x.deadlineAt && x.deadlineAt >= now && x.deadlineAt - now < 864e5).length;
-  const kinds = [...new Set(d.items.map((x) => x.kind))];
-  const sel = (v, label) => `<option value="${v}" ${opsTodayF.kind === v ? "selected" : ""}>${escapeHtml(label)}</option>`;
-  $("#opsTodayHead").innerHTML = `
-    <div class="kpis" style="margin-bottom:10px;">
-      <div class="kpi fail"><div class="kpi-v">${overdue}</div><div class="kpi-k">Đã quá hạn</div></div>
-      <div class="kpi pending"><div class="kpi-v">${in24}</div><div class="kpi-k">Hết hạn trong 24h</div></div>
-      <div class="kpi"><div class="kpi-v">${d.items.filter((x) => x.kind !== "return").length}</div><div class="kpi-k">Đơn sắp bị phạt</div></div>
-      <div class="kpi unc"><div class="kpi-v">${d.items.filter((x) => x.kind === "return").length}</div><div class="kpi-k">Case Return đang mở</div></div>
-    </div>
-    <div class="filter-bar" style="align-items:center;">
-      <input placeholder="🔍 Tìm shop, mã đơn…" value="${escapeHtml(opsTodayF.q)}" oninput="opsTodayF.q=this.value; renderOpsTodayTable()">
-      <select onchange="opsTodayF.kind=this.value; renderOpsTodayTable()">${sel("", "Mọi loại việc")}${kinds.map((k) => sel(k, (OPS_KIND[k] || [k])[0])).join("")}</select>
-      <span style="font-size:0.8rem; color:var(--text-mute);">Đơn: ${d.crmEnabled ? `CRM · ${opsAgo(d.riskAt)}` : "chưa nối CRM"} · Return: <span style="${opsStale(d.returnsAt, 0.5)}">quét ${opsAgo(d.returnsAt)}</span></span>
-      <button class="btn btn-ghost" style="margin-left:auto;" onclick="rescanReturnsForToday(this)">🔄 Quét lại Return</button>
-    </div>`;
-  renderOpsTodayTable();
+
+async function loadOps(refresh) {
+  const btn = $("#opsRefreshBtn");
+  if (btn) { btn.disabled = true; btn.textContent = "⏳ Đang tải…"; }
+  if (!_opsHealth) $("#opsCharts").innerHTML = '<div class="card"><div class="empty">⏳ Đang tải số liệu vận hành…</div></div>';
+  const [h, s] = await Promise.allSettled([
+    fetch("/admin/api/ops/health" + (refresh ? "?refresh=1" : "")).then((r) => r.json()),
+    fetch("/admin/api/ops/sku").then((r) => r.json()),
+  ]);
+  if (h.status === "fulfilled" && !h.value.error) _opsHealth = h.value;
+  else toast("Lỗi tải sức khoẻ shop: " + (h.reason?.message || h.value?.error || ""), "error");
+  if (s.status === "fulfilled" && !s.value.error) _opsSku = s.value;
+  else toast("Lỗi tải lãi lỗ SKU: " + (s.reason?.message || s.value?.error || ""), "error");
+  renderOps();
+  if (btn) { btn.disabled = false; btn.textContent = "🔄 Làm mới"; }
 }
-function renderOpsTodayTable() {
-  const q = opsTodayF.q.trim().toLowerCase();
-  const rows = _opsToday.items.filter((x) => (!opsTodayF.kind || x.kind === opsTodayF.kind) && (!q || [x.shop, x.orderId].some((v) => String(v || "").toLowerCase().includes(q))));
-  if (!rows.length) { $("#opsTodayTable").innerHTML = `<div class="empty">${_opsToday.items.length ? "Không có việc nào khớp bộ lọc" : "✓ Không có việc nào có hạn chót"}</div>`; return; }
-  $("#opsTodayTable").innerHTML = `<div style="overflow-x:auto;"><table style="width:100%; border-collapse:collapse;">
-    <thead><tr>${opsTh("Còn lại")}${opsTh("Việc")}${opsTh("Shop")}${opsTh("Mã đơn")}${opsTh("Chi tiết")}${opsTh("Tiền", 1)}</tr></thead>
-    <tbody>${rows.map((x) => {
-      const K = OPS_KIND[x.kind] || [x.kind, "var(--text-mute)"];
-      return `<tr>
-        ${opsTd(opsLeft(x.deadlineAt), "white-space:nowrap;")}
-        ${opsTd(opsChip(K[1], K[0]))}
-        ${opsTd(escapeHtml(x.shop), "white-space:nowrap;")}
-        ${opsTd(`<code style="font-size:0.75rem;">${escapeHtml(x.orderId)}</code>`)}
-        ${opsTd(escapeHtml(x.detail || ""), "min-width:180px; color:var(--text-mute);")}
-        ${opsTd(x.amount ? escapeHtml(x.amount) : opsDash(null), opsNum)}
-      </tr>`;
-    }).join("")}</tbody></table></div>`;
+function renderOps() {
+  if (_opsHealth) { renderOpsSource(); renderOpsKpis(); renderOpsTodayTable(); renderOpsHealth(); }
+  renderOpsCharts();
+  if (_opsSku) renderOpsSku();
+}
+// Bấm KPI / đoạn biểu đồ → lọc bảng Sức khoẻ shop rồi cuộn tới bảng.
+function opsFilter(kind, val) {
+  if (kind === "lvl") { opsF.lvl = opsF.lvl === val ? "" : val; opsF.full = false; }
+  if (kind === "full") { opsF.full = !opsF.full; opsF.lvl = ""; }
+  renderOpsKpis(); renderOpsHealth();
+  $("#opsHealthCard")?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
-/* ── Sức khoẻ shop ── */
-async function loadOpsHealth(refresh) {
-  $("#opsHealthTable").innerHTML = '<div class="empty">⏳ Đang tải sức khoẻ shop…</div>';
-  try {
-    const d = await (await fetch("/admin/api/ops/health" + (refresh ? "?refresh=1" : ""))).json();
-    if (d.error) throw new Error(d.error);
-    _opsHealth = d;
-    renderOpsHealth();
-  } catch (err) {
-    $("#opsHealthTable").innerHTML = `<div class="empty">Lỗi: ${escapeHtml(err.message)}</div>`;
-  }
-}
-function renderOpsHealth() {
+function renderOpsSource() {
   const d = _opsHealth;
-  if (!d) return;
-  const cnt = { red: 0, yellow: 0, green: 0, none: 0 };
-  d.rows.forEach((r) => cnt[r.level]++);
-  const hold = d.rows.reduce((s, r) => s + (r.onHold || 0), 0);
   const newest = Math.max(0, ...d.rows.map((r) => (r.updatedAt ? Date.parse(r.updatedAt) : 0)));
-  const fullCnt = d.rows.filter((r) => opsCap(r).full).length;
   const limitLocal = d.source === "crm" && d.rows.some((r) => r.limitFrom === "local");
-  const kpi = (lvl) => {
-    const L = OPS_LVL[lvl], on = opsF.lvl === lvl;
-    return `<div class="kpi ${L.kpi}" role="button" tabindex="0" onkeydown="if(event.key==='Enter')this.click()" title="Bấm để lọc" style="cursor:pointer;${on ? " outline:2px solid var(--accent);" : ""}" onclick="opsF.lvl=opsF.lvl==='${lvl}'?'':'${lvl}'; renderOpsHealth()"><div class="kpi-v">${cnt[lvl]}</div><div class="kpi-k">${L.label}</div></div>`;
-  };
+  const miss = [d.pnlOk === false && "lãi lỗ", d.riskOk === false && "đơn sắp phạt"].filter(Boolean);
+  $("#opsSource").innerHTML = `Nguồn: ${d.source === "crm" ? "CRM KBT" : "snapshot addon TikCheck"} · <span style="${opsStale(newest, 3)}">dữ liệu shop mới nhất ${opsAgo(newest)}</span>${limitLocal ? " · hạn mức lấy từ snapshot addon" : ""}${d.crmError ? ` · <b style="color:var(--danger);">⚠️ CRM lỗi, đang dùng dữ liệu local</b>` : ""}${miss.length ? ` · <b style="color:var(--danger);">⚠️ chưa lấy được ${miss.join(", ")} từ CRM</b>` : ""}${d.crmEnabled ? "" : " · chưa nối CRM"}`;
+}
+
+function renderOpsKpis() {
+  const d = _opsHealth;
+  const red = d.rows.filter((r) => r.level === "red").length;
+  const full = d.rows.filter((r) => opsCap(r).full).length;
+  const hold = d.rows.reduce((s, r) => s + (r.onHold || 0), 0);
+  const withPnl = d.rows.filter((r) => r.pnl);
+  const net = withPnl.reduce((s, r) => s + r.pnl.net, 0);
+  const overdue = (d.riskOrders || []).filter((o) => o.deadlineAt && o.deadlineAt < Date.now()).length;
+  const tile = (cls, val, label, onclick, on, title) =>
+    `<div class="kpi ${cls}"${title ? ` title="${escapeHtml(title)}"` : ""}${onclick ? ` role="button" tabindex="0" onkeydown="if(event.key==='Enter')this.click()" style="cursor:pointer;${on ? " outline:2px solid var(--accent);" : ""}" onclick="${onclick}"` : ""}><div class="kpi-v">${val}</div><div class="kpi-k">${label}</div></div>`;
+  $("#opsKpis").innerHTML = `<div class="kpis">
+    ${tile("fail", `${red}<span style="font-size:0.85rem; color:var(--text-mute); font-weight:600;">/${d.rows.length}</span>`, "Shop nguy hiểm", "opsFilter('lvl','red')", opsF.lvl === "red", "Bấm để lọc bảng Sức khoẻ shop")}
+    ${tile("pending", full, "Hết chỗ đăng mới", "opsFilter('full')", opsF.full, "Đã chạm hạn mức listing TikTok hoặc bị khoá đăng — queue tự bỏ qua. Bấm để lọc")}
+    ${tile("", opsMoney(hold), "Tiền đang bị giữ (on hold)")}
+    ${tile("live", d.pnlOk === false ? opsDash(null) : withPnl.length ? opsMoney(net) : opsDash(null), d.pnlOk === false ? "Lãi 30 ngày · CRM lỗi" : `Lãi 30 ngày${withPnl.length ? ` · ${withPnl.length} shop có đơn` : ""}`)}
+    ${tile("fail", d.riskOk === false ? opsDash(null) : overdue, d.riskOk === false ? "Đơn quá hạn · CRM lỗi" : "Đơn quá hạn xử lý", "document.querySelector('#opsTodayTable')?.scrollIntoView({behavior:'smooth', block:'center'})", false, "Bấm để xem danh sách")}
+  </div>`;
+}
+
+/* ── Biểu đồ ── */
+// Danh sách thanh xếp hạng: tên | thanh (1 màu) | giá trị. Vừa là biểu đồ vừa là bảng số.
+function opsBarList(items, fmt, empty) {
+  if (!items.length) return `<div class="empty" style="padding:18px;">${empty}</div>`;
+  const max = Math.max(...items.map((i) => i.value)) || 1;
+  return `<div class="ops-blist">${items.map((i) => `
+    <div class="ops-nm" title="${escapeHtml(i.name)}">${escapeHtml(i.name)}</div>
+    <div class="ops-track" title="${escapeHtml(i.tip || "")}"><div class="ops-bar" style="width:${Math.max(1, (i.value / max) * 100).toFixed(1)}%;"></div></div>
+    <div class="ops-val">${fmt(i)}</div>`).join("")}</div>`;
+}
+const opsCard = (title, sub, body) => `<div class="card ops-chart"><h3>${title}</h3><div class="ops-sub">${sub}</div>${body}</div>`;
+const opsShort = (s) => String(s || "").replace(/_US$/, "");
+
+function renderOpsCharts() {
+  const cards = [];
+  const d = _opsHealth;
+  if (d) {
+    // 1) Sức khoẻ: 1 thanh xếp chồng (part-to-whole) + chú giải luôn hiện (màu KHÔNG đứng một mình).
+    const order = ["red", "yellow", "none", "green"];
+    const cnt = { red: 0, yellow: 0, none: 0, green: 0 };
+    d.rows.forEach((r) => cnt[r.level]++);
+    const total = d.rows.length || 1;
+    const seg = order.filter((l) => cnt[l]).map((l) => `<div role="button" tabindex="0" onkeydown="if(event.key==='Enter')this.click()" style="flex:${cnt[l]}; background:${OPS_LVL[l].chart};${opsF.lvl && opsF.lvl !== l ? " opacity:.35;" : ""}" title="${OPS_LVL[l].label}: ${cnt[l]} shop (${Math.round((cnt[l] / total) * 100)}%) — bấm để lọc" onclick="opsFilter('lvl','${l}')"></div>`).join("");
+    const legend = order.map((l) => `<span class="ops-lg"><span class="ops-sw" style="background:${OPS_LVL[l].chart};"></span>${OPS_LVL[l].label} <b>${cnt[l]}</b> <span style="color:var(--text-mute);">${Math.round((cnt[l] / total) * 100)}%</span></span>`).join("");
+    // Lý do của nhóm nguy hiểm — câu hỏi tự nhiên ngay sau con số (TikTok ghi nguyên văn ở shop_status).
+    const why = new Map();
+    d.rows.filter((r) => r.level === "red").forEach((r) => { const k = r.status || "Không rõ"; why.set(k, (why.get(k) || 0) + 1); });
+    const whyItems = [...why].map(([k, v]) => ({ name: k, value: v, tip: `${v} shop` })).sort((a, b) => b.value - a.value).slice(0, 5);
+    const whyHtml = whyItems.length ? `<div class="ops-sub" style="margin:16px 0 8px;">Lý do của ${cnt.red} shop nguy hiểm</div>${opsBarList(whyItems, (i) => `<b>${i.value}</b> shop`, "")}` : "";
+    cards.push(opsCard("🩺 Sức khoẻ shop", `${d.rows.length} shop · theo mức TikTok gắn (severity + trạng thái) · bấm đoạn để lọc bảng`, `<div class="ops-stack">${seg}</div><div class="ops-legend">${legend}</div>${whyHtml}`));
+
+    // 2) Còn chỗ đăng nhiều nhất — nơi nên đổ hàng tiếp.
+    // Bỏ shop đã đóng / terminal: 0 listing nên trông "còn nhiều chỗ" nhưng không bán được. Shop bị phạt
+    // đơn (blocked) vẫn đăng được nên GIỮ.
+    const dead = (r) => r.severity === "terminal" || /closed|đóng|terminat|deactiv|banned/i.test(r.status || "");
+    const room = d.rows.filter((r) => !dead(r) && r.publishLimit > 0 && r.activeListings != null && r.publishLimit - r.activeListings > 0)
+      .map((r) => ({ name: opsShort(r.shop), value: r.publishLimit - r.activeListings, limit: r.publishLimit, tip: `${r.activeListings}/${r.publishLimit} listing` }))
+      .sort((a, b) => b.value - a.value).slice(0, 10);
+    const fullN = d.rows.filter((r) => opsCap(r).full).length;
+    cards.push(opsCard("📦 Còn chỗ đăng nhiều nhất", `Hạn mức listing TikTok − số đang active · không tính shop đã đóng · ${fullN} shop đã hết chỗ`, opsBarList(room, (i) => `còn <b>${i.value}</b><span style="color:var(--text-mute);">/${i.limit}</span>`, "Không shop nào còn chỗ")));
+
+    // 3) Lãi 30 ngày theo shop.
+    const pnl = d.rows.filter((r) => r.pnl);
+    const loss = pnl.filter((r) => r.pnl.net < 0).length;
+    const pItems = pnl.filter((r) => r.pnl.net > 0).map((r) => ({ name: opsShort(r.shop), value: r.pnl.net, tip: `${r.pnl.orders} đơn · doanh thu $${Math.round(r.pnl.revenue)} · chi phí $${Math.round(r.pnl.cost)} · refund $${Math.round(r.pnl.refund)}` }))
+      .sort((a, b) => b.value - a.value).slice(0, 10);
+    cards.push(opsCard("📈 Lãi 30 ngày theo shop", `Top 10 · ${pnl.length} shop có đơn${loss ? ` · <b style="color:var(--danger);">${loss} shop lỗ</b>` : " · không shop nào lỗ"} · công thức trang Finance (CRM)`, opsBarList(pItems, (i) => `<b>${opsMoney(i.value)}</b>`, d.pnlOk === false ? "⚠️ Chưa lấy được lãi lỗ từ CRM — bấm Làm mới để thử lại" : !d.crmEnabled ? "Chưa nối CRM" : "Chưa có shop nào có đơn trong 30 ngày")));
+
+    // 4) Tiền đang bị giữ theo shop.
+    const hItems = d.rows.filter((r) => r.onHold > 0).map((r) => ({ name: opsShort(r.shop), value: r.onHold, tip: `${OPS_LVL[r.level].label}${r.status ? " · " + r.status : ""}` }))
+      .sort((a, b) => b.value - a.value).slice(0, 10);
+    const hold = d.rows.reduce((s, r) => s + (r.onHold || 0), 0);
+    cards.push(opsCard("💰 Tiền đang bị giữ theo shop", `Top 10 · tổng ${opsMoney(hold)}`, opsBarList(hItems, (i) => `<b>${opsMoney(i.value)}</b>`, "Không shop nào bị giữ tiền")));
+  }
+  if (_opsSku) {
+    // 5) Top SKU lãi nhất. (Từng thử gom theo ngách nhưng CRM chưa phân ngách → 1 thanh "Khác", vô dụng.)
+    const sItems = _opsSku.rows.map((r) => ({ name: r.title || r.goods_id, value: opsProfit(r) ?? 0, tip: `goods_id ${r.goods_id} · ${r.orders || 0} đơn × ${opsMoney(r.margin_usd, 2).replace(/<[^>]+>/g, "")} lãi/đơn` }))
+      .filter((i) => i.value > 0).sort((x, y) => y.value - x.value).slice(0, 8);
+    cards.push(opsCard("🧵 SKU lãi nhất", `Top 8 · lãi/đơn × số đơn · cửa sổ ${_opsSku.windowDays ?? "?"} ngày · <span style="${opsStale(_opsSku.fetchedAt, 7)}">dữ liệu ${opsAgo(_opsSku.fetchedAt)}</span>`, opsBarList(sItems, (i) => `<b>${opsMoney(i.value)}</b>`, "Chưa có dữ liệu SKU")));
+  }
+  $("#opsCharts").innerHTML = cards.join("");
+}
+
+/* ── Đơn cần xử lý (chỉ đơn sắp/đã bị phạt — Return/Refund có màn riêng) ── */
+function renderOpsTodayTable() {
+  const rows = [...(_opsHealth.riskOrders || [])].sort((a, b) => (a.deadlineAt ?? Infinity) - (b.deadlineAt ?? Infinity));
+  if (!rows.length) { $("#opsTodayTable").innerHTML = `<div class="empty">${_opsHealth.riskOk === false ? "⚠️ Chưa lấy được đơn từ CRM — bấm Làm mới để thử lại" : !_opsHealth.crmEnabled ? "Chưa nối CRM" : "✓ Không có đơn nào sắp bị phạt"}</div>`; return; }
+  $("#opsTodayTable").innerHTML = `<div style="overflow-x:auto;"><table style="width:100%; border-collapse:collapse;">
+    <thead><tr>${opsTh("Còn lại")}${opsTh("Việc")}${opsTh("Shop")}${opsTh("Mã đơn")}${opsTh("goods_id")}</tr></thead>
+    <tbody>${rows.map((x) => { const K = OPS_KIND[x.kind] || [x.kind, "var(--text-mute)"]; return `<tr>
+      ${opsTd(opsLeft(x.deadlineAt), "white-space:nowrap;")}
+      ${opsTd(opsChip(K[1], K[0]))}
+      ${opsTd(escapeHtml(x.shop), "white-space:nowrap;")}
+      ${opsTd(`<code style="font-size:0.75rem;">${escapeHtml(x.orderId)}</code>`)}
+      ${opsTd(x.goodsId ? `<code style="font-size:0.75rem;">${escapeHtml(x.goodsId)}</code>` : opsDash(null))}
+    </tr>`; }).join("")}</tbody></table></div>`;
+}
+
+/* ── Sức khoẻ shop (bảng) ── */
+function renderOpsHealth() {
+  const chip = opsF.lvl ? `<button class="btn btn-ghost" onclick="opsFilter('lvl','${opsF.lvl}')">✕ Bỏ lọc "${OPS_LVL[opsF.lvl].label}"</button>`
+    : opsF.full ? `<button class="btn btn-ghost" onclick="opsFilter('full')">✕ Bỏ lọc "Hết chỗ đăng mới"</button>` : "";
   $("#opsHealthHead").innerHTML = `
-    <div class="kpis" style="margin-bottom:10px;">
-      ${kpi("red")}${kpi("yellow")}${kpi("green")}${kpi("none")}
-      <div class="kpi fail" role="button" tabindex="0" onkeydown="if(event.key==='Enter')this.click()" title="Shop đã chạm hạn mức listing TikTok (hoặc bị khoá đăng mới) — đổ hàng vào sẽ dính Day_Limit. Bấm để lọc" style="cursor:pointer;${opsF.full ? " outline:2px solid var(--accent);" : ""}" onclick="opsF.full=!opsF.full; renderOpsHealth()"><div class="kpi-v">${fullCnt}</div><div class="kpi-k">Hết chỗ đăng mới</div></div>
-      <div class="kpi"><div class="kpi-v">${opsMoney(hold)}</div><div class="kpi-k">Tiền đang bị giữ (on hold)</div></div>
-    </div>
+    <div style="display:flex; align-items:baseline; gap:10px; flex-wrap:wrap; margin-bottom:10px;"><h3 style="margin:0;">🩺 Sức khoẻ shop</h3><span class="ops-sub" style="margin:0;">nguy hiểm lên đầu · bấm KPI / biểu đồ phía trên để lọc</span></div>
     <div class="filter-bar" style="align-items:center;">
       <input placeholder="🔍 Tìm shop, tên TikTok, mã shop…" value="${escapeHtml(opsF.q)}" oninput="opsF.q=this.value; renderOpsHealthTable()">
-      ${opsF.lvl ? `<button class="btn btn-ghost" onclick="opsF.lvl=''; renderOpsHealth()">✕ Bỏ lọc "${OPS_LVL[opsF.lvl].label}"</button>` : ""}
-      ${opsF.full ? `<button class="btn btn-ghost" onclick="opsF.full=false; renderOpsHealth()">✕ Bỏ lọc "Hết chỗ đăng mới"</button>` : ""}
-      <span style="font-size:0.8rem; color:var(--text-mute); ${opsStale(newest, 3)}">Nguồn: ${d.source === "crm" ? "CRM KBT" : "snapshot addon TikCheck"} · dữ liệu mới nhất ${opsAgo(newest)}${limitLocal ? " · hạn mức listing lấy từ snapshot addon (CRM chưa trả)" : ""}${d.crmError ? ` · ⚠️ CRM lỗi: ${escapeHtml(d.crmError)}` : ""}${d.crmEnabled ? "" : " · chưa nối CRM"}</span>
-      <button class="btn btn-ghost" style="margin-left:auto;" onclick="loadOpsHealth(true)">🔄 Làm mới</button>
+      ${chip}
     </div>`;
   renderOpsHealthTable();
 }
@@ -5161,7 +5214,7 @@ function renderOpsHealthTable() {
   $("#opsHealthTable").innerHTML = `<div style="overflow-x:auto;"><table style="width:100%; border-collapse:collapse;">
     <thead><tr>${opsTh("Mức")}${opsTh("Shop")}${opsTh("Trạng thái TikTok")}${opsTh("On hold", 1)}${opsTh("Net", 1)}${opsTh("Lãi 30 ngày", 1)}${opsTh("Đơn sắp phạt", 1)}${opsTh("SP bị hạn chế", 1)}${opsTh("Hạn mức listing", 1)}${opsTh("Đơn/ngày", 1)}${opsTh("Cập nhật")}</tr></thead>
     <tbody>${rows.map((r) => {
-      const L = OPS_LVL[r.level], upd = r.updatedAt ? Date.parse(r.updatedAt) : 0;
+      const L = OPS_LVL[r.level], upd = r.updatedAt ? Date.parse(r.updatedAt) : 0, c = opsCap(r);
       return `<tr>
         ${opsTd(opsChip(L.color, L.label))}
         ${opsTd(`<div style="font-weight:600;">${escapeHtml(r.shop)}</div><div style="color:var(--text-mute); font-size:0.75rem;">${escapeHtml(r.account)}${r.tiktokName ? " · " + escapeHtml(r.tiktokName) : ""}${r.shopCode ? ` · <code>${escapeHtml(r.shopCode)}</code>` : ""}</div>`)}
@@ -5169,27 +5222,16 @@ function renderOpsHealthTable() {
         ${opsTd(opsMoney(r.onHold), opsNum)}
         ${opsTd(opsMoney(r.net), opsNum)}
         ${opsTd(r.pnl ? `${opsMoney(r.pnl.net)}<div style="color:var(--text-mute); font-size:0.75rem;">${r.pnl.orders} đơn · DT ${opsMoney(r.pnl.revenue)}</div>` : opsDash(null), opsNum + (r.pnl && r.pnl.net < 0 ? " color:var(--danger);" : ""))}
-        ${opsTd(r.atRisk == null ? opsDash(null) : r.atRisk > 0 ? `<a href="#" onclick="opsTodayF.q=${escapeHtml(JSON.stringify(r.shop))}; setOpsTab('today'); if(_opsToday) renderOpsToday(); return false;" style="color:var(--danger); font-weight:700;" title="Xem trong tab Hôm nay">${r.atRisk}</a>` : "0", opsNum)}
+        ${opsTd(r.atRisk == null ? opsDash(null) : r.atRisk > 0 ? `<b style="color:var(--danger);">${r.atRisk}</b>` : "0", opsNum)}
         ${opsTd(opsDash(r.restricted), opsNum + (r.restricted > 0 ? " color:var(--warn); font-weight:600;" : ""))}
-        ${(() => { const c = opsCap(r); return opsTd(c.html, opsNum + " " + c.style); })()}
+        ${opsTd(c.html, opsNum + " " + c.style)}
         ${opsTd(opsDash(r.dailyOrders), opsNum)}
         ${opsTd(opsAgo(upd), "white-space:nowrap; font-size:0.78rem; " + (opsStale(upd, 3) || "color:var(--text-mute);"))}
       </tr>`;
     }).join("")}</tbody></table></div>`;
 }
 
-/* ── Lãi lỗ SKU ── */
-async function loadOpsSku() {
-  $("#opsSkuTable").innerHTML = '<div class="empty">⏳ Đang tải lãi lỗ SKU…</div>';
-  try {
-    const d = await (await fetch("/admin/api/ops/sku")).json();
-    if (d.error) throw new Error(d.error);
-    _opsSku = d;
-    renderOpsSku();
-  } catch (err) {
-    $("#opsSkuTable").innerHTML = `<div class="empty">Lỗi: ${escapeHtml(err.message)}</div>`;
-  }
-}
+/* ── Lãi lỗ SKU (bảng) ── */
 async function refreshOpsSku(btn) {
   btn.disabled = true; btn.textContent = "⏳ Đang kéo từ CRM…";
   try {
@@ -5197,37 +5239,25 @@ async function refreshOpsSku(btn) {
     const d = await res.json();
     if (!res.ok) throw new Error(d.error);
     toast(`✓ Đã kéo ${d.count} SKU từ CRM`);
-    await loadOpsSku();
+    _opsSku = await (await fetch("/admin/api/ops/sku")).json();
+    renderOpsCharts(); renderOpsSku();
   } catch (err) {
     toast(err.message, "error");
     btn.disabled = false; btn.textContent = "🔄 Kéo lại từ CRM";
   }
 }
-const OPS_RISK = { safe: ["var(--success)", "An toàn"], medium: ["var(--warn)", "Trung bình"], high: ["var(--danger)", "Cao"] };
-const opsProfit = (r) => (r.margin_usd == null ? null : r.margin_usd * (r.orders || 0));
 function renderOpsSku() {
   const d = _opsSku;
-  if (!d) return;
-  const all = d.rows;
-  const totalOrders = all.reduce((s, r) => s + (r.orders || 0), 0);
-  const totalProfit = all.reduce((s, r) => s + (opsProfit(r) || 0), 0);
-  const highRisk = all.filter((r) => r.risk === "high").length;
-  const tiers = [...new Set(all.map((r) => r.tier).filter(Boolean))].sort();
+  const tiers = [...new Set(d.rows.map((r) => r.tier).filter(Boolean))].sort();
   const sel = (val, cur, label) => `<option value="${escapeHtml(val)}" ${val === cur ? "selected" : ""}>${escapeHtml(label)}</option>`;
   $("#opsSkuHead").innerHTML = `
-    <div class="kpis" style="margin-bottom:10px;">
-      <div class="kpi"><div class="kpi-v">${all.length}</div><div class="kpi-k">SKU có đơn</div></div>
-      <div class="kpi live"><div class="kpi-v">${totalOrders.toLocaleString("en-US")}</div><div class="kpi-k">Tổng đơn</div></div>
-      <div class="kpi live"><div class="kpi-v">${opsMoney(totalProfit)}</div><div class="kpi-k">Lãi ước tính (lãi/đơn × đơn)</div></div>
-      <div class="kpi fail" role="button" tabindex="0" onkeydown="if(event.key==='Enter')this.click()" title="Bấm để lọc" style="cursor:pointer;${opsF.skuRisk === "high" ? " outline:2px solid var(--accent);" : ""}" onclick="opsF.skuRisk=opsF.skuRisk==='high'?'':'high'; opsF.skuShown=100; renderOpsSku()"><div class="kpi-v">${highRisk}</div><div class="kpi-k">SKU refund rủi ro cao</div></div>
-    </div>
+    <div style="display:flex; align-items:baseline; gap:10px; flex-wrap:wrap; margin-bottom:10px;"><h3 style="margin:0;">💰 Lãi lỗ SKU</h3><span class="ops-sub" style="margin:0; ${opsStale(d.fetchedAt, 7)}">${d.rows.length} SKU · dữ liệu CRM · cửa sổ ${d.windowDays ?? "?"} ngày · lấy ${opsAgo(d.fetchedAt)}</span></div>
     <div class="filter-bar" style="align-items:center;">
       <input placeholder="🔍 Tìm tên SP, goods_id, ngách…" value="${escapeHtml(opsF.skuQ)}" oninput="opsF.skuQ=this.value; opsF.skuShown=100; renderOpsSkuTable()">
       <select onchange="opsF.skuTier=this.value; opsF.skuShown=100; renderOpsSkuTable()">${sel("", opsF.skuTier, "Mọi tier")}${tiers.map((t) => sel(t, opsF.skuTier, t)).join("")}</select>
-      <select onchange="opsF.skuRisk=this.value; opsF.skuShown=100; renderOpsSku()">${sel("", opsF.skuRisk, "Mọi mức rủi ro")}${sel("safe", opsF.skuRisk, "Rủi ro: An toàn")}${sel("medium", opsF.skuRisk, "Rủi ro: Trung bình")}${sel("high", opsF.skuRisk, "Rủi ro: Cao")}</select>
+      <select onchange="opsF.skuRisk=this.value; opsF.skuShown=100; renderOpsSkuTable()">${sel("", opsF.skuRisk, "Mọi mức rủi ro")}${sel("safe", opsF.skuRisk, "Rủi ro: An toàn")}${sel("medium", opsF.skuRisk, "Rủi ro: Trung bình")}${sel("high", opsF.skuRisk, "Rủi ro: Cao")}</select>
       <select onchange="opsF.skuSort=this.value; renderOpsSkuTable()">${sel("profit", opsF.skuSort, "Xếp: lãi tổng")}${sel("orders", opsF.skuSort, "Xếp: số đơn")}${sel("margin", opsF.skuSort, "Xếp: % lãi")}${sel("refund", opsF.skuSort, "Xếp: % refund")}</select>
-      <span style="font-size:0.8rem; color:var(--text-mute); ${opsStale(d.fetchedAt, 7)}">Dữ liệu CRM · cửa sổ ${d.windowDays ?? "?"} ngày · lấy ${opsAgo(d.fetchedAt)}</span>
-      <button class="btn btn-ghost" style="margin-left:auto;" ${d.crmEnabled ? "" : 'disabled title="Chưa nối CRM: cần đặt CRM_BRIDGE_SECRET trong .env"'} onclick="refreshOpsSku(this)">🔄 Kéo lại từ CRM</button>
+      <button class="btn btn-ghost" style="margin-left:auto;" ${d.crmEnabled ? "" : 'disabled title="Chưa nối CRM: cần CRM_BRIDGE_SECRET"'} onclick="refreshOpsSku(this)">🔄 Kéo lại từ CRM</button>
     </div>`;
   renderOpsSkuTable();
 }

@@ -64,7 +64,12 @@ export interface HealthRow {
   updatedAt: string | null;
 }
 export interface RiskOrder { orderId: string; shopId: string; shop: string; kind: string; deadlineAt: number | null; hoursLeft: number | null; goodsId: string | null }
-export interface HealthResult { rows: HealthRow[]; source: "crm" | "local"; builtAt: number; crmError?: string; riskOrders: RiskOrder[] }
+export interface HealthResult {
+  rows: HealthRow[]; source: "crm" | "local"; builtAt: number; crmError?: string; riskOrders: RiskOrder[];
+  /** Từng nguồn CRM phụ có lấy được không: null = chưa nối CRM, false = gọi lỗi. UI phải nói "CRM lỗi",
+   *  KHÔNG được hiện như "không có đơn" / "không có lãi" (người xem sẽ tưởng mọi thứ ổn). */
+  pnlOk: boolean | null; riskOk: boolean | null;
+}
 
 const num = (v: any): number | null => {
   const n = Number(v && typeof v === "object" && "amount" in v ? v.amount : v);
@@ -180,7 +185,7 @@ async function buildHealth(): Promise<HealthResult> {
     orderId: String(r.order_id), shopId: String(r.shop_id), shop: nameOf.get(String(r.shop_id))!, kind: String(r.kind),
     deadlineAt: r.deadline_at ? Date.parse(r.deadline_at) : null, hoursLeft: r.hours_left ?? null, goodsId: r.goods_id ?? null,
   }));
-  return { rows, source, builtAt: Date.now(), crmError, riskOrders };
+  return { rows, source, builtAt: Date.now(), crmError, riskOrders, pnlOk: crmOn ? pnlRows !== null : null, riskOk: crmOn ? riskRows !== null : null };
 }
 
 // Cache 10 phút + dùng chung 1 lần dựng cho người gọi đồng thời (dựng lạnh ~1-2s: 4Seller + đọc snapshot).
@@ -189,16 +194,18 @@ let healthCache: HealthResult | null = null;
 let healthInflight: Promise<HealthResult> | null = null;
 const rebuildHealth = () => (healthInflight ??= buildHealth().then((r) => (healthCache = r)).finally(() => { healthInflight = null; }));
 /** Có cache thì trả NGAY (cũ quá TTL thì làm mới ở nền) → queue/drip không bao giờ đứng chờ dựng lại. */
+// Lần dựng có nguồn CRM bị lỗi (thường chỉ chập chờn mạng) chỉ giữ 1 phút rồi thử lại, không giữ đủ 10 phút.
+const ttlOf = (h: HealthResult) => (h.crmError || h.pnlOk === false || h.riskOk === false ? 60_000 : HEALTH_TTL);
 export async function getShopHealth(force = false): Promise<HealthResult> {
   if (force || !healthCache) return rebuildHealth();
-  if (Date.now() - healthCache.builtAt >= HEALTH_TTL) void rebuildHealth().catch(() => {});
+  if (Date.now() - healthCache.builtAt >= ttlOf(healthCache)) void rebuildHealth().catch(() => {});
   return healthCache;
 }
 
 /** Không bao giờ chờ: có cache thì trả (cũ thì làm mới ở nền), chưa có thì kích dựng ở nền và trả null.
  *  Dùng cho màn cần tải nhanh (Listings) — thà thiếu số hạn mức một lượt còn hơn bắt người dùng chờ ~8s. */
 export function peekShopHealth(): HealthResult | null {
-  if (!healthCache || Date.now() - healthCache.builtAt >= HEALTH_TTL) void rebuildHealth().catch(() => {});
+  if (!healthCache || Date.now() - healthCache.builtAt >= ttlOf(healthCache)) void rebuildHealth().catch(() => {});
   return healthCache;
 }
 
@@ -226,28 +233,6 @@ export async function shopBlockMap(): Promise<Map<string, string>> {
 export const isShopBlocked = (m: Map<string, string>, shop: string) => m.get(normShop(shop)) ?? null;
 /** Tra 1 dòng sức khoẻ theo tên shop/folder (chuẩn hoá giống bộ chặn). */
 export const healthIndexByName = (h: HealthResult) => { const m = new Map<string, HealthRow>(); for (const r of h.rows) m.set(normShop(r.shop), r); return (shop: string) => m.get(normShop(shop)) ?? null; };
-
-/* ───────────── Hôm nay: việc có hạn chót ───────────── */
-export interface TodayItem { kind: string; shop: string; orderId: string; deadlineAt: number | null; detail: string; amount: string | null }
-/** Gộp đơn sắp phạt (CRM) + case Return còn mở (lượt quét gần nhất), xếp theo hạn chót. */
-export async function getToday(): Promise<{ items: TodayItem[]; riskAt: number; returnsAt: number | null; crmEnabled: boolean }> {
-  const h = await getShopHealth();
-  const items: TodayItem[] = h.riskOrders.map((o) => ({ kind: o.kind, shop: o.shop, orderId: o.orderId, deadlineAt: o.deadlineAt, detail: o.goodsId ? `goods_id ${o.goodsId}` : "", amount: null }));
-  let returnsAt: number | null = null;
-  try {
-    const { getLastReturnScan } = await import("./returnRefundScan");
-    const r: any = await getLastReturnScan();
-    if (r) {
-      returnsAt = r.scannedAt ?? null;
-      for (const x of r.rows ?? []) if (x.deadlineAt) items.push({
-        kind: "return", shop: x.shop, orderId: String(x.orderId), deadlineAt: x.deadlineAt,
-        detail: [x.statusText || x.status, x.reason].filter(Boolean).join(" · "), amount: x.amount != null ? `${Number(x.amount).toFixed(2)} ${x.currency || ""}`.trim() : null,
-      });
-    }
-  } catch { /* chưa có lượt quét return nào */ }
-  items.sort((a, b) => (a.deadlineAt ?? Infinity) - (b.deadlineAt ?? Infinity));
-  return { items, riskAt: h.builtAt, returnsAt, crmEnabled: crmSettings().enabled };
-}
 
 /* ───────────── Lãi lỗ SKU ───────────── */
 export interface SkuPnl { rows: any[]; fetchedAt: number | null; windowDays: number | null; crmEnabled: boolean }

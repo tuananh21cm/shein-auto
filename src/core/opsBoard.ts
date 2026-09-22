@@ -43,6 +43,8 @@ export interface HealthRow {
   level: HealthLevel; status: string | null; severity: string | null; violationScore: number | null;
   net: number | null; onHold: number | null; reserve: number | null; totalHolding: number | null;
   restricted: number | null; orderLimit: string | null; activeListings: number | null; dailyOrders: number | null;
+  /** Hạn mức ĐĂNG MỚI TikTok đặt cho shop (0/20/100/200/1000). Active có thể > limit khi TikTok hạ hạn mức sau này. */
+  publishLimit: number | null; limitFrom: "crm" | "local" | null;
   updatedAt: string | null;
 }
 export interface HealthResult { rows: HealthRow[]; source: "crm" | "local"; builtAt: number; crmError?: string }
@@ -104,10 +106,17 @@ async function buildHealth(): Promise<HealthResult> {
     Promise.all(accounts.map((acc) => getShopList(`acct:${acc.uid}`).then((r) => (r?.records ?? []) as any[], () => [] as any[]))),
   ]);
 
+  // publish_limit: CRM chưa trả thì lấy từ snapshot local (hạn mức ít đổi). Chỉ đọc local khi thật sự thiếu.
+  // (source được gán trong loadIdx — TS không thấy nên phải nới kiểu)
+  const needLocal = (source as HealthResult["source"]) === "crm" && [...idx.values()].some((p) => !("publish_limit" in p));
+  const localIdx = needLocal ? await localHealthIndex() : null;
+
   const rows: HealthRow[] = [];
   for (const [i, acc] of accounts.entries()) {
     for (const s of lists[i]) {
       const p = idx.get(String(s.sellingPartnerId ?? ""));
+      const own = p && "publish_limit" in p;
+      const lp = own ? p : localIdx?.get(String(s.sellingPartnerId ?? ""));
       rows.push({
         shop: s.shopName, account: acc.label, tiktokName: p?.shop_name ?? s.platformShopName ?? null, shopCode: p?.shop_code ?? null,
         level: levelOf(p), status: p?.shop_status ?? null, severity: p?.shop_severity ?? null,
@@ -115,6 +124,7 @@ async function buildHealth(): Promise<HealthResult> {
         reserve: num(p?.reserve), totalHolding: num(p?.total_holding), restricted: num(p?.restricted_product_count),
         orderLimit: p?.order_limit != null ? String(p.order_limit) : null, activeListings: num(p?.total_listings_active),
         dailyOrders: num(p?.daily_orders), updatedAt: p?._updatedAt ?? null,
+        publishLimit: num(lp?.publish_limit), limitFrom: lp && lp.publish_limit != null ? (own ? source : "local") : null,
       });
     }
   }

@@ -4967,7 +4967,7 @@ function renderReturns() {
 // ─── Vận hành (Đợt 1): Sức khoẻ shop + Lãi lỗ SKU ───────────────────────
 // Chỉ tải khi mở tab, KHÔNG tự poll. Bảng ≤ 500 dòng, SKU hiện 100 dòng/lần ("Xem thêm") → không lag.
 let _opsTab = "health", _opsHealth = null, _opsSku = null;
-const opsF = { lvl: "", q: "", skuQ: "", skuTier: "", skuRisk: "", skuSort: "profit", skuShown: 100 };
+const opsF = { lvl: "", full: false, q: "", skuQ: "", skuTier: "", skuRisk: "", skuSort: "profit", skuShown: 100 };
 const OPS_LVL = {
   red: { kpi: "fail", label: "Nguy hiểm", color: "var(--danger)" },
   yellow: { kpi: "pending", label: "Cần chú ý", color: "var(--warn)" },
@@ -4986,6 +4986,18 @@ const opsChip = (color, label) => `<span style="display:inline-flex; align-items
 const opsTh = (t, right) => `<th style="text-align:${right ? "right" : "left"}; padding:8px 10px; font-size:0.75rem; color:var(--text-mute); font-weight:600; white-space:nowrap;">${t}</th>`;
 const opsTd = (t, extra = "") => `<td style="padding:8px 10px; border-top:1px solid var(--border); font-size:0.83rem; vertical-align:top; ${extra}">${t}</td>`;
 const opsNum = "text-align:right; white-space:nowrap; font-variant-numeric:tabular-nums;";
+// Hạn mức listing: chỗ còn trống để ĐĂNG MỚI = publish_limit − active. limit 0 = TikTok khoá đăng mới.
+// Active có thể > limit (TikTok hạ hạn mức sau khi đã đăng) → vẫn tính là hết chỗ.
+const opsCap = (r) => {
+  const a = r.activeListings, l = r.publishLimit;
+  if (l == null) return { html: opsDash(a), full: false, style: "" };
+  const sub = (t, c) => `<div style="font-size:0.72rem; ${c ? "" : "color:var(--text-mute);"}">${t}</div>`;
+  if (l === 0) return { html: `${a ?? "?"} / 0${sub("khoá đăng mới", 1)}`, full: true, style: "color:var(--danger); font-weight:600;" };
+  const room = l - (a ?? 0);
+  if (room <= 0) return { html: `${a} / ${l}${sub("đầy", 1)}`, full: true, style: "color:var(--danger); font-weight:600;" };
+  const tight = room <= Math.max(2, l * 0.1);
+  return { html: `${a ?? "?"} / ${l}${sub("còn " + room, tight)}`, full: false, style: tight ? "color:var(--warn); font-weight:600;" : "" };
+};
 
 function loadOps() { setOpsTab(_opsTab); }
 function setOpsTab(t) {
@@ -5017,6 +5029,8 @@ function renderOpsHealth() {
   d.rows.forEach((r) => cnt[r.level]++);
   const hold = d.rows.reduce((s, r) => s + (r.onHold || 0), 0);
   const newest = Math.max(0, ...d.rows.map((r) => (r.updatedAt ? Date.parse(r.updatedAt) : 0)));
+  const fullCnt = d.rows.filter((r) => opsCap(r).full).length;
+  const limitLocal = d.source === "crm" && d.rows.some((r) => r.limitFrom === "local");
   const kpi = (lvl) => {
     const L = OPS_LVL[lvl], on = opsF.lvl === lvl;
     return `<div class="kpi ${L.kpi}" role="button" tabindex="0" onkeydown="if(event.key==='Enter')this.click()" title="Bấm để lọc" style="cursor:pointer;${on ? " outline:2px solid var(--accent);" : ""}" onclick="opsF.lvl=opsF.lvl==='${lvl}'?'':'${lvl}'; renderOpsHealth()"><div class="kpi-v">${cnt[lvl]}</div><div class="kpi-k">${L.label}</div></div>`;
@@ -5024,12 +5038,14 @@ function renderOpsHealth() {
   $("#opsHealthHead").innerHTML = `
     <div class="kpis" style="margin-bottom:10px;">
       ${kpi("red")}${kpi("yellow")}${kpi("green")}${kpi("none")}
+      <div class="kpi fail" role="button" tabindex="0" onkeydown="if(event.key==='Enter')this.click()" title="Shop đã chạm hạn mức listing TikTok (hoặc bị khoá đăng mới) — đổ hàng vào sẽ dính Day_Limit. Bấm để lọc" style="cursor:pointer;${opsF.full ? " outline:2px solid var(--accent);" : ""}" onclick="opsF.full=!opsF.full; renderOpsHealth()"><div class="kpi-v">${fullCnt}</div><div class="kpi-k">Hết chỗ đăng mới</div></div>
       <div class="kpi"><div class="kpi-v">${opsMoney(hold)}</div><div class="kpi-k">Tiền đang bị giữ (on hold)</div></div>
     </div>
     <div class="filter-bar" style="align-items:center;">
       <input placeholder="🔍 Tìm shop, tên TikTok, mã shop…" value="${escapeHtml(opsF.q)}" oninput="opsF.q=this.value; renderOpsHealthTable()">
       ${opsF.lvl ? `<button class="btn btn-ghost" onclick="opsF.lvl=''; renderOpsHealth()">✕ Bỏ lọc "${OPS_LVL[opsF.lvl].label}"</button>` : ""}
-      <span style="font-size:0.8rem; color:var(--text-mute); ${opsStale(newest, 3)}">Nguồn: ${d.source === "crm" ? "CRM KBT" : "snapshot addon TikCheck"} · dữ liệu mới nhất ${opsAgo(newest)}${d.crmError ? ` · ⚠️ CRM lỗi: ${escapeHtml(d.crmError)}` : ""}${d.crmEnabled ? "" : " · chưa nối CRM"}</span>
+      ${opsF.full ? `<button class="btn btn-ghost" onclick="opsF.full=false; renderOpsHealth()">✕ Bỏ lọc "Hết chỗ đăng mới"</button>` : ""}
+      <span style="font-size:0.8rem; color:var(--text-mute); ${opsStale(newest, 3)}">Nguồn: ${d.source === "crm" ? "CRM KBT" : "snapshot addon TikCheck"} · dữ liệu mới nhất ${opsAgo(newest)}${limitLocal ? " · hạn mức listing lấy từ snapshot addon (CRM chưa trả)" : ""}${d.crmError ? ` · ⚠️ CRM lỗi: ${escapeHtml(d.crmError)}` : ""}${d.crmEnabled ? "" : " · chưa nối CRM"}</span>
       <button class="btn btn-ghost" style="margin-left:auto;" onclick="loadOpsHealth(true)">🔄 Làm mới</button>
     </div>`;
   renderOpsHealthTable();
@@ -5037,10 +5053,10 @@ function renderOpsHealth() {
 function renderOpsHealthTable() {
   const d = _opsHealth;
   const q = opsF.q.trim().toLowerCase();
-  const rows = d.rows.filter((r) => (!opsF.lvl || r.level === opsF.lvl) && (!q || [r.shop, r.tiktokName, r.shopCode].some((x) => String(x || "").toLowerCase().includes(q))));
+  const rows = d.rows.filter((r) => (!opsF.lvl || r.level === opsF.lvl) && (!opsF.full || opsCap(r).full) && (!q || [r.shop, r.tiktokName, r.shopCode].some((x) => String(x || "").toLowerCase().includes(q))));
   if (!rows.length) { $("#opsHealthTable").innerHTML = '<div class="empty">Không có shop nào khớp bộ lọc</div>'; return; }
   $("#opsHealthTable").innerHTML = `<div style="overflow-x:auto;"><table style="width:100%; border-collapse:collapse;">
-    <thead><tr>${opsTh("Mức")}${opsTh("Shop")}${opsTh("Trạng thái TikTok")}${opsTh("On hold", 1)}${opsTh("Net", 1)}${opsTh("Reserve", 1)}${opsTh("SP bị hạn chế", 1)}${opsTh("Listing active", 1)}${opsTh("Đơn/ngày", 1)}${opsTh("Cập nhật")}</tr></thead>
+    <thead><tr>${opsTh("Mức")}${opsTh("Shop")}${opsTh("Trạng thái TikTok")}${opsTh("On hold", 1)}${opsTh("Net", 1)}${opsTh("Reserve", 1)}${opsTh("SP bị hạn chế", 1)}${opsTh("Hạn mức listing", 1)}${opsTh("Đơn/ngày", 1)}${opsTh("Cập nhật")}</tr></thead>
     <tbody>${rows.map((r) => {
       const L = OPS_LVL[r.level], upd = r.updatedAt ? Date.parse(r.updatedAt) : 0;
       return `<tr>
@@ -5051,7 +5067,7 @@ function renderOpsHealthTable() {
         ${opsTd(opsMoney(r.net), opsNum)}
         ${opsTd(opsMoney(r.reserve), opsNum)}
         ${opsTd(opsDash(r.restricted), opsNum + (r.restricted > 0 ? " color:var(--warn); font-weight:600;" : ""))}
-        ${opsTd(opsDash(r.activeListings), opsNum)}
+        ${(() => { const c = opsCap(r); return opsTd(c.html, opsNum + " " + c.style); })()}
         ${opsTd(opsDash(r.dailyOrders), opsNum)}
         ${opsTd(opsAgo(upd), "white-space:nowrap; font-size:0.78rem; " + (opsStale(upd, 3) || "color:var(--text-mute);"))}
       </tr>`;

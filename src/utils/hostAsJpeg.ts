@@ -2,13 +2,13 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import crypto from "crypto";
-import { uploadToImgbb } from "./uploadToImgbb";
+import { hostImage } from "./hostImage";
 import { workerConfig } from "../config/appConfig";
 
 /**
  * Ảnh SHEIN trả về là .webp. Một số shop TikTok TỪ CHỐI format này trong MÔ TẢ
  * (ảnh main không dính vì đường COS đã convert sẵn — xem listing4sellerApi.uploadImageOnce).
- * → tải về, convert JPEG, host lại (R2 trước, imgbb fallback) rồi trả URL mới.
+ * → tải về, convert JPEG, host lại lên R2 rồi trả URL mới.
  *
  * Ảnh vốn đã jpeg/png giữ nguyên URL gốc (khỏi tốn upload). Mọi lỗi cũng trả URL gốc:
  * mô tả mất ảnh còn tệ hơn ảnh sai format.
@@ -25,7 +25,7 @@ export async function hostAsJpeg(url: string): Promise<string> {
     const buf = await sharp(Buffer.from(await r.arrayBuffer())).jpeg({ quality: 88 }).toBuffer();
     tmp = path.join(os.tmpdir(), `descimg_${crypto.randomBytes(6).toString("hex")}.jpg`);
     fs.writeFileSync(tmp, buf);
-    return (await uploadToImgbb(tmp)) || url;
+    return (await hostImage(tmp)) || url;
   } catch {
     return url;
   } finally {

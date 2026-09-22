@@ -104,7 +104,7 @@ Return JSON.`;
  * - opts.heroFirst: true = banner "feature" (hero trái + panel phải) đưa lên NGAY sau
  *   headline làm ấn tượng đầu, collage xuống giữa. false = collage trước (nếp cũ).
  *
- * bannerUrls: [0]=collage, [1]=feature (URL imgbb đã verify, hoặc null).
+ * bannerUrls: [0]=collage, [1]=feature (URL ảnh đã verify, hoặc null).
  */
 export function composeRichHtml(
   rich: RichDescription,

@@ -1030,21 +1030,6 @@
         </div>
       </div>
 
-      <div class="card" style="margin-top:18px;">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-          <h3 style="margin:0;">🖼️ Pool imgbb <span style="color:var(--text-mute); font-weight:400; font-size:0.85rem;">— host ảnh banner/size-guide trong mô tả</span></h3>
-          <div style="display:flex; gap:8px;">
-            <button class="btn btn-ghost" onclick="loadImgbbStatus()">↻ Refresh</button>
-            <button class="btn btn-ghost" id="imgbbTestBtn" onclick="testImgbbKeys()" title="Upload 1 ảnh 1px bằng từng key để kiểm tra sống/limit (tốn 1 lượt quota mỗi key)">🧪 Test keys</button>
-          </div>
-        </div>
-        <div id="imgbbSummary" style="margin-bottom:10px;"></div>
-        <div id="imgbbKeysWrap"><div class="empty">Đang tải…</div></div>
-        <p style="color: var(--text-mute); font-size: 0.8rem; margin-top: 10px;">
-          ⓘ imgbb không công bố quota chính thức — cột "giờ này" so với ngưỡng <b>~100 upload/key/giờ</b> ước tính từ quan sát thực tế.
-          "Bó tay" = upload thất bại sau toàn bộ backoff → <b>listing đó thiếu banner/size-guide</b>. Thêm key mới vào <code>IMGBB_API_KEYS</code> trong .env (phẩy) rồi restart.
-        </p>
-      </div>
 
       <div class="card" style="margin-top:18px; border-left: 4px solid var(--accent);">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; gap:12px; flex-wrap:wrap;">
@@ -1326,7 +1311,7 @@ function goToView(view, push) {
   if (view === "domain") loadTunnels();
   if (view === "niche") loadNiche();
   if (view === "users") renderUsers();
-  if (view === "settings") { loadSettings(); loadBrands(); loadPricing(); loadImgbbStatus(); loadMyToken(); }
+  if (view === "settings") { loadSettings(); loadBrands(); loadPricing(); loadMyToken(); }
   if (view === "promotions") loadPromotions();
   if (view === "returns") loadReturns();
   if (view === "ops") loadOps();
@@ -1511,10 +1496,9 @@ const HELP = {
       <li>Đặt <b>brand mặc định</b> + brand riêng từng shop (trong modal cấu hình shop).</li>
       <li>Nút <b>✨ Gợi ý tên</b>: chọn vibe/ngách → AI đặt tên brand ngắn gọn kiểu ROMWE.</li>
     </ul>
-    <h4>💰 Pricing &amp; imgbb</h4>
+    <h4>💰 Pricing</h4>
     <ul>
       <li><b>Pricing</b>: công thức tính giá bán (phí ship, hệ số, cộng thêm).</li>
-      <li><b>imgbb</b>: pool API key upload ảnh mô tả. Key hết quota → thay key mới ở đây.</li>
     </ul>
     <div class="help-warn">⚠️ Config per-máy (gitignore): pull code không bị đè, nhưng cũng không tự đồng bộ sang máy khác.</div>` },
 
@@ -4835,78 +4819,6 @@ async function saveBrands() {
     flashSaved("brandSaveStatus", "💾 Tự lưu");
   } catch (err) {
     toast(err.message, "error");
-  }
-}
-
-// ─── Pool imgbb (Settings) ─────────────────────────────
-async function loadImgbbStatus() {
-  try {
-    const res = await fetch("/admin/api/imgbb/status");
-    const d = await res.json();
-    if (!res.ok) throw new Error(d.error);
-    const est = d.estHourlyLimitPerKey || 100;
-
-    // Tổng quan: bó tay (banner thiếu) + verify fail
-    const warnGaveup = d.gaveup > 0;
-    $("#imgbbSummary").innerHTML = `
-      <div class="attn-bar" style="border-left-color:${warnGaveup ? "var(--danger)" : "var(--success)"};">
-        <span class="it">🚫 Bó tay (thiếu banner): <b style="color:${warnGaveup ? "var(--danger)" : "inherit"};">${d.gaveup}</b>${d.lastGaveupAt ? ` · lần cuối ${relTime(d.lastGaveupAt)}` : ""}</span>
-        <span class="it">🔍 Verify fail (URL chết): <b>${d.verifyFail}</b>${d.lastVerifyFailAt ? ` · ${relTime(d.lastVerifyFailAt)}` : ""}</span>
-        <span style="flex:1"></span>
-        <span class="it" style="color:var(--text-mute);">${d.keys.length} key trong pool</span>
-      </div>`;
-
-    $("#imgbbKeysWrap").innerHTML = `
-      <table style="width:100%;">
-        <thead><tr><th>Key</th><th>Giờ này</th><th>Còn lại (ước tính)</th><th>24h qua</th><th>Tổng OK</th><th>Tổng limit</th><th>Limit gần nhất</th></tr></thead>
-        <tbody>
-        ${d.keys.map((k) => {
-          const used = k.hourOk;
-          const left = Math.max(0, est - used);
-          const pct = Math.min(100, Math.round((used / est) * 100));
-          const barColor = pct >= 90 ? "var(--danger)" : pct >= 60 ? "var(--warn)" : "var(--success)";
-          const limitedNow = k.lastLimitAt && Date.now() - k.lastLimitAt < 15 * 60e3;
-          const spark = k.hours.map((h) => {
-            const t = h.ok + h.limit;
-            const hgt = t ? Math.max(2, Math.min(22, Math.round((t / est) * 22))) : 1;
-            return `<div title="${h.h}: ${h.ok} ok, ${h.limit} limit" style="width:4px; height:${hgt}px; border-radius:1px; background:${h.limit ? "var(--danger)" : t ? "var(--success)" : "var(--bg-elev)"};"></div>`;
-          }).join("");
-          return `<tr>
-            <td><code>${escapeHtml(k.keyMasked)}</code> ${limitedNow ? '<span class="badge badge-danger">đang limit</span>' : '<span class="badge badge-success">ok</span>'}</td>
-            <td style="min-width:130px;">
-              <div style="display:flex; align-items:center; gap:8px;">
-                <div class="bar-track" style="flex:1; height:9px;"><div class="bar-seg" style="width:${pct}%; background:${barColor};"></div></div>
-                <span style="font-variant-numeric:tabular-nums;">${used}/${est}</span>
-              </div>
-            </td>
-            <td style="font-weight:700; color:${barColor};">${left}</td>
-            <td><div style="display:flex; align-items:flex-end; gap:1px; height:22px;">${spark}</div></td>
-            <td>${k.ok.toLocaleString()}</td>
-            <td style="color:${k.ratelimit ? "var(--warn)" : "var(--text-mute)"};">${k.ratelimit.toLocaleString()}</td>
-            <td style="color:var(--text-mute); font-size:0.82rem;">${k.lastLimitAt ? relTime(k.lastLimitAt) : "—"}</td>
-          </tr>`;
-        }).join("")}
-        </tbody>
-      </table>`;
-  } catch (err) {
-    $("#imgbbKeysWrap").innerHTML = `<div class="empty">Lỗi: ${escapeHtml(err.message)}</div>`;
-  }
-}
-
-async function testImgbbKeys() {
-  const btn = $("#imgbbTestBtn");
-  btn.disabled = true; btn.textContent = "⏳ Đang test…";
-  try {
-    const res = await fetch("/admin/api/imgbb/test", { method: "POST" });
-    const d = await res.json();
-    if (!res.ok) throw new Error(d.error);
-    const lines = d.results.map((r) => `${r.keyMasked}: ${r.ok ? "✓ sống" : r.ratelimited ? "⛔ RATE-LIMIT" : "✕ " + (r.error || "lỗi")}`);
-    toast(lines.join(" · "), d.results.every((r) => r.ok) ? "success" : "error");
-    loadImgbbStatus();
-  } catch (err) {
-    toast(err.message, "error");
-  } finally {
-    btn.disabled = false; btn.textContent = "🧪 Test keys";
   }
 }
 

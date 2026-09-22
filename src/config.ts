@@ -11,17 +11,7 @@ const envHub = process.env.HUB_DIR?.trim() ?? "";
 export const config = {
   geminiApiKey: process.env.GEMINI_API_KEY ?? "",
   rapidApiKey: process.env.RAPIDAPI_KEY ?? "",
-  /** imgbb API key — host banner marketing để chèn vào mô tả (URL public). Lấy free tại imgbb.com/api. */
-  imgbbApiKey: process.env.IMGBB_API_KEY ?? "",
-  /** Nhiều key imgbb (xoay vòng né rate limit). Gộp IMGBB_API_KEYS (phẩy) + IMGBB_API_KEY, dedup. */
-  imgbbApiKeys: Array.from(
-    new Set(
-      [process.env.IMGBB_API_KEY ?? "", ...(process.env.IMGBB_API_KEYS ?? "").split(",")]
-        .map((k) => k.trim())
-        .filter(Boolean)
-    )
-  ),
-  /** Cloudflare R2 — host ảnh chính (không rate limit); thiếu bất kỳ giá trị nào → dùng imgbb như cũ. */
+  /** Cloudflare R2 — host ảnh mô tả (không rate limit). Thiếu bất kỳ giá trị nào → mô tả không có ảnh banner/size guide. */
   r2AccountId: process.env.R2_ACCOUNT_ID?.trim() ?? "",
   r2AccessKey: process.env.R2_ACCESS_KEY_ID?.trim() ?? "",
   r2SecretKey: process.env.R2_SECRET_ACCESS_KEY?.trim() ?? "",

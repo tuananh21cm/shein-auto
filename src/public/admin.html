@@ -5717,7 +5717,10 @@ async function uploadCookieArray(arr, sourceLabel, targetUid) {
   const data = await res.json();
   if (!res.ok) throw new Error(`${sourceLabel}: ${data.error}`);
   const syncWarn = data.shopSyncError ? ` (sync shop lỗi: ${data.shopSyncError})` : ` — ${data.shopCount} shop`;
-  toast(`✓ ${sourceLabel} → ${data.label}${syncWarn}`);
+  // Kéo file vào ô chung nhưng nhận ra là cookie của tài khoản có sẵn (khớp shop) → nói rõ đã làm mới, không tạo mới.
+  toast(data.matchedBy
+    ? `✓ Nhận ra cookie của "${data.matchedBy.label}" (khớp ${data.matchedBy.hit}/${data.matchedBy.total} shop) → đã làm mới cookie`
+    : `✓ ${sourceLabel} → ${data.label}${syncWarn}`);
 }
 
 async function handleCookieFiles(files) {

@@ -3240,7 +3240,7 @@ export const startAdminServer = async () => {
       if (sessionUser.role === "viewer") return res.status(403).json({ error: "Viewer không thể upload cookie" });
 
       const body = req.body as { cookie: any; targetUid?: string };
-      const { account, shopSyncError } = await saveAccountCookie(body.cookie, body.targetUid ? { targetUid: body.targetUid } : undefined);
+      const { account, shopSyncError, matchedBy } = await saveAccountCookie(body.cookie, body.targetUid ? { targetUid: body.targetUid } : undefined);
       // Đổi cookie / thêm shop → xoá cache để UI phản ánh ngay
       shopListCache.clear();
       liveSwr.clear();
@@ -3252,6 +3252,7 @@ export const startAdminServer = async () => {
         cookieCount: account.cookieCount,
         shopCount: account.shops.length,
         shopSyncError: shopSyncError ?? null,
+        matchedBy: matchedBy ?? null,
       });
     } catch (err: any) {
       res.status(400).json({ error: err?.message ?? "Lỗi lưu cookie" });

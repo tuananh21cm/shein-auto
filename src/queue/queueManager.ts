@@ -11,6 +11,7 @@ import { notifyFail } from "../services/notification/telegram";
 import { getAllUsersForCron, getAllUserDirs, UserDirs, getEffectiveSettings } from "../state/userDirs";
 import { loadAdminConfig } from "../adminConfig";
 import { shopBlockMap, isShopBlocked } from "../core/opsBoard";
+import { deadCookieForShop, isCookieDeadError } from "../state/cookieHealth";
 
 const LAST_FOLDER_FILE_NAME = ".last_folder.txt";
 
@@ -152,7 +153,8 @@ export const processFile = async (
           const msg = String(apiErr?.message ?? apiErr);
           // File cào hỏng (thiếu product_name/category, thiếu colors/sizes) → Playwright cũng
           // hỏng y vậy, fallback chỉ phí thêm ~2 phút rồi vẫn vào Fail. Ném luôn.
-          if (/JSON hỏng|Thiếu colors\/sizes/i.test(msg)) throw apiErr;
+          // Cookie chết → Playwright dùng cùng cookie, cũng chết → ném luôn (xử lý ở nhánh fail).
+          if (/JSON hỏng|Thiếu colors\/sizes/i.test(msg) || isCookieDeadError(apiErr)) throw apiErr;
           console.warn(
             `⚠️ [${owner}/${folderName}] API lỗi → fallback Playwright: ${msg.slice(0, 140)}`
           );
@@ -196,6 +198,13 @@ export const processFile = async (
         durationMs: finishedAt - startedAt,
       });
       // Không bắn Telegram khi success — chỉ notify khi fail (user request)
+    } else if (isCookieDeadError(publishError)) {
+      // Cookie 4Seller hết hạn: KHÔNG phải lỗi listing → trả file về hàng chờ (tick tự bỏ qua
+      // shop của tài khoản chết cho tới khi import cookie mới), không vào Fail, không bắn Telegram.
+      await fs.move(claimedPath, absJsonPath, { overwrite: false }).catch((e) =>
+        console.error(`⚠️ [${owner}/${folderName}] Không trả được "${fileName}" về hàng chờ:`, e?.message ?? e)
+      );
+      console.warn(`🍪 [${owner}/${folderName}] Cookie 4Seller hết hạn → "${fileName}" trả về hàng chờ`);
     } else {
       // Listing thật sự fail
       const errorMessage = publishError?.message ?? String(publishError);
@@ -305,7 +314,7 @@ const tickForUser = async (dirs: UserDirs, slotsAvailable: number, blocked: Map<
     if (!oldest) continue;
     // Shop hết hạn mức listing / bị khoá đăng / treo tiền → đăng vào chỉ ra draft Day_Limit
     // (tốn AI + upload vô ích). Để file NẰM CHỜ: shop có chỗ lại thì tự chạy tiếp.
-    const why = isShopBlocked(blocked, f);
+    const why = isShopBlocked(blocked, f) ?? ((await deadCookieForShop(f)) ? "cookie 4Seller hết hạn — import lại ở tab Cookie" : null);
     if (why) {
       if (Date.now() - (blockedLoggedAt.get(f) ?? 0) > 30 * 60_000) {
         console.log(`⛔ [${username}/${f}] tạm không đăng: ${why} — file giữ nguyên trong hàng chờ`);

@@ -3340,6 +3340,24 @@ export const startAdminServer = async () => {
     }
   });
 
+  // Tài khoản đang chết cookie (banner nổi mọi màn). Đọc RAM + index, không gọi 4Seller → poll thoải mái.
+  app.get("/admin/api/cookie/alerts", async (_req, res) => {
+    try {
+      const { deadCookies } = await import("./state/cookieHealth");
+      const dead = deadCookies();
+      if (!dead.length) return res.json({ dead: [] });
+      const accounts = await fsAccounts();
+      res.json({
+        dead: dead.flatMap((d) => {
+          const a = accounts.find((x) => x.uid === d.uid);
+          return a ? [{ ...d, label: a.email || a.label, shops: a.shops.length }] : []; // tài khoản đã xoá → thôi báo
+        }),
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? "Lỗi" });
+    }
+  });
+
   // Ping NHẸ 1 tài khoản (1 HTTP getShopList, ~1s) — auto-check cookie sống/chết, KHÔNG mở browser.
   app.get("/admin/api/cookie/ping", async (req, res) => {
     try {

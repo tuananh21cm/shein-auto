@@ -53,6 +53,10 @@
     button { font-family: inherit; }
 
     .app { display: grid; grid-template-columns: 240px 1fr; min-height: 100vh; }
+    .ck-alert { position: fixed; top: calc(14px + env(safe-area-inset-top, 0px)); left: 50%; transform: translateX(-50%); z-index: 9000; width: min(640px, calc(100vw - 32px)); display: flex; align-items: flex-start; gap: 12px; padding: 12px 14px; background: var(--bg-card); color: var(--text); border: 1px solid var(--danger); border-left-width: 4px; border-radius: 10px; box-shadow: var(--shadow); font-size: 0.88rem; line-height: 1.45; }
+    .ck-alert .ck-a-body { flex: 1; min-width: 0; }
+    .ck-alert .ck-a-x { background: none; border: 0; color: var(--text-mute); font-size: 1.1rem; cursor: pointer; padding: 0 4px; line-height: 1; }
+    .ck-alert .ck-a-x:hover, .ck-alert .ck-a-x:focus-visible { color: var(--text); }
     .sidebar { background: var(--bg-elev); border-right: 1px solid var(--border); padding: 24px 16px; display: flex; flex-direction: column; gap: 8px; position: sticky; top: 0; height: 100vh; }
     .brand { font-weight: 800; font-size: 1.1rem; letter-spacing: 0.04em; padding: 4px 12px 16px; display: flex; align-items: center; gap: 8px; }
     .brand .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 12px var(--accent); }
@@ -1566,9 +1570,41 @@ async function bootstrap() {
     await Promise.all([refreshDashboard(), loadConfig()]);
     connectSSE();
     routeFromUrl(); // /admin/<view> → mở đúng màn (deep-link/refresh)
+    checkCookieAlerts();
+    setInterval(checkCookieAlerts, 60_000);
   } catch (err) {
     console.error(err);
   }
+}
+
+// ─── Banner nổi: cookie 4Seller hết hạn (mọi màn) ──────
+// Server dừng đăng shop của tài khoản chết. ✕ = ẩn đúng LẦN CHẾT đó (key uid:since) — cookie chết
+// lần sau (since mới) thì hiện lại. Import cookie mới → server đánh dấu sống → banner tự mất.
+const CK_DISMISS = "ckAlertDismissed";
+const _ckHidden = new Set(); // dự phòng khi localStorage bị chặn
+const ckDismissed = () => { try { return JSON.parse(localStorage.getItem(CK_DISMISS) || "[]"); } catch { return []; } };
+async function checkCookieAlerts() {
+  let dead = [];
+  try { dead = (await (await fetch("/admin/api/cookie/alerts")).json()).dead || []; } catch { return; }
+  const hidden = new Set([...ckDismissed(), ..._ckHidden]);
+  const show = dead.filter((d) => !hidden.has(`${d.uid}:${d.since}`));
+  let el = $("#ckAlert");
+  if (!show.length) { if (el) el.remove(); return; }
+  if (!el) { el = document.createElement("div"); el.id = "ckAlert"; el.className = "ck-alert"; el.setAttribute("role", "alert"); document.body.appendChild(el); }
+  el.dataset.keys = JSON.stringify(show.map((d) => `${d.uid}:${d.since}`));
+  el.innerHTML = `<span aria-hidden="true">🍪</span>
+    <div class="ck-a-body"><b style="color:var(--danger);">Cookie 4Seller hết hạn — đã dừng đăng</b><br>
+      ${show.map((d) => `<b>${escapeHtml(d.label)}</b> · ${d.shops} shop · phát hiện ${relTime(d.since)}`).join("<br>")}
+      <div style="margin-top:8px;"><button class="btn btn-primary" style="padding:4px 12px;" onclick="goToView('cookie', true)">Import lại cookie</button></div>
+    </div>
+    <button class="ck-a-x" title="Ẩn thông báo" aria-label="Ẩn thông báo" onclick="dismissCookieAlert()">✕</button>`;
+}
+function dismissCookieAlert() {
+  const el = $("#ckAlert"); if (!el) return;
+  const keys = JSON.parse(el.dataset.keys || "[]");
+  keys.forEach((k) => _ckHidden.add(k));
+  try { localStorage.setItem(CK_DISMISS, JSON.stringify([...new Set([...ckDismissed(), ...keys])].slice(-50))); } catch { /* không lưu được → chỉ ẩn phiên này */ }
+  el.remove();
 }
 
 // ─── Dashboard (overview — port từ main) ────────────────
@@ -5436,6 +5472,7 @@ async function autoLogin() {
 }
 
 async function loadCookieStatus() {
+  checkCookieAlerts(); // vừa import cookie mới → banner tự mất
   try {
     const res = await fetch("/admin/api/cookie/status");
     const data = await res.json();

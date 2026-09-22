@@ -1,7 +1,7 @@
 import cron from "node-cron";
 import { getShopList } from "./client";
 import { listAccounts } from "../../state/fourSellerAccounts";
-import { getCredByUid, listCreds, getCredByUsername } from "../../state/fourSellerCreds";
+import { getCredByUid } from "../../state/fourSellerCreds";
 import { loginAndSaveCookie } from "./autoLogin";
 
 /** Khoá tránh 2 lần re-login song song cùng 1 account. */
@@ -35,15 +35,12 @@ export async function ensureFreshCookie(uid: string): Promise<{ refreshed: boole
   }
 }
 
-/** Quét mọi account CÓ creds đã lưu, refresh cái nào hết hạn. */
+/** Ping MỌI account (ping = đánh dấu sống/chết cho banner UI + queue, xem cookieHealth);
+ *  account nào hết hạn mà có creds đã lưu thì tự đăng nhập lại. */
 export async function refreshAllExpired(): Promise<{ checked: number; refreshed: number }> {
   const accounts = await listAccounts();
-  const creds = await listCreds();
-  const credUids = new Set(creds.map((c) => c.uid).filter(Boolean) as string[]);
   let refreshed = 0, checked = 0;
   for (const acc of accounts) {
-    // chỉ đụng account có creds (uid khớp) — account chưa lưu pass thì bỏ qua
-    if (!credUids.has(acc.uid)) continue;
     checked++;
     const r = await ensureFreshCookie(acc.uid);
     if (r.refreshed) refreshed++;
@@ -51,17 +48,18 @@ export async function refreshAllExpired(): Promise<{ checked: number; refreshed:
   return { checked, refreshed };
 }
 
-/** Cron: định kỳ refresh cookie account có creds (mặc định mỗi 20 phút). Tắt qua env. */
+/** Cron: định kỳ ping mọi account + re-login account có creds (mặc định mỗi 20 phút). Tắt qua env. */
 export function scheduleCookieAutoRefresh(): void {
   if (process.env.DISABLE_COOKIE_AUTO_REFRESH === "1") {
     console.log("♻️ Cookie auto-refresh: TẮT (.env → DISABLE_COOKIE_AUTO_REFRESH=1)");
     return;
   }
   const expr = process.env.COOKIE_REFRESH_CRON || "*/20 * * * *";
-  cron.schedule(expr, () => {
+  const run = () =>
     refreshAllExpired()
       .then((r) => { if (r.refreshed) console.log(`♻️ Cookie auto-refresh: ${r.refreshed}/${r.checked} account re-login`); })
       .catch((e) => console.warn("♻️ Cookie auto-refresh lỗi:", e?.message ?? e));
-  });
-  console.log(`♻️ Cookie auto-refresh: BẬT (${expr} · account có lưu user/pass)`);
+  cron.schedule(expr, run);
+  setTimeout(run, 60_000); // 1 lượt ngay sau khi khởi động: banner cookie chết khỏi chờ tới 20 phút
+  console.log(`♻️ Cookie auto-refresh: BẬT (${expr} · ping mọi account, re-login account có lưu user/pass)`);
 }

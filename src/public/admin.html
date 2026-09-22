@@ -5556,6 +5556,13 @@ async function loadNicheByShop() {
     renderNicheByShop(d);
   } catch (err) { $("#nicheOverview").innerHTML = `<div class="empty">Lỗi: ${escapeHtml(err.message)}</div>`; }
 }
+// Ảnh CDN SHEIN có sẵn bản thu nhỏ: chèn "_thumbnail_WxH" trước đuôi file. Đo 22/09: ảnh gốc
+// ~340KB → 220x293 ~9KB, 405x552 ~29KB. Màn Ngách trước tải 92 ảnh gốc (~31MB) chỉ để vẽ ô
+// xem trước cỡ con tem → lag. Ảnh không phải CDN SHEIN (vd imgbb cũ) giữ nguyên.
+const shThumb = (u, size = "220x293") => {
+  const s = String(u || "");
+  return /ltwebstatic\.com\//.test(s) && !/_thumbnail_/.test(s) ? s.replace(/(\.(?:webp|jpe?g|png))$/i, `_thumbnail_${size}$1`) : s;
+};
 function renderNicheByShop(d) {
   const shops = d.shops || [];
   const sub = $("#nicheSubtitle");
@@ -5581,10 +5588,21 @@ function renderNicheOverview(d) {
   const sub = $("#nicheSubtitle");
   if (sub) sub.innerHTML = `<b>${t.niches || 0}</b> ngách · <b>${t.shops || 0}</b> shop đang chơi · <b>${t.products || 0}</b> sản phẩm crawl`;
   const pill = (s) => `<span class="nstat ${s.status || "testing"}" title="${escapeHtml(s.shop)} · ${escapeHtml(s.status || "")}">${escapeHtml(nicheCleanShop(s.shop))}</span>`;
-  $("#nicheOverview").innerHTML = niches.length
-    ? '<div class="niche-grid">' + niches.map((n) => {
+  // Biểu đồ (khuôn chung màn Vận hành) — bấm thanh để mở ngách đó.
+  const nItem = (n, value, tip) => ({ name: n.niche.replace(/-/g, " "), value, tip, act: `enterNicheDetail(${JSON.stringify(n.niche)})` });
+  const topBy = (key) => niches.filter((n) => key(n) > 0).sort((a, b) => key(b) - key(a)).slice(0, 10);
+  const charts = niches.length ? `<div class="ops-charts">${[
+    opsCard("📦 Sản phẩm Hub theo ngách", `Top 10 / ${niches.length} ngách · ${(t.products || 0).toLocaleString("en-US")} sản phẩm · bấm để mở ngách`,
+      opsBarList(topBy((n) => n.products).map((n) => nItem(n, n.products, `${n.products} sp · ${n.listed} đã list · ${n.shops.length} shop`)), (i) => `<b>${i.value.toLocaleString("en-US")}</b>`, "")),
+    opsCard("✅ Listing đã đăng theo ngách", "Top 10 · số lần đã list sang shop (cả đội)",
+      opsBarList(topBy((n) => n.listed).map((n) => nItem(n, n.listed, `${n.listed} lần list · ${n.products} sp trong Hub`)), (i) => `<b>${i.value.toLocaleString("en-US")}</b>`, "Chưa ngách nào được list")),
+    opsCard("🏪 Số shop chơi theo ngách", "Top 10 · ngách nhiều shop cùng chơi = cạnh tranh nội bộ",
+      opsBarList(topBy((n) => n.shops.length).map((n) => nItem(n, n.shops.length, n.shops.map((s) => s.shop).join(", "))), (i) => `<b>${i.value}</b> shop`, "Chưa ngách nào gán shop")),
+  ].join("")}</div>` : "";
+  $("#nicheOverview").innerHTML = !niches.length ? '<div class="empty">Chưa có data ngách</div>' : charts
+    + '<div class="niche-grid">' + niches.map((n) => {
         const prev = (n.previews || []).length
-          ? n.previews.map((u) => `<div style="background-image:url('${escapeHtml(u)}')"></div>`).join("")
+          ? n.previews.map((u) => `<div style="background-image:url('${escapeHtml(shThumb(u))}')"></div>`).join("")
           : '<div style="display:flex;align-items:center;justify-content:center;color:var(--text-mute);font-size:0.8rem;flex:1;">(no image)</div>';
         return `<div class="niche-card" onclick="enterNicheDetail('${escapeHtml(n.niche)}')">
           <div class="niche-prev">${prev}</div>
@@ -5594,8 +5612,7 @@ function renderNicheOverview(d) {
             <div class="niche-shops">${n.shops.length ? n.shops.map(pill).join("") : '<span style="color:var(--text-mute);font-size:0.78rem;">chưa gán shop</span>'}</div>
           </div>
         </div>`;
-      }).join("") + "</div>"
-    : '<div class="empty">Chưa có data ngách</div>';
+      }).join("") + "</div>";
 }
 async function enterNicheDetail(niche) {
   $("#nicheOverview").style.display = "none";
@@ -5614,7 +5631,7 @@ async function enterNicheDetail(niche) {
       ? '<div class="prod-grid">' + ps.map((p, i) => {
           const url = escapeHtml(p.url || "");
           return `<div class="prod-card" ${url ? `onclick="window.open('${url}','_blank')"` : ""}>
-            <div class="pimg" style="${p.image ? `background-image:url('${escapeHtml(p.image)}')` : ""}">
+            <div class="pimg" style="${p.image ? `background-image:url('${escapeHtml(shThumb(p.image, "405x552"))}')` : ""}">
               <span class="prank">#${i + 1}</span>
               ${p.listed ? '<span class="prank" style="left:auto;right:6px;background:rgba(34,197,94,.85);">✓ listed</span>' : ""}
             </div>

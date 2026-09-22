@@ -550,7 +550,10 @@
 <div class="app">
   <aside class="sidebar">
     <div class="brand"><span class="dot"></span>Homie</div>
-    <div class="nav-item active" data-view="dashboard">
+    <div class="nav-item active" data-view="ops">
+      <span class="ico">📈</span><span>Vận hành</span>
+    </div>
+    <div class="nav-item" data-view="dashboard">
       <span class="ico">📊</span><span>Dashboard</span>
     </div>
     <div class="nav-item" data-view="listings">
@@ -570,9 +573,6 @@
     </div>
     <div class="nav-item" data-view="returns">
       <span class="ico">↩️</span><span>Return / Refund</span>
-    </div>
-    <div class="nav-item" data-view="ops">
-      <span class="ico">📈</span><span>Vận hành</span>
     </div>
     <div class="nav-item" data-view="video">
       <span class="ico">🎬</span><span>Video</span>
@@ -596,7 +596,7 @@
   <main class="main">
 
     <!-- ───── DASHBOARD ───── -->
-    <section class="view active" id="view-dashboard">
+    <section class="view" id="view-dashboard">
       <div class="page-head">
         <div>
           <h1>Dashboard</h1>
@@ -1092,7 +1092,7 @@
       <div class="card"><div id="retTableWrap"><div class="empty">Chưa có data — bấm "Quét mới"</div></div></div>
     </section>
 
-    <section class="view" id="view-ops">
+    <section class="view active" id="view-ops">
       <div class="page-head">
         <div>
           <h1>📈 Vận hành</h1>
@@ -1294,7 +1294,7 @@ setTheme(localStorage.getItem("theme") || "dark");
 // Chuyển màn + cập nhật URL /admin/<view>. push=true → thêm history (bấm nav); false → boot/back.
 function goToView(view, push) {
   const item = document.querySelector(`.nav-item[data-view="${view}"]`);
-  if (!item) { view = "dashboard"; }
+  if (!item) { view = "ops"; } // màn mặc định = Vận hành
   window._view = view;
   document.querySelectorAll(".nav-item").forEach((i) => i.classList.remove("active"));
   document.querySelectorAll(".view").forEach((v) => v.classList.remove("active"));
@@ -1323,13 +1323,13 @@ document.querySelectorAll(".nav-item").forEach((item) => {
 });
 // Back/forward trình duyệt
 window.addEventListener("popstate", (e) => {
-  const view = (e.state && e.state.view) || (location.pathname.match(/^\/admin\/([a-z]+)/) || [])[1] || "dashboard";
+  const view = (e.state && e.state.view) || (location.pathname.match(/^\/admin\/([a-z]+)/) || [])[1] || "ops";
   goToView(view, false);
 });
-// Boot: mở đúng màn theo URL (/admin/video → view video). Chỉ khi khác dashboard mặc định.
+// Boot: mở đúng màn theo URL (/admin/video → view video). Không có / sai tên màn → Vận hành (mặc định).
 function routeFromUrl() {
   const view = (location.pathname.match(/^\/admin\/([a-z]+)/) || [])[1];
-  if (view && document.querySelector(`.nav-item[data-view="${view}"]`)) goToView(view, false);
+  goToView(view && document.querySelector(`.nav-item[data-view="${view}"]`) ? view : "ops", false);
 }
 
 // ── Public domain (Cloudflare Tunnel) ──

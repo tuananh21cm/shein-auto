@@ -53,6 +53,10 @@
     button { font-family: inherit; }
 
     .app { display: grid; grid-template-columns: 240px 1fr; min-height: 100vh; }
+    .ck-name { font-weight: 800; font-size: 1.15rem; color: var(--accent); padding: 2px 10px; border-radius: 8px; background: color-mix(in srgb, var(--accent) 14%, transparent); }
+    .ck-acc .pill { background: var(--bg-elev); border: 1px solid var(--border); padding: 2px 9px; border-radius: 999px; font-size: 0.8rem; }
+    .ck-more-btn { background: none; border: 1px dashed var(--border); border-radius: 999px; padding: 2px 10px; color: var(--accent); font-size: 0.82rem; font-weight: 600; cursor: pointer; }
+    .ck-more-btn:hover, .ck-more-btn:focus-visible { border-color: var(--accent); }
     .ck-acc.ck-dead { border: 2px solid var(--danger); border-left-width: 6px; background: color-mix(in srgb, var(--danger) 9%, var(--bg-card)); }
     .ck-acc.ck-dead .ck-replace { background: var(--danger); border-color: var(--danger); color: #fff; }
     .ck-alert { position: fixed; top: calc(14px + env(safe-area-inset-top, 0px)); left: 50%; transform: translateX(-50%); z-index: 9000; width: min(640px, calc(100vw - 32px)); display: flex; align-items: flex-start; gap: 12px; padding: 12px 14px; background: var(--bg-card); color: var(--text); border: 1px solid var(--danger); border-left-width: 4px; border-radius: 10px; box-shadow: var(--shadow); font-size: 0.88rem; line-height: 1.45; }
@@ -1536,7 +1540,7 @@ const HELP = {
     </ul>
     <h4>♻️ Cookie hết hạn → renew</h4>
     <ul>
-      <li>Card cookie chết viền đỏ. Bấm <b>🔄 Thay cookie</b> ngay trên card đó → chọn file cookie mới.</li>
+      <li>Card cookie chết viền đỏ. Bấm <b>🔄 Làm mới cookie</b> ngay trên card đó → chọn file cookie mới.</li>
       <li>Cách này <b>ép vào đúng tài khoản cũ</b>, KHÔNG tạo tài khoản trùng (kể cả cookie mới thiếu uid).</li>
     </ul>
     <h4>Các nút khác trên card</h4>
@@ -5473,6 +5477,13 @@ async function autoLogin() {
   }
 }
 
+function toggleCkShops(btn, n) {
+  const open = btn.getAttribute("aria-expanded") !== "true";
+  btn.parentElement.querySelectorAll(".ck-more").forEach((el) => { el.hidden = !open; });
+  btn.setAttribute("aria-expanded", String(open));
+  btn.textContent = open ? "Thu gọn ▴" : `+${n} shop nữa ▾`;
+  btn.parentElement.appendChild(btn); // nút luôn nằm cuối danh sách
+}
 async function loadCookieStatus() {
   checkCookieAlerts(); // vừa import cookie mới → banner tự mất
   try {
@@ -5495,25 +5506,26 @@ async function loadCookieStatus() {
     wrap.innerHTML =
       `<div style="margin-bottom:12px; font-size:0.92rem;">🔑 <b>${accounts.length}</b> tài khoản · <span id="ckSummary" style="color:var(--text-mute);">⏳ đang kiểm tra cookie…</span></div>` +
       accounts.map((a) => {
-        const shopsPreview = (a.shops || []).slice(0, 6).map((s) => `<span class="pill">${escapeHtml(s)}</span>`).join(" ");
-        const more = a.shopCount > 6 ? `<span style="color:var(--text-mute);font-size:0.82rem;">+${a.shopCount - 6} shop nữa</span>` : "";
+        // Hiện 6 shop đầu; phần còn lại ẩn (class ck-more), bấm "+N shop nữa" để xổ hết / thu gọn.
+        const shopsPreview = (a.shops || []).map((s, i) => `<span class="pill${i >= 6 ? " ck-more" : ""}"${i >= 6 ? " hidden" : ""}>${escapeHtml(s)}</span>`).join(" ");
+        const more = a.shopCount > 6 ? `<button type="button" class="ck-more-btn" aria-expanded="false" onclick="toggleCkShops(this, ${a.shopCount - 6})">+${a.shopCount - 6} shop nữa ▾</button>` : "";
         const stale = Date.now() - (a.cookieUpdatedAt || 0) > 3 * 864e5;
         return `
         <div class="card ck-acc" data-uid="${escapeHtml(a.uid)}" style="margin-bottom: 10px;">
           <div style="display:flex; align-items:center; gap: 10px; flex-wrap: wrap;">
             <span class="ck-health badge" style="background:var(--bg-elev); color:var(--text-mute);">⏳ kiểm tra…</span>
-            <div style="font-weight: 700; font-size: 1.02rem;">${a.email ? "📧" : "🔑"} ${escapeHtml(a.label)}</div>
+            <div class="ck-name">${a.email ? "📧" : "🔑"} ${escapeHtml(a.label)}</div>
             ${a.email && a.email !== a.label ? `<span style="color: var(--accent); font-size: 0.84rem;">📧 ${escapeHtml(a.email)}</span>` : ""}
             <span style="color: var(--text-mute); font-size: 0.82rem;">uid ${escapeHtml(a.uid)}</span>
             <span class="badge ${a.shopCount > 0 ? "badge-success" : "badge-warn"}">${a.shopCount} shop</span>
             <span style="color: ${stale ? "var(--warn)" : "var(--text-mute)"}; font-size: 0.84rem;">${a.cookieCount} cookies · cập nhật ${relTime(a.cookieUpdatedAt)}${stale ? " ⚠️" : ""}</span>
             <span style="flex:1"></span>
-            <button class="btn btn-primary ck-replace" style="padding: 4px 12px;" onclick="replaceCookie('${escapeHtml(a.uid)}','${escapeHtml(a.label)}')" title="Chọn file cookie mới của tài khoản này — tự thay, KHÔNG cần xoá cái cũ">🔄 Thay cookie</button>
+            <button class="btn btn-primary ck-replace" style="padding: 4px 12px;" onclick="replaceCookie('${escapeHtml(a.uid)}','${escapeHtml(a.label)}')" title="Chọn file cookie mới của tài khoản này — tự thay, KHÔNG cần xoá cái cũ">🔄 Làm mới cookie</button>
             <button class="btn btn-ghost" style="padding: 4px 10px;" onclick="renameCookieAccount('${escapeHtml(a.uid)}', '${escapeHtml(a.label)}')" title="Đổi tên">✏️</button>
             <button class="btn btn-ghost" style="padding: 4px 10px;" onclick="refreshAccountShopsUi('${escapeHtml(a.uid)}', this)" title="Sync lại danh sách shop">↺</button>
             ${isAdmin ? `<button class="btn btn-ghost" style="padding: 4px 10px; color: var(--danger);" onclick="deleteCookieAccount('${escapeHtml(a.uid)}', '${escapeHtml(a.label)}')" title="Xoá tài khoản">🗑</button>` : ""}
           </div>
-          <div class="ck-cta" style="display:none; margin-top:8px; padding:8px 10px; background:rgba(239,68,68,.1); border-radius:8px; color:var(--danger); font-size:0.85rem;">⚠️ Cookie <b>HẾT HẠN</b> — bấm <b>🔄 Thay cookie</b> chọn file cookie mới của tài khoản này. Tự thay, không cần xoá cái cũ.</div>
+          <div class="ck-cta" style="display:none; margin-top:8px; padding:8px 10px; background:rgba(239,68,68,.1); border-radius:8px; color:var(--danger); font-size:0.85rem;">⚠️ Cookie <b>HẾT HẠN</b> — bấm <b>🔄 Làm mới cookie</b> chọn file cookie mới của tài khoản này. Tự thay, không cần xoá cái cũ.</div>
           <div style="margin-top: 8px; display:flex; gap: 6px; flex-wrap: wrap; align-items:center;">${shopsPreview} ${more}</div>
         </div>`;
       }).join("") +
@@ -5552,7 +5564,7 @@ async function loadCookieStatus() {
   }
 }
 
-// Thay cookie 1 chạm: mở file picker → upload → server tự upsert theo uid (thay cái cũ)
+// Làm mới cookie 1 chạm: mở file picker → upload → server tự upsert theo uid (thay cái cũ)
 let _ckReplaceLabel = "";
 let _ckReplaceUid = "";
 function replaceCookie(uid, label) {
@@ -5565,7 +5577,7 @@ async function onReplaceCookieFile(input) {
   if (!f) return;
   try {
     const parsed = JSON.parse(await f.text());
-    await uploadCookieArray(parsed, `Thay cookie "${_ckReplaceLabel}"`, _ckReplaceUid);
+    await uploadCookieArray(parsed, `Làm mới cookie "${_ckReplaceLabel}"`, _ckReplaceUid);
   } catch (err) {
     toast(err.message, "error");
   }
@@ -5695,7 +5707,7 @@ function exitNicheDetail() {
   if (dt) dt.style.display = "none";
 }
 
-// Upload 1 mảng cookie (1 file export). targetUid: ép vào 1 tài khoản cụ thể (nút Thay cookie).
+// Upload 1 mảng cookie (1 file export). targetUid: ép vào 1 tài khoản cụ thể (nút Làm mới cookie).
 async function uploadCookieArray(arr, sourceLabel, targetUid) {
   const res = await fetch("/admin/api/cookie", {
     method: "POST",

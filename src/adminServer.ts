@@ -3367,8 +3367,8 @@ export const startAdminServer = async () => {
       res.json({ alive: true, shops: (list?.records ?? []).length });
     } catch (err: any) {
       const msg = String(err?.message ?? err);
-      const expired = /login|validation|unauthor|401|403|expire/i.test(msg);
-      res.json({ alive: false, expired, error: msg.slice(0, 140) });
+      const { isCookieDeadError } = await import("./state/cookieHealth");
+      res.json({ alive: false, expired: isCookieDeadError(msg), error: msg.slice(0, 140) });
     }
   });
 

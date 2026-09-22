@@ -53,6 +53,8 @@
     button { font-family: inherit; }
 
     .app { display: grid; grid-template-columns: 240px 1fr; min-height: 100vh; }
+    .ck-acc.ck-dead { border: 2px solid var(--danger); border-left-width: 6px; background: color-mix(in srgb, var(--danger) 9%, var(--bg-card)); }
+    .ck-acc.ck-dead .ck-replace { background: var(--danger); border-color: var(--danger); color: #fff; }
     .ck-alert { position: fixed; top: calc(14px + env(safe-area-inset-top, 0px)); left: 50%; transform: translateX(-50%); z-index: 9000; width: min(640px, calc(100vw - 32px)); display: flex; align-items: flex-start; gap: 12px; padding: 12px 14px; background: var(--bg-card); color: var(--text); border: 1px solid var(--danger); border-left-width: 4px; border-radius: 10px; box-shadow: var(--shadow); font-size: 0.88rem; line-height: 1.45; }
     .ck-alert .ck-a-body { flex: 1; min-width: 0; }
     .ck-alert .ck-a-x { background: none; border: 0; color: var(--text-mute); font-size: 1.1rem; cursor: pointer; padding: 0 4px; line-height: 1; }
@@ -5506,7 +5508,7 @@ async function loadCookieStatus() {
             <span class="badge ${a.shopCount > 0 ? "badge-success" : "badge-warn"}">${a.shopCount} shop</span>
             <span style="color: ${stale ? "var(--warn)" : "var(--text-mute)"}; font-size: 0.84rem;">${a.cookieCount} cookies · cập nhật ${relTime(a.cookieUpdatedAt)}${stale ? " ⚠️" : ""}</span>
             <span style="flex:1"></span>
-            <button class="btn btn-primary" style="padding: 4px 12px;" onclick="replaceCookie('${escapeHtml(a.uid)}','${escapeHtml(a.label)}')" title="Chọn file cookie mới của tài khoản này — tự thay, KHÔNG cần xoá cái cũ">🔄 Thay cookie</button>
+            <button class="btn btn-primary ck-replace" style="padding: 4px 12px;" onclick="replaceCookie('${escapeHtml(a.uid)}','${escapeHtml(a.label)}')" title="Chọn file cookie mới của tài khoản này — tự thay, KHÔNG cần xoá cái cũ">🔄 Thay cookie</button>
             <button class="btn btn-ghost" style="padding: 4px 10px;" onclick="renameCookieAccount('${escapeHtml(a.uid)}', '${escapeHtml(a.label)}')" title="Đổi tên">✏️</button>
             <button class="btn btn-ghost" style="padding: 4px 10px;" onclick="refreshAccountShopsUi('${escapeHtml(a.uid)}', this)" title="Sync lại danh sách shop">↺</button>
             ${isAdmin ? `<button class="btn btn-ghost" style="padding: 4px 10px; color: var(--danger);" onclick="deleteCookieAccount('${escapeHtml(a.uid)}', '${escapeHtml(a.label)}')" title="Xoá tài khoản">🗑</button>` : ""}
@@ -5529,10 +5531,16 @@ async function loadCookieStatus() {
       if (r.alive) {
         alive++;
         badge.textContent = "✅ Sống"; badge.style.background = "rgba(34,197,94,.15)"; badge.style.color = "var(--success)";
+      } else if (!r.expired) {
+        // Lỗi mạng/timeout/4Seller trục trặc ≠ cookie chết → không tô đỏ, không bắt thay cookie.
+        badge.textContent = "⚠️ Không kiểm tra được"; badge.style.background = "rgba(234,179,8,.15)"; badge.style.color = "var(--warn)";
+        badge.title = r.error || "";
       } else {
         dead++;
         badge.textContent = "❌ Hết hạn"; badge.style.background = "rgba(239,68,68,.15)"; badge.style.color = "var(--danger)";
-        card.style.borderColor = "var(--danger)";
+        card.classList.add("ck-dead");
+        card.parentElement.insertBefore(card, card.parentElement.querySelector(".ck-acc")); // chết → lên đầu danh sách
+        if (dead === 1) card.scrollIntoView({ behavior: "smooth", block: "center" });
         const cta = card.querySelector(".ck-cta"); if (cta) cta.style.display = "";
       }
       checkedN++;

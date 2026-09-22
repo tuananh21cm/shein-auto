@@ -52,6 +52,13 @@ const bootstrap = async () => {
   // Làm nóng chỉ mục Hub (quét lạnh ~1s) → lần đầu mở tab Hub/Ngách không phải chờ.
   import("./state/listingScan").then((m) => m.scanHub()).catch(() => {});
   import("./core/opsBoard").then((m) => m.getShopHealth()).catch(() => {}); // sức khoẻ shop: dựng lạnh ~2s
+
+  // Registry listing → CRM (goods_id ↔ tiktok_product_id ↔ shop) cho doanh số/vi phạm theo listing.
+  // Hằng ngày 04:15 + 1 lượt 3 phút sau khi khởi động. CRM chưa cấu hình thì tự bỏ qua.
+  const pushRegistry = () => import("./core/crmRegistry").then((m) => m.pushRegistrySnapshot())
+    .catch((e) => console.warn("[crm-registry] ✗", String(e?.message ?? e).slice(0, 160)));
+  cron.schedule("15 4 * * *", pushRegistry);
+  setTimeout(pushRegistry, 3 * 60_000);
 };
 bootstrap().catch((err) => {
   console.error("❌ Bootstrap failed:", err?.message ?? err);

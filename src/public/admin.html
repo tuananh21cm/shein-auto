@@ -5079,11 +5079,12 @@ function renderOpsCharts() {
     const dead = (r) => r.severity === "terminal" || /closed|đóng|terminat|deactiv|banned/i.test(r.status || "");
     const room = d.rows.filter((r) => !dead(r) && r.publishLimit > 0 && r.activeListings != null && r.publishLimit - r.activeListings > 0)
       // Thanh = % hạn mức ĐÃ DÙNG (active/limit): sắp đầy → thanh gần kín, còn trống nhiều → thanh ngắn.
-      // Xếp sắp đầy lên đầu (xếp theo "nhiều chỗ trống nhất" thì gần như toàn thanh rỗng, vd 97/1000 = 10%).
+      // Xếp theo SỐ CHỖ còn trống (tuyệt đối) nhiều lên đầu — nơi đổ hàng được nhiều nhất (903/1000 trước 20/20);
+      // cùng số chỗ thì shop dùng ít hạn mức hơn trước.
       .map((r) => ({ name: opsShort(r.shop), value: r.publishLimit - r.activeListings, limit: r.publishLimit, pct: (r.activeListings / r.publishLimit) * 100, tip: `${r.activeListings}/${r.publishLimit} listing · đã dùng ${Math.round((r.activeListings / r.publishLimit) * 100)}% hạn mức` }))
-      .sort((a, b) => b.pct - a.pct || a.value - b.value); // MỌI shop còn chỗ (cắt top 10 thì chỉ còn thanh đầy, mất shop còn thừa nhiều)
+      .sort((a, b) => b.value - a.value || a.pct - b.pct); // MỌI shop còn chỗ (cắt top 10 thì chỉ còn thanh đầy, mất shop còn thừa nhiều)
     const fullN = d.rows.filter((r) => opsCap(r).full).length;
-    cards.push(opsCard("📦 Giới hạn Listing còn thừa", `Thanh = % hạn mức đã dùng · ${room.length} shop còn chỗ, sắp đầy lên đầu · không tính shop đã đóng · ${fullN} shop đã hết chỗ`, `<div class="ops-scroll">${opsBarList(room, (i) => `còn <b>${i.value}</b><span style="color:var(--text-mute);">/${i.limit}</span>`, "Không shop nào còn chỗ")}</div>`));
+    cards.push(opsCard("📦 Giới hạn Listing còn thừa", `Thanh = % hạn mức đã dùng · ${room.length} shop còn chỗ, còn trống nhiều lên đầu · không tính shop đã đóng · ${fullN} shop đã hết chỗ`, `<div class="ops-scroll">${opsBarList(room, (i) => `còn <b>${i.value}</b><span style="color:var(--text-mute);">/${i.limit}</span>`, "Không shop nào còn chỗ")}</div>`));
 
     // 3) Lãi 30 ngày theo shop.
     const pnl = d.rows.filter((r) => r.pnl);

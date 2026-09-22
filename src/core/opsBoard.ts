@@ -45,6 +45,8 @@ const crmGet = <T>(p: string) => crmRequest<T>(p);
 /* ───────────── Sức khoẻ shop ───────────── */
 export type HealthLevel = "red" | "yellow" | "green" | "none";
 export interface HealthRow {
+  /** shop_id TikTok (= 4Seller sellingPartnerId) — khoá nối với dữ liệu CRM. */
+  shopId: string;
   shop: string; account: string; tiktokName: string | null; shopCode: string | null;
   level: HealthLevel; status: string | null; severity: string | null; violationScore: number | null;
   net: number | null; onHold: number | null; reserve: number | null; totalHolding: number | null;
@@ -55,9 +57,14 @@ export interface HealthRow {
   activeFrom: "4seller" | "tiktok" | null;
   /** Tín hiệu "đừng đổ hàng vào shop này" — CRM bổ sung (payout_frozen / penalty_cluster_active). */
   payoutFrozen: boolean; penaltyCluster: boolean;
+  /** Lãi lỗ 30 ngày (CRM /agent/shop-pnl, công thức trang Finance). null = CRM không có số / chưa nối. */
+  pnl: { orders: number; revenue: number; cost: number; refund: number; net: number } | null;
+  /** Số đơn sắp/đã bị phạt (CRM /agent/orders/at-risk). null = chưa nối CRM. */
+  atRisk: number | null;
   updatedAt: string | null;
 }
-export interface HealthResult { rows: HealthRow[]; source: "crm" | "local"; builtAt: number; crmError?: string }
+export interface RiskOrder { orderId: string; shopId: string; shop: string; kind: string; deadlineAt: number | null; hoursLeft: number | null; goodsId: string | null }
+export interface HealthResult { rows: HealthRow[]; source: "crm" | "local"; builtAt: number; crmError?: string; riskOrders: RiskOrder[] }
 
 const num = (v: any): number | null => {
   const n = Number(v && typeof v === "object" && "amount" in v ? v.amount : v);
@@ -111,10 +118,18 @@ async function buildHealth(): Promise<HealthResult> {
   };
   // Snapshot sức khoẻ và danh sách shop 4Seller (mỗi tài khoản) độc lập nhau → chạy song song.
   const accounts = await listAccounts();
-  const [idx, lists] = await Promise.all([
+  // Lãi lỗ + đơn sắp phạt lấy CÙNG lượt dựng (song song) — dùng chung cache, khỏi gọi CRM riêng.
+  const crmOn = crmSettings().enabled;
+  const crmRows = (p: string) => (crmOn ? crmRequest<{ rows?: any[] }>(p).then((d) => d.rows ?? [], () => null) : Promise.resolve(null));
+  const [idx, lists, pnlRows, riskRows] = await Promise.all([
     loadIdx(),
     Promise.all(accounts.map((acc) => getShopList(`acct:${acc.uid}`).then((r) => (r?.records ?? []) as any[], () => [] as any[]))),
+    crmRows("/agent/shop-pnl?days=30&limit=2000"),
+    crmRows("/agent/orders/at-risk?limit=2000"),
   ]);
+  const pnlBy = new Map<string, any>((pnlRows ?? []).map((r: any) => [String(r.shop_id), r]));
+  const riskBy = new Map<string, number>();
+  for (const r of riskRows ?? []) riskBy.set(String(r.shop_id), (riskBy.get(String(r.shop_id)) ?? 0) + 1);
 
   // publish_limit: CRM chưa trả thì lấy từ snapshot local (hạn mức ít đổi). Chỉ đọc local khi thật sự thiếu.
   // (source được gán trong loadIdx — TS không thấy nên phải nới kiểu)
@@ -138,7 +153,12 @@ async function buildHealth(): Promise<HealthResult> {
       const p = idx.get(String(s.sellingPartnerId ?? ""));
       const own = p && "publish_limit" in p;
       const lp = own ? p : localIdx?.get(String(s.sellingPartnerId ?? ""));
+      const sid = String(s.sellingPartnerId ?? "");
+      const pr = pnlBy.get(sid);
       rows.push({
+        shopId: sid,
+        pnl: pr ? { orders: Number(pr.orders) || 0, revenue: Number(pr.revenue_usd) || 0, cost: Number(pr.cost_usd) || 0, refund: Number(pr.refund_usd) || 0, net: Number(pr.net_usd) || 0 } : null,
+        atRisk: riskRows ? riskBy.get(sid) ?? 0 : null,
         shop: s.shopName, account: acc.label, tiktokName: p?.shop_name ?? s.platformShopName ?? null, shopCode: p?.shop_code ?? null,
         level: levelOf(p), status: p?.shop_status ?? null, severity: p?.shop_severity ?? null,
         violationScore: num(p?.violation_score), net: num(p?.net_earnings), onHold: num(p?.on_hold),
@@ -154,7 +174,13 @@ async function buildHealth(): Promise<HealthResult> {
   }
   const rank: Record<HealthLevel, number> = { red: 0, yellow: 1, none: 2, green: 3 };
   rows.sort((a, b) => rank[a.level] - rank[b.level] || (b.onHold ?? 0) - (a.onHold ?? 0) || a.shop.localeCompare(b.shop));
-  return { rows, source, builtAt: Date.now(), crmError };
+  // Chỉ giữ đơn của shop MÌNH (CRM trả toàn hệ thống).
+  const nameOf = new Map(rows.map((r) => [r.shopId, r.shop]));
+  const riskOrders: RiskOrder[] = (riskRows ?? []).filter((r: any) => nameOf.has(String(r.shop_id))).map((r: any) => ({
+    orderId: String(r.order_id), shopId: String(r.shop_id), shop: nameOf.get(String(r.shop_id))!, kind: String(r.kind),
+    deadlineAt: r.deadline_at ? Date.parse(r.deadline_at) : null, hoursLeft: r.hours_left ?? null, goodsId: r.goods_id ?? null,
+  }));
+  return { rows, source, builtAt: Date.now(), crmError, riskOrders };
 }
 
 // Cache 10 phút + dùng chung 1 lần dựng cho người gọi đồng thời (dựng lạnh ~1-2s: 4Seller + đọc snapshot).
@@ -188,6 +214,28 @@ export async function shopBlockMap(): Promise<Map<string, string>> {
   return m;
 }
 export const isShopBlocked = (m: Map<string, string>, shop: string) => m.get(normShop(shop)) ?? null;
+
+/* ───────────── Hôm nay: việc có hạn chót ───────────── */
+export interface TodayItem { kind: string; shop: string; orderId: string; deadlineAt: number | null; detail: string; amount: string | null }
+/** Gộp đơn sắp phạt (CRM) + case Return còn mở (lượt quét gần nhất), xếp theo hạn chót. */
+export async function getToday(): Promise<{ items: TodayItem[]; riskAt: number; returnsAt: number | null; crmEnabled: boolean }> {
+  const h = await getShopHealth();
+  const items: TodayItem[] = h.riskOrders.map((o) => ({ kind: o.kind, shop: o.shop, orderId: o.orderId, deadlineAt: o.deadlineAt, detail: o.goodsId ? `goods_id ${o.goodsId}` : "", amount: null }));
+  let returnsAt: number | null = null;
+  try {
+    const { getLastReturnScan } = await import("./returnRefundScan");
+    const r: any = await getLastReturnScan();
+    if (r) {
+      returnsAt = r.scannedAt ?? null;
+      for (const x of r.rows ?? []) if (x.deadlineAt) items.push({
+        kind: "return", shop: x.shop, orderId: String(x.orderId), deadlineAt: x.deadlineAt,
+        detail: [x.statusText || x.status, x.reason].filter(Boolean).join(" · "), amount: x.amount != null ? `${Number(x.amount).toFixed(2)} ${x.currency || ""}`.trim() : null,
+      });
+    }
+  } catch { /* chưa có lượt quét return nào */ }
+  items.sort((a, b) => (a.deadlineAt ?? Infinity) - (b.deadlineAt ?? Infinity));
+  return { items, riskAt: h.builtAt, returnsAt, crmEnabled: crmSettings().enabled };
+}
 
 /* ───────────── Lãi lỗ SKU ───────────── */
 export interface SkuPnl { rows: any[]; fetchedAt: number | null; windowDays: number | null; crmEnabled: boolean }

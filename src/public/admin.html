@@ -1089,11 +1089,16 @@
           <div class="subtitle">Shop nào đang gặp nguy, tiền đang bị giữ ở đâu, SKU nào lãi hay lỗ. Chỉ đọc.</div>
         </div>
         <div class="seg">
-          <button id="opsTabHealth" class="seg-btn active" onclick="setOpsTab('health')">🩺 Sức khoẻ shop</button>
+          <button id="opsTabToday" class="seg-btn active" onclick="setOpsTab('today')">⏰ Hôm nay</button>
+          <button id="opsTabHealth" class="seg-btn" onclick="setOpsTab('health')">🩺 Sức khoẻ shop</button>
           <button id="opsTabSku" class="seg-btn" onclick="setOpsTab('sku')">💰 Lãi lỗ SKU</button>
         </div>
       </div>
-      <div id="opsHealth">
+      <div id="opsToday">
+        <div id="opsTodayHead"></div>
+        <div class="card"><div id="opsTodayTable"><div class="empty">Đang tải…</div></div></div>
+      </div>
+      <div id="opsHealth" hidden>
         <div id="opsHealthHead"></div>
         <div class="card"><div id="opsHealthTable"><div class="empty">Đang tải…</div></div></div>
       </div>
@@ -4966,7 +4971,7 @@ function renderReturns() {
 
 // ─── Vận hành (Đợt 1): Sức khoẻ shop + Lãi lỗ SKU ───────────────────────
 // Chỉ tải khi mở tab, KHÔNG tự poll. Bảng ≤ 500 dòng, SKU hiện 100 dòng/lần ("Xem thêm") → không lag.
-let _opsTab = "health", _opsHealth = null, _opsSku = null;
+let _opsTab = "today", _opsHealth = null, _opsSku = null, _opsToday = null;
 const opsF = { lvl: "", full: false, q: "", skuQ: "", skuTier: "", skuRisk: "", skuSort: "profit", skuShown: 100 };
 const OPS_LVL = {
   red: { kpi: "fail", label: "Nguy hiểm", color: "var(--danger)" },
@@ -4977,7 +4982,8 @@ const OPS_LVL = {
 const opsAgo = (ms) => {
   if (!ms) return "chưa có";
   const d = (Date.now() - ms) / 864e5;
-  return d < 1 ? `${Math.max(1, Math.round(d * 24))} giờ trước` : `${Math.round(d)} ngày trước`;
+  if (d * 24 < 1) return d * 1440 < 1 ? "vừa xong" : `${Math.round(d * 1440)} phút trước`;
+  return d < 1 ? `${Math.round(d * 24)} giờ trước` : `${Math.round(d)} ngày trước`;
 };
 const opsStale = (ms, days) => (ms && (Date.now() - ms) / 864e5 > days ? "color:var(--warn); font-weight:600;" : "");
 const opsMoney = (v, dec = 0) => (v == null ? '<span style="color:var(--text-mute);">—</span>' : "$" + Number(v).toLocaleString("en-US", { minimumFractionDigits: dec, maximumFractionDigits: dec }));
@@ -5002,12 +5008,92 @@ const opsCap = (r) => {
 function loadOps() { setOpsTab(_opsTab); }
 function setOpsTab(t) {
   _opsTab = t;
-  $("#opsTabHealth").classList.toggle("active", t === "health");
-  $("#opsTabSku").classList.toggle("active", t === "sku");
-  $("#opsHealth").hidden = t !== "health";
-  $("#opsSku").hidden = t !== "sku";
+  for (const [k, btn, panel] of [["today", "#opsTabToday", "#opsToday"], ["health", "#opsTabHealth", "#opsHealth"], ["sku", "#opsTabSku", "#opsSku"]]) {
+    $(btn).classList.toggle("active", t === k);
+    $(panel).hidden = t !== k;
+  }
+  if (t === "today" && !_opsToday) loadOpsToday();
   if (t === "health" && !_opsHealth) loadOpsHealth();
   if (t === "sku" && !_opsSku) loadOpsSku();
+}
+
+/* ── Hôm nay: việc có hạn chót (đơn sắp bị phạt + case Return), gấp nhất lên đầu ── */
+const OPS_KIND = {
+  awaiting_shipment_overdue: ["Quá hạn ship", "var(--danger)"],
+  shipped_no_pickup: ["Có label, carrier chưa lấy hàng", "var(--danger)"],
+  in_transit_stalled: ["Kẹt khi đang giao", "var(--warn)"],
+  no_tracking_48h: ["Chờ tracking quá 48h", "var(--warn)"],
+  return: ["Return / Refund", "#5aa9e6"],
+};
+const opsTodayF = { kind: "", q: "" };
+async function loadOpsToday() {
+  $("#opsTodayTable").innerHTML = '<div class="empty">⏳ Đang tải việc hôm nay…</div>';
+  try {
+    const d = await (await fetch("/admin/api/ops/today")).json();
+    if (d.error) throw new Error(d.error);
+    _opsToday = d;
+    renderOpsToday();
+  } catch (err) {
+    $("#opsTodayTable").innerHTML = `<div class="empty">Lỗi: ${escapeHtml(err.message)}</div>`;
+  }
+}
+async function rescanReturnsForToday(btn) {
+  btn.disabled = true; btn.textContent = "⏳ Đang quét return…";
+  try {
+    const res = await fetch("/admin/api/returns/scan", { method: "POST" });
+    const d = await res.json();
+    if (!res.ok) throw new Error(d.error);
+    toast(`✓ Quét xong ${d.result.rows.length} case return đang mở`);
+    await loadOpsToday();
+  } catch (err) { toast(err.message, "error"); btn.disabled = false; btn.textContent = "🔄 Quét lại Return"; }
+}
+const opsLeft = (at) => {
+  if (!at) return '<span style="color:var(--text-mute);">—</span>';
+  const h = (at - Date.now()) / 36e5;
+  if (h < 0) return `<b style="color:var(--danger);">quá hạn ${-h < 48 ? Math.round(-h) + "h" : Math.round(-h / 24) + " ngày"}</b>`;
+  const color = h < 24 ? "var(--danger)" : h < 72 ? "var(--warn)" : "var(--text-mute)";
+  return `<b style="color:${color};">${h < 48 ? Math.floor(h) + "h " + Math.round((h % 1) * 60) + "p" : (h / 24).toFixed(1) + " ngày"}</b>`;
+};
+function renderOpsToday() {
+  const d = _opsToday;
+  if (!d) return;
+  const now = Date.now();
+  const overdue = d.items.filter((x) => x.deadlineAt && x.deadlineAt < now).length;
+  const in24 = d.items.filter((x) => x.deadlineAt && x.deadlineAt >= now && x.deadlineAt - now < 864e5).length;
+  const kinds = [...new Set(d.items.map((x) => x.kind))];
+  const sel = (v, label) => `<option value="${v}" ${opsTodayF.kind === v ? "selected" : ""}>${escapeHtml(label)}</option>`;
+  $("#opsTodayHead").innerHTML = `
+    <div class="kpis" style="margin-bottom:10px;">
+      <div class="kpi fail"><div class="kpi-v">${overdue}</div><div class="kpi-k">Đã quá hạn</div></div>
+      <div class="kpi pending"><div class="kpi-v">${in24}</div><div class="kpi-k">Hết hạn trong 24h</div></div>
+      <div class="kpi"><div class="kpi-v">${d.items.filter((x) => x.kind !== "return").length}</div><div class="kpi-k">Đơn sắp bị phạt</div></div>
+      <div class="kpi unc"><div class="kpi-v">${d.items.filter((x) => x.kind === "return").length}</div><div class="kpi-k">Case Return đang mở</div></div>
+    </div>
+    <div class="filter-bar" style="align-items:center;">
+      <input placeholder="🔍 Tìm shop, mã đơn…" value="${escapeHtml(opsTodayF.q)}" oninput="opsTodayF.q=this.value; renderOpsTodayTable()">
+      <select onchange="opsTodayF.kind=this.value; renderOpsTodayTable()">${sel("", "Mọi loại việc")}${kinds.map((k) => sel(k, (OPS_KIND[k] || [k])[0])).join("")}</select>
+      <span style="font-size:0.8rem; color:var(--text-mute);">Đơn: ${d.crmEnabled ? `CRM · ${opsAgo(d.riskAt)}` : "chưa nối CRM"} · Return: <span style="${opsStale(d.returnsAt, 0.5)}">quét ${opsAgo(d.returnsAt)}</span></span>
+      <button class="btn btn-ghost" style="margin-left:auto;" onclick="rescanReturnsForToday(this)">🔄 Quét lại Return</button>
+    </div>`;
+  renderOpsTodayTable();
+}
+function renderOpsTodayTable() {
+  const q = opsTodayF.q.trim().toLowerCase();
+  const rows = _opsToday.items.filter((x) => (!opsTodayF.kind || x.kind === opsTodayF.kind) && (!q || [x.shop, x.orderId].some((v) => String(v || "").toLowerCase().includes(q))));
+  if (!rows.length) { $("#opsTodayTable").innerHTML = `<div class="empty">${_opsToday.items.length ? "Không có việc nào khớp bộ lọc" : "✓ Không có việc nào có hạn chót"}</div>`; return; }
+  $("#opsTodayTable").innerHTML = `<div style="overflow-x:auto;"><table style="width:100%; border-collapse:collapse;">
+    <thead><tr>${opsTh("Còn lại")}${opsTh("Việc")}${opsTh("Shop")}${opsTh("Mã đơn")}${opsTh("Chi tiết")}${opsTh("Tiền", 1)}</tr></thead>
+    <tbody>${rows.map((x) => {
+      const K = OPS_KIND[x.kind] || [x.kind, "var(--text-mute)"];
+      return `<tr>
+        ${opsTd(opsLeft(x.deadlineAt), "white-space:nowrap;")}
+        ${opsTd(opsChip(K[1], K[0]))}
+        ${opsTd(escapeHtml(x.shop), "white-space:nowrap;")}
+        ${opsTd(`<code style="font-size:0.75rem;">${escapeHtml(x.orderId)}</code>`)}
+        ${opsTd(escapeHtml(x.detail || ""), "min-width:180px; color:var(--text-mute);")}
+        ${opsTd(x.amount ? escapeHtml(x.amount) : opsDash(null), opsNum)}
+      </tr>`;
+    }).join("")}</tbody></table></div>`;
 }
 
 /* ── Sức khoẻ shop ── */
@@ -5056,16 +5142,17 @@ function renderOpsHealthTable() {
   const rows = d.rows.filter((r) => (!opsF.lvl || r.level === opsF.lvl) && (!opsF.full || opsCap(r).full) && (!q || [r.shop, r.tiktokName, r.shopCode].some((x) => String(x || "").toLowerCase().includes(q))));
   if (!rows.length) { $("#opsHealthTable").innerHTML = '<div class="empty">Không có shop nào khớp bộ lọc</div>'; return; }
   $("#opsHealthTable").innerHTML = `<div style="overflow-x:auto;"><table style="width:100%; border-collapse:collapse;">
-    <thead><tr>${opsTh("Mức")}${opsTh("Shop")}${opsTh("Trạng thái TikTok")}${opsTh("On hold", 1)}${opsTh("Net", 1)}${opsTh("Reserve", 1)}${opsTh("SP bị hạn chế", 1)}${opsTh("Hạn mức listing", 1)}${opsTh("Đơn/ngày", 1)}${opsTh("Cập nhật")}</tr></thead>
+    <thead><tr>${opsTh("Mức")}${opsTh("Shop")}${opsTh("Trạng thái TikTok")}${opsTh("On hold", 1)}${opsTh("Net", 1)}${opsTh("Lãi 30 ngày", 1)}${opsTh("Đơn sắp phạt", 1)}${opsTh("SP bị hạn chế", 1)}${opsTh("Hạn mức listing", 1)}${opsTh("Đơn/ngày", 1)}${opsTh("Cập nhật")}</tr></thead>
     <tbody>${rows.map((r) => {
       const L = OPS_LVL[r.level], upd = r.updatedAt ? Date.parse(r.updatedAt) : 0;
       return `<tr>
         ${opsTd(opsChip(L.color, L.label))}
         ${opsTd(`<div style="font-weight:600;">${escapeHtml(r.shop)}</div><div style="color:var(--text-mute); font-size:0.75rem;">${escapeHtml(r.account)}${r.tiktokName ? " · " + escapeHtml(r.tiktokName) : ""}${r.shopCode ? ` · <code>${escapeHtml(r.shopCode)}</code>` : ""}</div>`)}
-        ${opsTd(`${opsDash(r.status)}${r.severity ? `<div style="color:var(--text-mute); font-size:0.75rem;">severity: ${escapeHtml(r.severity)}</div>` : ""}`, "min-width:160px;")}
+        ${opsTd(`${opsDash(r.status)}${r.payoutFrozen ? '<div style="color:var(--danger); font-size:0.75rem; font-weight:600;">⛔ treo rút tiền</div>' : ""}${r.severity ? `<div style="color:var(--text-mute); font-size:0.75rem;">severity: ${escapeHtml(r.severity)}</div>` : ""}`, "min-width:160px;")}
         ${opsTd(opsMoney(r.onHold), opsNum)}
         ${opsTd(opsMoney(r.net), opsNum)}
-        ${opsTd(opsMoney(r.reserve), opsNum)}
+        ${opsTd(r.pnl ? `${opsMoney(r.pnl.net)}<div style="color:var(--text-mute); font-size:0.75rem;">${r.pnl.orders} đơn · DT ${opsMoney(r.pnl.revenue)}</div>` : opsDash(null), opsNum + (r.pnl && r.pnl.net < 0 ? " color:var(--danger);" : ""))}
+        ${opsTd(r.atRisk == null ? opsDash(null) : r.atRisk > 0 ? `<a href="#" onclick="opsTodayF.q=${escapeHtml(JSON.stringify(r.shop))}; setOpsTab('today'); if(_opsToday) renderOpsToday(); return false;" style="color:var(--danger); font-weight:700;" title="Xem trong tab Hôm nay">${r.atRisk}</a>` : "0", opsNum)}
         ${opsTd(opsDash(r.restricted), opsNum + (r.restricted > 0 ? " color:var(--warn); font-weight:600;" : ""))}
         ${(() => { const c = opsCap(r); return opsTd(c.html, opsNum + " " + c.style); })()}
         ${opsTd(opsDash(r.dailyOrders), opsNum)}

@@ -195,9 +195,19 @@ export async function getShopHealth(force = false): Promise<HealthResult> {
   return healthCache;
 }
 
+/** Không bao giờ chờ: có cache thì trả (cũ thì làm mới ở nền), chưa có thì kích dựng ở nền và trả null.
+ *  Dùng cho màn cần tải nhanh (Listings) — thà thiếu số hạn mức một lượt còn hơn bắt người dùng chờ ~8s. */
+export function peekShopHealth(): HealthResult | null {
+  if (!healthCache || Date.now() - healthCache.builtAt >= HEALTH_TTL) void rebuildHealth().catch(() => {});
+  return healthCache;
+}
+
 /** Lý do KHÔNG nên đổ hàng vào shop (null = đổ được). Dùng chung cho queue, drip, auto-source. */
 export function blockReason(r: HealthRow): string | null {
-  if (r.payoutFrozen) return "shop bị treo rút tiền";
+  // KHÔNG chặn theo payout_frozen: CRM gắn cờ này cho MỌI shop severity blocked/terminal (kể cả
+  // on_hold $0), mà shop "Order penalties" vẫn đăng được — đo 21/09: 20 listing đổ vào 654
+  // (payout_frozen=true) lên 4 active + 12 đang duyệt. Chặn theo cờ này sẽ ngừng oan 18 shop.
+  // Cờ vẫn hiện làm nhãn cảnh báo trên màn Vận hành.
   if (r.penaltyCluster) return "shop đang dính đợt phạt huỷ đơn";
   if (r.publishLimit === 0) return "TikTok khoá đăng mới (hạn mức 0)";
   if (r.publishLimit != null && r.activeListings != null && r.activeListings >= r.publishLimit)
@@ -214,6 +224,8 @@ export async function shopBlockMap(): Promise<Map<string, string>> {
   return m;
 }
 export const isShopBlocked = (m: Map<string, string>, shop: string) => m.get(normShop(shop)) ?? null;
+/** Tra 1 dòng sức khoẻ theo tên shop/folder (chuẩn hoá giống bộ chặn). */
+export const healthIndexByName = (h: HealthResult) => { const m = new Map<string, HealthRow>(); for (const r of h.rows) m.set(normShop(r.shop), r); return (shop: string) => m.get(normShop(shop)) ?? null; };
 
 /* ───────────── Hôm nay: việc có hạn chót ───────────── */
 export interface TodayItem { kind: string; shop: string; orderId: string; deadlineAt: number | null; detail: string; amount: string | null }

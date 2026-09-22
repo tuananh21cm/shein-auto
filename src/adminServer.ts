@@ -1391,7 +1391,17 @@ export const startAdminServer = async () => {
           todayCount: loc.todayCount || 0,
         });
       }
-      res.json({ shops, target: 100 });
+      // Hạn mức listing THẬT từng shop (publish_limit TikTok) thay mốc cứng 100 + lý do bị chặn đăng.
+      // peek: không bắt màn Listings chờ dựng dữ liệu sức khoẻ — chưa có thì lần tải sau mới có số.
+      const { peekShopHealth, healthIndexByName, blockReason } = await import("./core/opsBoard");
+      const hh = peekShopHealth();
+      const byName = hh ? healthIndexByName(hh) : null;
+      for (const s of shops) {
+        const r = byName?.(s.folder) ?? null;
+        s.limit = r?.publishLimit ?? null;
+        s.blocked = r ? blockReason(r) : null;
+      }
+      res.json({ shops, target: 100, limitsReady: !!hh });
     } catch (err: any) {
       res.status(500).json({ error: err?.message ?? "Lỗi progress" });
     }

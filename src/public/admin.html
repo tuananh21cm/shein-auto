@@ -2115,12 +2115,20 @@ function tickQueueElapsed() {
 // ── Dashboard tiến độ đăng — target 100 listing/shop (TẤT CẢ shop 4Seller, vai seller) ──
 const LP_TARGET = 100;
 let _lpShops = [];
+let _lpLimitsReady = true;
 function loadListingProgress() {
   const el = $("#listProgress");
   if (el && !_lpShops.length) el.innerHTML = '<div class="card" style="margin-bottom:14px;"><div class="empty">Đang tính tiến độ đăng (lấy live 4Seller)…</div></div>';
   fetch("/admin/api/listings/progress")
     .then((r) => r.json())
-    .then((d) => { if (d.error) throw new Error(d.error); _lpShops = d.shops || []; renderListingProgress(); })
+    .then((d) => {
+      if (d.error) throw new Error(d.error);
+      _lpShops = d.shops || [];
+      _lpLimitsReady = d.limitsReady !== false;
+      renderListingProgress();
+      // Server vừa khởi động, chưa dựng xong hạn mức → tải lại 1 lần sau ít giây (không poll).
+      if (!_lpLimitsReady && !loadListingProgress._retried) { loadListingProgress._retried = true; setTimeout(() => { if (window._view === "listings") loadListingProgress(); }, 12000); }
+    })
     .catch((err) => { if (el) el.innerHTML = `<div class="card" style="margin-bottom:14px;"><div class="empty">Lỗi tiến độ: ${escapeHtml(err.message)}</div></div>`; });
 }
 function renderListingProgress() {
@@ -2129,44 +2137,48 @@ function renderListingProgress() {
   if (!shops.length) { if (el) el.innerHTML = ""; return; }
   const countOf = (s) => (s.live != null ? s.live : (s.success || 0)); // live 4Seller, fallback success local
   const rows = shops.map((s) => ({ ...s, cnt: countOf(s) }));
+  // Hạn mức listing THẬT từng shop (publish_limit TikTok: 0/20/100/200/1000) thay mốc cứng 100.
+  // Chưa có số (server vừa khởi động / shop chưa có dữ liệu) → tạm tính 100 như trước.
+  const tgtOf = (s) => (s.limit != null ? s.limit : LP_TARGET);
+  const isFull = (s) => s.cnt >= tgtOf(s); // hạn mức 0 = khoá đăng mới → luôn tính là đầy
   const totalCnt = rows.reduce((a, s) => a + s.cnt, 0);
-  const totalTarget = rows.length * LP_TARGET;
-  const done = rows.filter((s) => s.cnt >= LP_TARGET).length;
+  const totalTarget = rows.reduce((a, s) => a + tgtOf(s), 0);
+  const done = rows.filter(isFull).length;
   const pendingSum = rows.reduce((a, s) => a + (s.pending || 0), 0);
   const todaySum = rows.reduce((a, s) => a + (s.todayCount || 0), 0);
   const failSum = rows.reduce((a, s) => a + (s.fail || 0), 0);
-  const overallPct = Math.min(100, Math.round(totalCnt / totalTarget * 100));
-  const barColor = (c) => c >= LP_TARGET ? "#22c55e" : c >= 50 ? "#3b82f6" : c >= 1 ? "#f59e0b" : "var(--text-mute)";
+  const overallPct = Math.min(100, Math.round(totalCnt / Math.max(1, totalTarget) * 100));
+  const barColor = (s) => isFull(s) ? "#22c55e" : s.cnt >= tgtOf(s) * 0.5 ? "#3b82f6" : s.cnt >= 1 ? "#f59e0b" : "var(--text-mute)";
   // Shop CÒN HÀNG CHỜ ĐĂNG lên đầu (còn việc phải publish); rồi chưa đạt & tụt nhất; đã đạt xuống cuối.
   const sorted = rows.slice().sort((a, b) =>
     (((b.pending || 0) > 0) - ((a.pending || 0) > 0))
-    || ((a.cnt >= LP_TARGET) - (b.cnt >= LP_TARGET))
+    || (isFull(a) - isFull(b))
     || a.cnt - b.cnt);
   const pendingShops = rows.filter((s) => (s.pending || 0) > 0).length;
-  let view = state.lpHideDone ? sorted.filter((s) => s.cnt < LP_TARGET) : sorted;
+  let view = state.lpHideDone ? sorted.filter((s) => !isFull(s)) : sorted;
   if (state.lpOnlyPending) view = view.filter((s) => (s.pending || 0) > 0);
   // Ô "Tìm shop" ở page-head — lọc theo tên shop + owner (49 shop, cuộn tìm bằng mắt rất mệt).
   const q = (($("#shopSearch") || {}).value || "").toLowerCase().trim();
   if (q) view = view.filter((s) => `${s.folder} ${s.owner || ""}`.toLowerCase().includes(q));
 
   const sub = $("#listingsSubtitle");
-  if (sub) sub.innerHTML = `${q ? `<b>${view.length}</b>/${rows.length}` : rows.length} shop${q ? ` khớp "${escapeHtml(q)}"` : ""} &nbsp;·&nbsp; <b>${totalCnt}</b>/${totalTarget} listing (${overallPct}%) &nbsp;·&nbsp; <span style="color:var(--success);">✅ ${done} đạt target</span> &nbsp;·&nbsp; <span style="color:var(--warn);">⏳ ${pendingSum} chờ</span>`;
+  if (sub) sub.innerHTML = `${q ? `<b>${view.length}</b>/${rows.length}` : rows.length} shop${q ? ` khớp "${escapeHtml(q)}"` : ""} &nbsp;·&nbsp; <b>${totalCnt}</b>/${totalTarget} listing (${overallPct}%) &nbsp;·&nbsp; <span style="color:var(--success);">✅ ${done} đầy hạn mức</span> &nbsp;·&nbsp; <span style="color:var(--warn);">⏳ ${pendingSum} chờ</span>`;
 
   // KPI tổng (không còn list bar riêng — progress nằm trong từng card bên dưới)
   if (el) el.innerHTML = `
     <div class="card" style="margin-bottom:14px;">
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; gap:12px; flex-wrap:wrap;">
-        <h3 style="margin:0;">📊 Tiến độ đăng — target ${LP_TARGET} listing/shop</h3>
+        <h3 style="margin:0;">📊 Tiến độ đăng — theo hạn mức listing TikTok từng shop${_lpLimitsReady ? "" : ' <span style="font-size:0.75rem; color:var(--text-mute); font-weight:400;">(đang tải hạn mức, tạm tính 100)</span>'}</h3>
         <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
           ${failSum ? `<button class="btn btn-danger" style="padding:5px 12px;" onclick="retryAllFails(${failSum})">↻ Chạy lại hết fail (${failSum})</button>` : ""}
           ${pendingShops ? `<label style="font-size:0.8rem; display:flex; align-items:center; gap:6px; cursor:pointer; color:var(--warn);"><input type="checkbox" ${state.lpOnlyPending ? "checked" : ""} onchange="state.lpOnlyPending=this.checked; renderListingProgress()"> ⏳ Chỉ shop còn chờ đăng (${pendingShops})</label>` : ""}
-          <label style="font-size:0.8rem; display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" ${state.lpHideDone ? "checked" : ""} onchange="state.lpHideDone=this.checked; renderListingProgress()"> Ẩn shop đã đạt (${done})</label>
+          <label style="font-size:0.8rem; display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" ${state.lpHideDone ? "checked" : ""} onchange="state.lpHideDone=this.checked; renderListingProgress()"> Ẩn shop đã đầy (${done})</label>
         </div>
       </div>
       <div class="lp-kpis">
         <div class="lp-kpi"><div class="lp-kpi-k">Tổng listing</div><div class="lp-kpi-v">${totalCnt}<span style="font-size:0.9rem; color:var(--text-mute); font-weight:600;">/${totalTarget}</span></div></div>
         <div class="lp-kpi"><div class="lp-kpi-k">Hoàn thành</div><div class="lp-kpi-v" style="color:${overallPct >= 100 ? "var(--success)" : "var(--accent)"};">${overallPct}%</div></div>
-        <div class="lp-kpi"><div class="lp-kpi-k">Shop đạt target</div><div class="lp-kpi-v">${done}<span style="font-size:0.9rem; color:var(--text-mute); font-weight:600;">/${rows.length}</span></div></div>
+        <div class="lp-kpi"><div class="lp-kpi-k">Shop đầy hạn mức</div><div class="lp-kpi-v">${done}<span style="font-size:0.9rem; color:var(--text-mute); font-weight:600;">/${rows.length}</span></div></div>
         <div class="lp-kpi"><div class="lp-kpi-k">Đang chờ đăng</div><div class="lp-kpi-v" style="color:var(--warn);">${pendingSum}</div></div>
         <div class="lp-kpi"><div class="lp-kpi-k">❌ Fail</div><div class="lp-kpi-v" style="color:${failSum ? "var(--danger)" : "var(--text-mute)"};">${failSum}</div></div>
         <div class="lp-kpi"><div class="lp-kpi-k">Đăng hôm nay</div><div class="lp-kpi-v" style="color:var(--success);">+${todaySum}</div></div>
@@ -2176,18 +2188,23 @@ function renderListingProgress() {
 
   // Card từng shop — progress bar /100 NẰM TRONG card (như yêu cầu)
   if (grid) grid.innerHTML = '<div class="shops-grid">' + view.map((s) => {
-    const pct = Math.min(100, Math.round(s.cnt / LP_TARGET * 100));
-    const rem = Math.max(0, LP_TARGET - s.cnt);
-    return `<div class="shop-card ${s.cnt >= LP_TARGET ? "lp-done" : ""}" onclick="enterShopDetail('${escapeHtml(s.folder)}','${escapeHtml(s.owner || "")}')">
+    const tgt = tgtOf(s);
+    const pct = tgt > 0 ? Math.min(100, Math.round(s.cnt / tgt * 100)) : 100;
+    const rem = Math.max(0, tgt - s.cnt);
+    const stTxt = s.limit === 0 ? '<span style="color:var(--danger); font-weight:700;">🔒 khoá đăng mới</span>'
+      : isFull(s) ? '<span style="color:var(--success); font-weight:700;">✓ đầy</span>'
+      : `<span style="color:var(--text-mute);">còn ${rem}</span>`;
+    const tgtTxt = s.limit != null ? `/${tgt}` : `/${tgt}<span title="Chưa có hạn mức thật của shop — tạm tính ${LP_TARGET}" style="cursor:help;">?</span>`;
+    return `<div class="shop-card ${isFull(s) ? "lp-done" : ""}" onclick="enterShopDetail('${escapeHtml(s.folder)}','${escapeHtml(s.owner || "")}')">
       <div class="cover">${s.image
         ? `<img src="${escapeHtml(s.image)}" alt="" loading="lazy" decoding="async" onerror="this.parentElement.innerHTML='<div class=&quot;placeholder&quot;>(no image)</div>'"/>`
         : '<div class="placeholder">(no image)</div>'}</div>
       <div class="body" style="gap:9px;">
         <div class="name" style="font-size:0.9rem;">${escapeHtml(s.folder)} <span style="font-size:0.68rem; color:var(--text-mute); font-weight:400;">@${escapeHtml((s.owner || "").split(",")[0])}</span></div>
-        <div class="lp-bar" style="height:9px;"><i style="width:${pct}%; background:${barColor(s.cnt)};"></i></div>
+        <div class="lp-bar" style="height:9px;"><i style="width:${pct}%; background:${barColor(s)};"></i></div>
         <div style="display:flex; justify-content:space-between; align-items:center; font-size:0.82rem;">
-          <span><b style="font-size:1.05rem;">${s.cnt}</b><span style="color:var(--text-mute);">/${LP_TARGET}</span> ${s.cnt >= LP_TARGET ? '<span style="color:var(--success); font-weight:700;">✓ đạt</span>' : `<span style="color:var(--text-mute);">còn ${rem}</span>`}</span>
-          <span>${s.pending ? `<span class="lp-badge" style="background:rgba(245,158,11,.15); color:var(--warn);">⏳${s.pending}</span>` : ""}${s.fail ? `<span class="lp-badge" style="background:rgba(239,68,68,.15); color:var(--danger);">fail : ${s.fail}</span>` : ""}${s.todayCount ? `<span class="lp-badge" style="background:rgba(34,197,94,.15); color:var(--success);">+${s.todayCount}</span>` : ""}</span>
+          <span><b style="font-size:1.05rem;">${s.cnt}</b><span style="color:var(--text-mute);">${tgtTxt}</span> ${stTxt}</span>
+          <span>${s.blocked ? `<span class="lp-badge" title="Tạm không đăng: ${escapeHtml(s.blocked)}${s.pending ? ` — ${s.pending} file vẫn nằm chờ` : ""}" style="background:rgba(239,68,68,.15); color:var(--danger); cursor:help;">⛔</span>` : ""}${s.pending ? `<span class="lp-badge" style="background:rgba(245,158,11,.15); color:var(--warn);">⏳${s.pending}</span>` : ""}${s.fail ? `<span class="lp-badge" style="background:rgba(239,68,68,.15); color:var(--danger);">fail : ${s.fail}</span>` : ""}${s.todayCount ? `<span class="lp-badge" style="background:rgba(34,197,94,.15); color:var(--success);">+${s.todayCount}</span>` : ""}</span>
         </div>
       </div>
     </div>`;

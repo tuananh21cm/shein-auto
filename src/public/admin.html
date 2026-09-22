@@ -5074,7 +5074,7 @@ function renderOpsCharts() {
       .map((r) => ({ name: opsShort(r.shop), value: r.publishLimit - r.activeListings, limit: r.publishLimit, tip: `${r.activeListings}/${r.publishLimit} listing` }))
       .sort((a, b) => b.value - a.value).slice(0, 10);
     const fullN = d.rows.filter((r) => opsCap(r).full).length;
-    cards.push(opsCard("📦 Limit shop còn thừa", `Hạn mức listing TikTok − số đang active · không tính shop đã đóng · ${fullN} shop đã hết chỗ`, opsBarList(room, (i) => `còn <b>${i.value}</b><span style="color:var(--text-mute);">/${i.limit}</span>`, "Không shop nào còn chỗ")));
+    cards.push(opsCard("📦 Giới hạn Listing còn thừa", `Hạn mức listing TikTok − số đang active · không tính shop đã đóng · ${fullN} shop đã hết chỗ`, opsBarList(room, (i) => `còn <b>${i.value}</b><span style="color:var(--text-mute);">/${i.limit}</span>`, "Không shop nào còn chỗ")));
 
     // 3) Lãi 30 ngày theo shop.
     const pnl = d.rows.filter((r) => r.pnl);

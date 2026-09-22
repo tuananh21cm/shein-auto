@@ -1100,6 +1100,7 @@
         </div>
       </div>
       <div id="retSummary" style="margin-bottom: 12px;"></div>
+      <div class="ops-charts" id="retCharts"></div>
       <div class="card"><div id="retTableWrap"><div class="empty">Chưa có data — bấm "Quét mới"</div></div></div>
     </section>
 
@@ -4979,6 +4980,7 @@ function renderReturns() {
       ${r.errors?.length ? `<span style="color:var(--danger);">⚠️ ${escapeHtml(r.errors.join(" · "))}</span>` : ""}
     </div>`;
 
+  renderRetCharts(r);
   if (!view.length) {
     $("#retTableWrap").innerHTML = `<div class="empty">${showAll ? "Không có case nào đang mở" : "✓ Không có case nào hết hạn trong 7 ngày tới"}</div>`;
     return;
@@ -5118,12 +5120,14 @@ function renderOpsKpis() {
 
 /* ── Biểu đồ ── */
 // Danh sách thanh xếp hạng: tên | thanh (1 màu) | giá trị. Vừa là biểu đồ vừa là bảng số.
+// Thanh bấm được: i.act là đoạn JS (vd lọc bảng) — escape để an toàn khi nằm trong thuộc tính HTML.
+const opsAct = (i) => (i.act ? ` role="button" tabindex="0" style="cursor:pointer;" onkeydown="if(event.key==='Enter')this.click()" onclick="${escapeHtml(i.act)}"` : "");
 function opsBarList(items, fmt, empty) {
   if (!items.length) return `<div class="empty" style="padding:18px;">${empty}</div>`;
   const max = Math.max(...items.map((i) => i.value)) || 1;
   return `<div class="ops-blist">${items.map((i) => `
-    <div class="ops-nm" title="${escapeHtml(i.name)}">${escapeHtml(i.name)}</div>
-    <div class="ops-track" title="${escapeHtml(i.tip || "")}"><div class="ops-bar" style="width:${Math.max(1, (i.value / max) * 100).toFixed(1)}%;"></div></div>
+    <div class="ops-nm" title="${escapeHtml(i.name)}"${opsAct(i)}>${escapeHtml(i.name)}</div>
+    <div class="ops-track" title="${escapeHtml(i.tip || "")}"${opsAct(i)}>${i.value > 0 ? `<div class="ops-bar" style="width:${Math.max(1, (i.value / max) * 100).toFixed(1)}%;"></div>` : ""}</div>
     <div class="ops-val">${fmt(i)}</div>`).join("")}</div>`;
 }
 const opsCard = (title, sub, body) => `<div class="card ops-chart"><h3>${title}</h3><div class="ops-sub">${sub}</div>${body}</div>`;
@@ -5289,6 +5293,36 @@ function renderOpsSkuTable() {
       </tr>`;
     }).join("")}</tbody></table></div>
     ${rows.length > shown.length ? `<div style="text-align:center; padding:12px;"><button class="btn btn-ghost" onclick="opsF.skuShown+=100; renderOpsSkuTable()">Xem thêm (${rows.length - shown.length} SKU nữa)</button></div>` : `<div style="text-align:center; padding:10px; font-size:0.78rem; color:var(--text-mute);">${rows.length} SKU</div>`}`;
+}
+
+// Biểu đồ màn Return/Refund — tính trên MỌI case đang mở (không theo bộ lọc bảng), bấm shop để lọc bảng.
+const RET_TYPE = { RETURN_AND_REFUND: "Trả hàng + hoàn tiền", REFUND: "Chỉ hoàn tiền", EXCHANGE: "Đổi hàng", REPLACEMENT: "Gửi lại hàng" };
+function renderRetCharts(r) {
+  const rows = r.rows || [];
+  if (!rows.length) { $("#retCharts").innerHTML = ""; return; }
+  const now = Date.now();
+  const group = (key) => { const m = new Map(); for (const x of rows) { const k = key(x) || "Không rõ"; const e = m.get(k) || { n: 0, amt: 0 }; e.n++; e.amt += Number(x.amount) || 0; m.set(k, e); } return m; };
+  const money = (v) => "$" + Math.round(v).toLocaleString("en-US");
+  // 1) Theo hạn xử lý — các mốc giữ THỨ TỰ THỜI GIAN (không xếp theo số lượng).
+  const BUCKETS = [["Đã quá hạn", (h) => h < 0], ["Dưới 24 giờ", (h) => h < 24], ["1–3 ngày", (h) => h < 72], ["3–7 ngày", (h) => h < 168], ["Trên 7 ngày", () => true]];
+  const bc = BUCKETS.map(([n]) => ({ name: n, value: 0 })); let noDl = 0;
+  for (const x of rows) { if (!x.deadlineAt) { noDl++; continue; } const h = (x.deadlineAt - now) / 36e5; bc[BUCKETS.findIndex(([, f]) => f(h))].value++; }
+  const dItems = [...bc, { name: "Không có hạn chót", value: noDl }].map((i) => ({ ...i, tip: `${i.value} case` }));
+  // 2) Lý do — kèm tỷ lệ do SAI SIZE (quá to / quá nhỏ): chỉ thẳng vào bảng size của listing.
+  const reasons = [...group((x) => x.reason)].map(([k, e]) => ({ name: k, value: e.n, tip: `${e.n} case · ${money(e.amt)}` })).sort((a, b) => b.value - a.value).slice(0, 8);
+  const sizeN = rows.filter((x) => /too big|too small|size/i.test(x.reason || "")).length;
+  // 3) Theo shop — bấm để lọc bảng bên dưới.
+  const shops = [...group((x) => x.shop)].map(([k, e]) => ({ name: k.replace(/_US$/, ""), value: e.n, amt: e.amt, tip: `${e.n} case · ${money(e.amt)} · bấm để lọc bảng`, act: `state.retShop=${JSON.stringify(k)}; state.retShowAll=true; renderReturns()` })).sort((a, b) => b.value - a.value || b.amt - a.amt).slice(0, 10);
+  // 4) Trạng thái (+ loại case ở phụ đề).
+  const stats = [...group((x) => x.statusText || x.status)].map(([k, e]) => ({ name: k, value: e.n, tip: `${e.n} case · ${money(e.amt)}` })).sort((a, b) => b.value - a.value);
+  const types = [...group((x) => x.type)].sort((a, b) => b[1].n - a[1].n).map(([k, e]) => `${RET_TYPE[k] || k} ${e.n}`).join(" · ");
+  const total = rows.length, amt = rows.reduce((s, x) => s + (Number(x.amount) || 0), 0);
+  $("#retCharts").innerHTML = [
+    opsCard("⏰ Case theo hạn xử lý", `${total} case đang mở · theo thứ tự thời gian`, opsBarList(dItems, (i) => `<b>${i.value}</b> case`, "")),
+    opsCard("🧾 Lý do return", `Top 8 · <b style=\"color:var(--text);\">${Math.round((sizeN / total) * 100)}%</b> do sai size (quá to / quá nhỏ) — xem lại bảng size`, opsBarList(reasons, (i) => `<b>${i.value}</b>`, "Không có lý do")),
+    opsCard("🏪 Case theo shop", `Top 10 · ${new Set(rows.map((x) => x.shop)).size} shop có case · tổng ${money(amt)} · bấm để lọc bảng`, opsBarList(shops, (i) => `<b>${i.value}</b> <span style=\"color:var(--text-mute);\">${money(i.amt)}</span>`, "")),
+    opsCard("📋 Trạng thái case", types, opsBarList(stats, (i) => `<b>${i.value}</b>`, "")),
+  ].join("");
 }
 
 async function loadPromotions() {

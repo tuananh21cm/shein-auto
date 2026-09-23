@@ -5,11 +5,16 @@
  *     proxy-pool: mỗi context = 1 Chrome + 1 proxy riêng).
  * Giữ: captcha auto-X, captcha-block → HOLD 5p, variant-stuck reload, pacing giữa sp.
  */
-import { chromium, type BrowserContext } from "playwright-core";
+import { chromium, type BrowserContext, type Page } from "playwright-core";
 import { scrapeSheinProduct, type ScrapeOptions, type ScrapeResult } from "../services/kiki/sheinScraper";
 import { scrapeSheinProductV2 } from "../services/kiki/sheinScraperV2";
 import { dismissCaptcha, isCaptchaPresent, acceptCookies, type CaptchaOptions } from "../services/kiki/captcha";
+import { warmUpHome, searchViaBox } from "./searchShein";
+
 import { attachStatsCapture } from "../services/kiki/productStats";
+
+/** Số vòng "về trang chủ → search lại" cho 1 sp. Vòng 1 gần như luôn trượt nên tối thiểu là 2. */
+const SEARCH_ROUNDS = 3;
 
 export interface ChromeBatchItem {
   goodsId: string;
@@ -44,17 +49,7 @@ export async function crawlBatchInContext(
   const out: BatchResult = [];
   let page = await ctx.newPage();
 
-  // Warm-up: vào HOMEPAGE SHEIN trước (set cookie/session) → product page ít captcha hơn.
-  // Chạy 1 lần/context; cookie persist nên cả batch dùng chung session đã "nguội".
-  try {
-    const origin = (() => { try { return new URL(items[0]?.url || "https://us.shein.com/").origin; } catch { return "https://us.shein.com"; } })();
-    log(`Warm-up: mở ${origin}/ …`);
-    await page.goto(origin + "/", { waitUntil: "domcontentloaded", timeout: 60_000 });
-    await page.waitForTimeout(3000);
-    if (await acceptCookies(page)) { log(`🍪 accept cookie`); await page.waitForTimeout(600); } // accept banner → ít captcha
-    if (await isCaptchaPresent(page).catch(() => false)) await dismissCaptcha(page, log);
-    await page.waitForTimeout(1500);
-  } catch (e: any) { log(`Warm-up lỗi (bỏ qua): ${String(e?.message ?? e).slice(0, 60)}`); }
+  // (Bỏ warm-up 1 lần/context: openViaSearch đã vào trang chủ + accept cookie ở MỖI vòng search.)
 
   const heavyStuck = (d: ScrapeResult): string[] => {
     const s: string[] = (d as any)?._meta?.stuckColors || [];
@@ -62,12 +57,59 @@ export async function crawlBatchInContext(
     return s.length >= Math.max(3, Math.ceil(n * 0.3)) ? s : [];
   };
 
+  /**
+   * Mở trang sp QUA Ô TÌM KIẾM (trang chủ → gõ goods_id → bấm thẻ kết quả).
+   * Goto THẲNG link `-p-<id>.html` dính captcha 100% (đo 24/09/2026: 20/20 IP, cả headed lẫn
+   * headless, cả Chrome nguyên bản lẫn có fingerprint — chặn theo KIỂU TRUY CẬP, không theo IP).
+   * Luồng search thì 6/6 sp cào được, và LẦN NÀO CŨNG trượt vòng 1, qua ở vòng 2 → phải lặp.
+   */
+  const openViaSearch = async (goodsId: string, idx: number): Promise<{ page: Page; stats: ReturnType<typeof attachStatsCapture> } | null> => {
+    for (let round = 1; round <= SEARCH_ROUNDS; round++) {
+      await warmUpHome(page, (m) => log(`[${idx + 1}] ${m}`));
+      if (!(await searchViaBox(page, goodsId, (m) => log(`[${idx + 1}] ${m}`)))) continue;
+      // Kết quả render sau điều hướng — không chờ là thấy trang rỗng rồi bỏ oan cả vòng.
+      await page.waitForSelector('a[href*="-p-"]', { timeout: 15_000 }).catch(() => {});
+      const exact = page.locator(`a[href*="-p-${goodsId}.html"]`);
+      const card = (await exact.count().catch(() => 0)) ? exact.first() : page.locator('a[href*="-p-"]').first();
+      if (!(await card.count().catch(() => 0))) { log(`[${idx + 1}] vòng ${round}: trang kết quả rỗng`); continue; }
+      // Thẻ sp mở TAB MỚI. Đừng ép target=_self (SHEIN chặn, bấm xong không đi đâu — đo 24/09);
+      // đón tab mới và gắn bộ bắt realtime_data ngay lúc tab sinh ra (trước khi response về).
+      // Cuộn tới + hover trước khi bấm: thẻ ngoài viewport / ảnh lazy hay nuốt cú click đầu.
+      await card.scrollIntoViewIfNeeded({ timeout: 8_000 }).catch(() => {});
+      await card.hover({ timeout: 5_000 }).catch(() => {});
+      const popupP = ctx.waitForEvent("page", { timeout: 20_000 }).catch(() => null);
+      await card.click({ timeout: 15_000 }).catch(() => {});
+      // Bấm hụt (không mở tab, không điều hướng) → bấm lại 1 lần nữa trước khi bỏ cả vòng.
+      let popup = await Promise.race([popupP, page.waitForTimeout(6000).then(() => null)]);
+      if (!popup && !/-p-\d+\.html/i.test(page.url())) {
+        await card.click({ timeout: 10_000 }).catch(() => {});
+        popup = await popupP;
+      }
+      const dp = popup ?? page; // vài lần SHEIN điều hướng ngay trong tab hiện tại
+      const stats = attachStatsCapture(dp, goodsId);
+      await dp.waitForURL(/-p-\d+\.html/i, { timeout: 15_000 }).catch(() => {});
+      if (/\/risk\//i.test(dp.url())) {
+        log(`[${idx + 1}] vòng ${round}: bấm sp → captcha, tìm lại`);
+        stats.detach(); if (popup) await popup.close().catch(() => {});
+        continue;
+      }
+      await dp.waitForSelector(".product-intro__head-name", { timeout: 20_000 }).catch(() => {});
+      if (await dp.locator(".product-intro__head-name").first().count().catch(() => 0)) return { page: dp, stats };
+      log(`[${idx + 1}] vòng ${round}: chưa vào được detail (${dp.url().slice(0, 45)})`);
+      stats.detach(); if (popup) await popup.close().catch(() => {});
+    }
+    return null;
+  };
+
   const loadAndScrape = async (it: ChromeBatchItem, idx: number): Promise<ScrapeResult> => {
     if (!page || page.isClosed()) { page = await ctx.newPage(); log(`[${idx + 1}] Page đã đóng → mở page mới.`); }
     const goodsId = it.url.match(/-p-(\d+)\.html/)?.[1] || it.goodsId;
-    log(`[${idx + 1}/${items.length}] Mở ${it.url.slice(0, 55)}`);
-    const statsCapture = attachStatsCapture(page, goodsId);
-    await page.goto(it.url, { waitUntil: "domcontentloaded", timeout: 60_000 });
+    log(`[${idx + 1}/${items.length}] Tìm theo mã ${goodsId} (qua ô search)`);
+    const opened = await openViaSearch(goodsId, idx);
+    if (!opened) throw new Error(`__CAPTCHA_BLOCK__ ${SEARCH_ROUNDS} vòng search đều bị chặn`);
+    const statsCapture = opened.stats;
+    // Detail mở ở tab mới → tab search cũ thành rác; đóng và làm việc tiếp trên tab detail.
+    if (opened.page !== page) { const old = page; page = opened.page; await old.close().catch(() => {}); }
     await page.waitForTimeout(2500);
     await acceptCookies(page, 2500).catch(() => false); // banner cookie trên trang product → accept để đỡ captcha
     const isGone = async (): Promise<boolean> =>

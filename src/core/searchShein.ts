@@ -18,7 +18,7 @@ export interface SearchOptions {
  * Vào TRANG CHỦ us.shein.com trước (set cookie/session) rồi mới sang trang search →
  * SHEIN ít nghi bot hơn hẳn so với goto thẳng /pdsearch. Gọi TRƯỚC MỖI keyword.
  */
-async function warmUpHome(page: Page, log: (m: string) => void): Promise<void> {
+export async function warmUpHome(page: Page, log: (m: string) => void): Promise<void> {
   try {
     await page.goto("https://us.shein.com/", { waitUntil: "domcontentloaded", timeout: 60_000 });
     await page.waitForTimeout(2500 + Math.floor(Math.random() * 2000));
@@ -31,7 +31,7 @@ async function warmUpHome(page: Page, log: (m: string) => void): Promise<void> {
  * GÕ keyword vào ô search trên trang chủ rồi Enter (điều hướng IN-SESSION) → SHEIN không nghi
  * bot (khác hẳn goto thẳng /pdsearch bị captcha). Trả true nếu đã sang được trang kết quả.
  */
-async function searchViaBox(page: Page, keyword: string, log: (m: string) => void): Promise<boolean> {
+export async function searchViaBox(page: Page, keyword: string, log: (m: string) => void): Promise<boolean> {
   // DOM SHEIN us.shein.com (verify 2026-09-12): input thật = input[name="header-search"].search-input,
   // TỒN TẠI nhưng 0-width/ẩn sau overlay section.search-box → isVisible()=false. Container hiện = .bsc-search-box.
   const READ = `(function(){var e=document.querySelector('input[name="header-search"],input.search-input');return e?String(e.value||''):null;})()`;
@@ -68,7 +68,10 @@ async function searchViaBox(page: Page, keyword: string, log: (m: string) => voi
   // 5) CHỜ 1 xíu RỒI Enter (user nhấn mạnh: input → chờ → enter).
   await page.waitForTimeout(1200 + Math.floor(Math.random() * 800));
   await page.keyboard.press("Enter");
-  await page.waitForTimeout(1800);
+  // CHỜ ĐỦ cho Enter điều hướng (đo 24/09: chờ 1.8s là quá sớm → tưởng Enter hỏng → bấm tiếp
+  // nút search ở bước 6 = điều hướng LẦN 2 → SHEIN trả captcha 909).
+  await page.waitForURL(/pdsearch|\/search|pdrp/i, { timeout: 7000 }).catch(() => { /* chưa đi → bước 6 */ });
+  await page.waitForTimeout(1500);
 
   // 6) Enter không điều hướng → thử click nút search.
   if (!/pdsearch|\/search|pdrp/i.test(page.url())) {

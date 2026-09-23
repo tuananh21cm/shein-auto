@@ -77,6 +77,35 @@ const MIGRATIONS: ((db: Database.Database) => void)[] = [
   (db) => {
     db.exec(`ALTER TABLE users ADD COLUMN brand_profiles_override TEXT;`);
   },
+  // v5: cache hiệu năng SKU kéo từ CRM KBT (GET /agent/sku-performance) — màn Vận hành đọc bảng
+  //     này. Bảng vốn sinh ra ở nhánh main (migration v14) và bị gỡ cùng module TikCRM khỏi
+  //     homie, nên máy nào tạo DB mới từ homie là chết "no such table" khi mở màn Vận hành.
+  (db) => {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS crm_sku_performance (
+        goods_id TEXT PRIMARY KEY,
+        title TEXT NOT NULL DEFAULT '',
+        niche TEXT NOT NULL DEFAULT '',
+        orders INTEGER NOT NULL DEFAULT 0,
+        orders_prev INTEGER NOT NULL DEFAULT 0,
+        monthly_velocity REAL,
+        score REAL,
+        tier TEXT NOT NULL DEFAULT '',
+        refund_count INTEGER NOT NULL DEFAULT 0,
+        effective_refund_rate_pct REAL,
+        risk TEXT NOT NULL DEFAULT '',            -- safe | medium | high
+        fulfill_price REAL,
+        revenue_avg REAL,
+        margin_usd REAL,
+        margin_pct REAL,
+        has_oos INTEGER NOT NULL DEFAULT 0,
+        shops TEXT NOT NULL DEFAULT '[]',         -- JSON array tên shop TikTok
+        window_days INTEGER,
+        fetched_at INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_crm_sku_risk ON crm_sku_performance(risk);
+    `);
+  },
 ];
 
 const runMigrations = (db: Database.Database): void => {

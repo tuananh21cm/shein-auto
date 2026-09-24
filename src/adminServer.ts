@@ -2322,7 +2322,11 @@ export const startAdminServer = async () => {
 
   // ── AUTO-SOURCER: tự đổ nhiên liệu (AI keyword→search→chấm→cào) cho MỌI shop có ngách
   //    tới khi đủ 100 LIVE. Publish do queueManager+dripPublisher lo (cần autoCron BẬT).
-  const AUTO_SOURCE_TARGET = 100;
+  // Mục tiêu listing của 1 shop = min(hạn mức TikTok, 200): shop limit 100 → 100, limit 20 → 20,
+  // shop limit 1000 → CHỈ 200 (không cào lấp đầy 1000). Chưa biết hạn mức → 100.
+  const AUTO_SOURCE_TARGET_CAP = 200;
+  const autoSourceTarget = (publishLimit: number | null | undefined): number =>
+    Math.min(AUTO_SOURCE_TARGET_CAP, publishLimit && publishLimit > 0 ? publishLimit : 100);
   const AUTO_SOURCE_BACKLOG_CAP = 30;   // giữ tối đa ~30 file chờ / shop → không cào nhanh hơn publish tiêu
   const AUTO_SOURCE_PER_CYCLE = 30;     // mỗi lượt thêm tối đa ~30 sp
   let autoSourceBusy = false;
@@ -2342,15 +2346,17 @@ export const startAdminServer = async () => {
       const entries = Object.entries(await loadShopNiche()).filter(([, v]) => shopNiches(v).length);
       if (!entries.length) return;
       const live = await fetchLiveCounts("auto").catch(() => ({} as Record<string, number>));
-      const { shopBlockMap, isShopBlocked } = await import("./core/opsBoard");
+      const { shopBlockMap, isShopBlocked, getShopHealth, healthIndexByName } = await import("./core/opsBoard");
       const blocked = await shopBlockMap();
+      const limitOf = healthIndexByName(await getShopHealth());
       for (const [shop, cfg] of entries) {
         // Shop hết hạn mức listing / bị khoá đăng → cào về cũng chỉ nằm chờ, tốn proxy + AI.
         if (isShopBlocked(blocked, shop)) continue;
+        const target = autoSourceTarget(limitOf(shop)?.publishLimit);
         const liveCnt = live[shop.toLowerCase()] ?? 0;
-        if (liveCnt >= AUTO_SOURCE_TARGET) continue;              // shop đã đủ 100
+        if (liveCnt >= target) continue;                          // shop đã đủ mục tiêu
         const backlog = await shopBacklog(shop);
-        if (liveCnt + backlog >= AUTO_SOURCE_TARGET) continue;    // đã đủ nguyên liệu để cán 100
+        if (liveCnt + backlog >= target) continue;                // đã đủ nguyên liệu để cán mục tiêu
         if (backlog >= AUTO_SOURCE_BACKLOG_CAP) continue;         // chờ publish tiêu bớt
         // Nhiều ngách → XOAY: mỗi cycle chọn ngẫu nhiên 1 ngách của shop để phủ đều.
         const nichesOfShop = shopNiches(cfg);
@@ -2359,8 +2365,8 @@ export const startAdminServer = async () => {
         const { generateKeywords } = await import("./services/anthropic/shopSourcing");
         const keywords = await generateKeywords(niche, 6, cfg.keywords || []).catch(() => [] as string[]);
         if (!keywords.length) continue;
-        const need = Math.min(AUTO_SOURCE_PER_CYCLE, AUTO_SOURCE_TARGET - liveCnt - backlog);
-        clog(`🤖 [auto] shop "${shop}" live ${liveCnt} + chờ ${backlog} → cào thêm ~${need} (ngách: ${niche.slice(0, 40)}${nichesOfShop.length > 1 ? ` · 1/${nichesOfShop.length}` : ""})`);
+        const need = Math.min(AUTO_SOURCE_PER_CYCLE, target - liveCnt - backlog);
+        clog(`🤖 [auto] shop "${shop}" live ${liveCnt} + chờ ${backlog} / mục tiêu ${target} → cào thêm ~${need} (ngách: ${niche.slice(0, 40)}${nichesOfShop.length > 1 ? ` · 1/${nichesOfShop.length}` : ""})`);
         // Fire-and-forget: runHarvestAndCrawl set crawlJob.running → lượt sau tự bỏ qua cho tới khi xong.
         void runHarvestAndCrawl({
           seedUrls: keywords.map((k) => `https://us.shein.com/pdsearch/${encodeURIComponent(k)}/`),

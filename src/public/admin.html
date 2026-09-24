@@ -1445,7 +1445,7 @@ const HELP = {
     <ul>
       <li>KPI: <b>Tổng listing</b> · <b>% Hoàn thành</b> · <b>Shop đạt target</b> · <b>Đang chờ</b> · <b>❌ Fail</b> · <b>Đăng hôm nay</b>.</li>
       <li>Nút <b>↻ Chạy lại hết fail (N)</b>: đưa TẤT CẢ listing fail (mọi shop) về pending cho cron chạy lại.</li>
-      <li>Tick <b>Ẩn shop đã đạt</b> để chỉ xem shop chưa đủ 100.</li>
+      <li>Tick <b>Ẩn shop đã đạt</b> để chỉ xem shop chưa đủ mục tiêu (= hạn mức TikTok, tối đa 200).</li>
       <li>Card mỗi shop: thanh tiến độ /100 + badge <b>fail : N</b> · <b>⏳ pending</b> · <b>+ hôm nay</b>.</li>
     </ul>
     <h4>🔎 Vào chi tiết 1 shop</h4>
@@ -2195,7 +2195,8 @@ function renderListingProgress() {
   const rows = shops.map((s) => ({ ...s, cnt: countOf(s) }));
   // Hạn mức listing THẬT từng shop (publish_limit TikTok: 0/20/100/200/1000) thay mốc cứng 100.
   // Chưa có số (server vừa khởi động / shop chưa có dữ liệu) → tạm tính 100 như trước.
-  const tgtOf = (s) => (s.limit != null ? s.limit : LP_TARGET);
+  // Mục tiêu = min(hạn mức TikTok, 200): shop limit 1000 chỉ nhắm 200, không lấp đầy (khớp auto-source).
+  const tgtOf = (s) => Math.min(200, s.limit != null ? s.limit : LP_TARGET);
   const isFull = (s) => s.cnt >= tgtOf(s); // hạn mức 0 = khoá đăng mới → luôn tính là đầy
   const totalCnt = rows.reduce((a, s) => a + s.cnt, 0);
   const totalTarget = rows.reduce((a, s) => a + tgtOf(s), 0);

@@ -5,7 +5,7 @@
  * NGHE response (giống bản cũ harvestViaChrome — token SDK armorToken/SmDeviceId không tái tạo được).
  */
 import type { BrowserContext, Page } from "playwright-core";
-import { crawlStore, type StoreProduct } from "../services/kiki/storeCrawler";
+import { crawlStore, startStoreCapture, type StoreProduct } from "../services/kiki/storeCrawler";
 import { dismissCaptcha, isCaptchaPresent, acceptCookies } from "../services/kiki/captcha";
 
 export interface SearchOptions {
@@ -111,15 +111,24 @@ export async function collectFromUrls(
       const effPages = isSearch ? 1 : pages;
       for (let pg = 1; pg <= effPages; pg++) {
         log(`🔎 ${label(url)}${pages > 1 ? ` · trang ${pg}` : ""}`);
+        // Gắn bộ bắt JSON TRƯỚC khi điều hướng: lô sp đầu về ngay lúc load trang kết quả,
+        // gắn sau (trong crawlStore) là mất giá/review/rating của cả lô đó.
+        const capture = startStoreCapture(page);
         try {
           if (pg === 1) {
             log(`   ↺ homepage → gõ "${keyword || label(url)}"`);
-            await warmUpHome(page, log);
             if (isSearch) {
-              // BẮT BUỘC qua ô search (goto thẳng /pdsearch = 403). Không được thì BỎ keyword (đừng goto).
-              const navigated = keyword ? await searchViaBox(page, keyword, log) : false;
-              if (!navigated) { log(`   ⏭ bỏ keyword (không dùng được ô search — tránh goto→403)`); break; }
+              // BẮT BUỘC qua ô search (goto thẳng /pdsearch = 403). VÒNG 1 GẦN NHƯ LUÔN TRƯỢT
+              // (đo 24/09: 8/8 lần đều phải sang vòng 2) → về trang chủ tìm lại, tối đa 3 vòng.
+              let navigated = false;
+              for (let round = 1; round <= 3 && !navigated && keyword; round++) {
+                await warmUpHome(page, log);
+                navigated = await searchViaBox(page, keyword, log);
+                if (!navigated) log(`   ↻ vòng ${round} chưa vào được kết quả → tìm lại`);
+              }
+              if (!navigated) { log(`   ⏭ bỏ keyword (3 vòng search đều bị chặn)`); break; }
             } else {
+              await warmUpHome(page, log);
               await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60_000 }); // shop: goto thẳng
             }
           } else {
@@ -130,7 +139,9 @@ export async function collectFromUrls(
           await page.waitForTimeout(2000);
           if (await acceptCookies(page, 2500)) log(`   🍪 accept cookie`); // banner hiện ở TRANG KẾT QUẢ search
           const before = all.size;
-          const prods = await crawlStore(page, { maxProducts: opts.maxPerKeyword ?? 60, onLog: (m) => log("   " + m) });
+          const prods = await crawlStore(page, { maxProducts: opts.maxPerKeyword ?? 60, capture, onLog: (m) => log("   " + m) });
+          const withRev = prods.filter((p) => p.reviewCount > 0).length;
+          if (prods.length && !withRev) log(`   ⚠️ ${prods.length} sp nhưng KHÔNG có review → lọc review sẽ loại sạch (JSON SHEIN không bắt được)`);
           let fresh = 0;
           for (const p of prods) if (p.goodsId && !all.has(p.goodsId)) { all.set(p.goodsId, p); fresh++; }
           log(`   → ${prods.length} sp (${fresh} mới) · tổng ${all.size}`);
@@ -144,6 +155,8 @@ export async function collectFromUrls(
         } catch (e: any) {
           log(`   ⚠️ lỗi trang ${pg}: ${String(e?.message ?? e).slice(0, 60)}`);
           break;
+        } finally {
+          capture.stop();
         }
       }
     }
@@ -163,13 +176,24 @@ export async function searchKeywordsInContext(
   return collectFromUrls(ctx, urls, { ...opts, label: (u) => `search "${decodeURIComponent((u.match(/pdsearch\/([^/]+)/) || [])[1] || "")}"` });
 }
 
-/** Lọc "listing ngon": đủ review (proxy bán chạy) + rating cao, sort bán-chạy trước, cắt top N. */
+/**
+ * Lọc "listing ngon": đủ review (proxy bán chạy) + rating cao + trong khoảng giá, cắt top N.
+ * Đo 24/09: trang kết quả SHEIN kèm khối "gợi ý cho bạn" (tăm bông $1, keo dán, tất… review 1000+)
+ * → xếp theo review là đám đó chiếm sạch top. Nên: (1) có sp từ JSON tìm kiếm thì bỏ sp từ JSON
+ * khác; (2) khoảng giá theo ngách loại hàng lặt vặt; (3) review trần "1001+" nên coi ≥1000 là
+ * ngang nhau, xếp tiếp theo rating.
+ */
 export function filterGoodListings(
   items: StoreProduct[],
-  f: { minReviews: number; minRating: number; limit: number }
+  f: { minReviews: number; minRating: number; limit: number; minPrice?: number; maxPrice?: number }
 ): StoreProduct[] {
+  const hasSearch = items.some((p) => p.fromSearch === true);
+  const inBand = (p: StoreProduct) =>
+    p.price == null || ((f.minPrice == null || p.price >= f.minPrice) && (f.maxPrice == null || p.price <= f.maxPrice));
+  const rev = (p: StoreProduct) => Math.min(p.reviewCount, 1000);
   return items
-    .filter((p) => p.reviewCount >= f.minReviews && (p.rating ?? 0) >= f.minRating && !!p.url)
-    .sort((a, b) => b.reviewCount - a.reviewCount)
+    .filter((p) => !(hasSearch && p.fromSearch === false))
+    .filter((p) => p.reviewCount >= f.minReviews && (p.rating ?? 0) >= f.minRating && !!p.url && inBand(p))
+    .sort((a, b) => rev(b) - rev(a) || (b.rating ?? 0) - (a.rating ?? 0))
     .slice(0, f.limit);
 }

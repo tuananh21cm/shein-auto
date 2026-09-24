@@ -67,7 +67,9 @@ export async function scoreListingsForShop(
   }));
   const data = await callClaudeJSON<{ results: ScoredListing[] }>({
     model,
-    maxTokens: 8000,
+    // ~90 token/sp (id + fit + keep + reason). Cố định 8000 thì lô 134 sp bị CẮT mất 20 sp cuối
+    // (đo 24/09) → mất hàng oan mà không báo lỗi. Cấp theo số sp, chặn trần 32k.
+    maxTokens: Math.min(32_000, items.length * 90 + 800),
     system:
       "Bạn là chuyên gia chọn hàng (product sourcing) TikTok Shop US, thời trang nữ 2026. " +
       "Cho NGÁCH của shop và DANH SÁCH sản phẩm SHEIN (kèm review=proxy lượng bán, rating, giá), " +

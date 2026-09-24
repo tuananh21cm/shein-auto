@@ -2009,6 +2009,7 @@ export const startAdminServer = async () => {
     output?: "hub" | "shop"; shop?: string;   // đích cào (mặc định hub)
     niche?: string;                           // có → AI chấm điểm hợp ngách thay vì lọc cơ học
     dedupeShop?: string;                      // có → bỏ goodsId đã cào trước cho shop này (chống trùng)
+    minPrice?: number; maxPrice?: number;     // khoảng giá SHEIN ($) — loại hàng lặt vặt $1-2 lọt từ khối gợi ý
   }): Promise<void> {
     crawlJob = { running: true, done: false, log: [], summary: null, startedAt: Date.now() };
     try {
@@ -2076,7 +2077,7 @@ export const startAdminServer = async () => {
           candidates = await collectFromUrls(ctx, opts.seedUrls, { maxPerKeyword: opts.maxPerKeyword, pages: opts.pages, onLog: clog, label });
         } finally { try { if (browser) await browser.close(); } catch { /* ignore */ } }
       }
-      let good = filterGoodListings(candidates, { minReviews: opts.minReviews, minRating: opts.minRating, limit: opts.niche ? 200 : opts.limit });
+      let good = filterGoodListings(candidates, { minReviews: opts.minReviews, minRating: opts.minRating, limit: opts.niche ? 200 : opts.limit, minPrice: opts.minPrice, maxPrice: opts.maxPrice });
       // Có ngách → AI chấm hợp-ngách + đáng-bán trên số đã pre-filter (giảm token).
       if (opts.niche && good.length) {
         try {
@@ -2195,7 +2196,7 @@ export const startAdminServer = async () => {
 
   // ── AI tìm hàng cho shop theo ngách ──────────────────────
   const SHOP_NICHE_FILE = path.resolve(process.cwd(), "config", "shop-niche.json");
-  async function loadShopNiche(): Promise<Record<string, { niche?: string; niches?: string[]; keywords?: string[] }>> {
+  async function loadShopNiche(): Promise<Record<string, { niche?: string; niches?: string[]; keywords?: string[]; priceMin?: number; priceMax?: number }>> {
     try { return await fs.readJson(SHOP_NICHE_FILE); } catch { return {}; }
   }
   // Danh sách ngách của 1 shop (hợp nhất field cũ `niche` + mới `niches`, dedupe).
@@ -2366,6 +2367,9 @@ export const startAdminServer = async () => {
           kind: "search", niche, output: "shop", shop, dedupeShop: shop,
           headless: s.headless, concurrency: s.concurrency,
           minReviews: 20, minRating: 0, limit: Math.max(5, need), maxPerKeyword: 40, pages: s.searchPages,
+          // Khoảng giá mặc định cho quần áo $3-25 (giá vốn thật đang bán: $5.5-10.4/sp); shop-niche.json
+          // có thể ghi đè priceMin/priceMax theo ngách (vd áo khoác tới $26).
+          minPrice: cfg.priceMin ?? 3, maxPrice: cfg.priceMax ?? 25,
         });
         break; // 1 shop / lượt (crawlJob single-global)
       }

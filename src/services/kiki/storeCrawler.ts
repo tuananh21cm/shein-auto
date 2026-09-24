@@ -26,12 +26,17 @@ export interface StoreProduct {
   rating: number | null;
   catId?: string;
   catName?: string;
+  /** true = từ JSON KẾT QUẢ TÌM KIẾM (get_products_by_keywords); false = JSON khác trên cùng trang
+   *  (khối "gợi ý cho bạn" — tăm bông, keo dán… review 1000+ nhưng lệch ngách). DOM fallback = undefined. */
+  fromSearch?: boolean;
 }
 
 export interface CrawlStoreOptions {
   maxProducts?: number;
   captcha?: CaptchaOptions;
   onLog?: (msg: string) => void;
+  /** Bộ bắt JSON đã gắn TRƯỚC khi điều hướng (xem startStoreCapture) — caller tự stop. */
+  capture?: StoreCapture;
 }
 
 const num = (v: any): number | null => {
@@ -89,14 +94,58 @@ function normItem(it: any, host: string): StoreProduct | null {
 }
 
 async function humanScroll(page: Page): Promise<void> {
-  const step = 600 + Math.floor(Math.random() * 500);
+  const step = 1800 + Math.floor(Math.random() * 900);
   await page.mouse.wheel(0, step).catch(() => {});
-  await page.waitForTimeout(700 + Math.floor(Math.random() * 900));
+  await page.waitForTimeout(1200 + Math.floor(Math.random() * 900));
+  await page.mouse.wheel(0, step).catch(() => {});
+  await page.waitForTimeout(900 + Math.floor(Math.random() * 700));
   // thỉnh thoảng cuộn ngược nhẹ cho giống người
   if (Math.random() < 0.25) {
     await page.mouse.wheel(0, -150).catch(() => {});
     await page.waitForTimeout(400);
   }
+}
+
+export interface StoreCapture {
+  map: Map<string, StoreProduct>;
+  stop: () => void;
+}
+
+/**
+ * Bắt JSON sản phẩm của SHEIN (bff-api/product/get_products_by_keywords…) trên 1 page.
+ * PHẢI gắn TRƯỚC khi điều hướng sang trang kết quả: lô sản phẩm ĐẦU về ngay lúc load, gắn sau
+ * là mất sạch giá/review/rating (đo 24/09: 120/120 sp về review=0 → lọc review≥20 loại hết,
+ * AI chấm không bao giờ chạy). Gắn sớm → truyền capture vào crawlStore.
+ */
+export function startStoreCapture(page: Page, host = "us.shein.com"): StoreCapture {
+  const map = new Map<string, StoreProduct>();
+  const onResponse = async (res: any) => {
+    try {
+      const url = res.url();
+      if (!/shein|ltwebstatic|sheinsz/i.test(url)) return;
+      const ct = (res.headers()["content-type"] || "").toLowerCase();
+      if (!ct.includes("json")) return;
+      const data = await res.json().catch(() => null);
+      if (!data) return;
+      const arrays: any[][] = [];
+      findProductArrays(data, arrays);
+      const fromSearch = /get_products_by_keywords/i.test(url);
+      for (const arr of arrays) {
+        for (const raw of arr) {
+          const p = normItem(raw, host);
+          if (!p) continue;
+          p.fromSearch = fromSearch;
+          const old = map.get(p.goodsId);
+          // Lô sau có thể giàu dữ liệu hơn (review/giá) → ưu tiên bản có review.
+          if (!old || (!old.reviewCount && p.reviewCount)) map.set(p.goodsId, p);
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+  };
+  page.on("response", onResponse);
+  return { map, stop: () => page.off("response", onResponse) };
 }
 
 export async function crawlStore(page: Page, opts: CrawlStoreOptions = {}): Promise<StoreProduct[]> {
@@ -110,30 +159,9 @@ export async function crawlStore(page: Page, opts: CrawlStoreOptions = {}): Prom
     }
   })();
 
-  const map = new Map<string, StoreProduct>();
-
-  // 1. Intercept JSON nội bộ SHEIN
-  const onResponse = async (res: any) => {
-    try {
-      const url = res.url();
-      if (!/shein|ltwebstatic|sheinsz/i.test(url)) return;
-      const ct = (res.headers()["content-type"] || "").toLowerCase();
-      if (!ct.includes("json")) return;
-      const data = await res.json().catch(() => null);
-      if (!data) return;
-      const arrays: any[][] = [];
-      findProductArrays(data, arrays);
-      for (const arr of arrays) {
-        for (const raw of arr) {
-          const p = normItem(raw, host);
-          if (p && !map.has(p.goodsId)) map.set(p.goodsId, p);
-        }
-      }
-    } catch {
-      /* ignore */
-    }
-  };
-  page.on("response", onResponse);
+  // Caller đã gắn capture TRƯỚC khi điều hướng → dùng lại (giữ lô sản phẩm đầu tiên).
+  const own = opts.capture ?? startStoreCapture(page, host);
+  const map = own.map;
 
   try {
     await ensureNoCaptcha(page, opts.captcha);
@@ -191,7 +219,7 @@ export async function crawlStore(page: Page, opts: CrawlStoreOptions = {}): Prom
     }
     log(`Hoàn tất crawl store: ${map.size} sản phẩm (rounds=${rounds}).`);
   } finally {
-    page.off("response", onResponse);
+    if (!opts.capture) own.stop(); // capture của caller thì caller tự dừng
   }
 
   return Array.from(map.values()).slice(0, maxProducts);

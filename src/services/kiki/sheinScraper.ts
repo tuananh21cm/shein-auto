@@ -186,16 +186,31 @@ async function inPageScrape(opts: ScrapeOptions): Promise<ScrapeResult> {
   };
 
   // 2. ATTRIBUTES
-  const attrBtn = document.querySelector(SELECTORS.attrTrigger);
-  if (attrBtn) {
-    await forceClick(attrBtn);
-    await wait(800);
+  // Panel Description render LAZY. Trước đây: click 1 lần + chờ CỨNG 800ms → qua proxy chậm
+  // thì panel chưa kịp render → attributes RỖNG → AI không có gì viết → listing lên sàn chỉ có
+  // ảnh, không có mô tả (đo thật: 75/146 file cào bằng pipeline bị rỗng). Giờ: POLL tới khi có
+  // hàng, và thử LẦN LƯỢT mọi trigger khớp selector (OR-selector cũ chỉ lấy match đầu DOM).
+  const readAttrs = (): Record<string, string> => {
+    const out: Record<string, string> = {};
+    const names = document.querySelectorAll(SELECTORS.attrNames);
+    const vals = document.querySelectorAll(SELECTORS.attrValues);
+    names.forEach((n, i) => {
+      const val = (vals[i] as HTMLElement)?.innerText.trim();
+      if (val) out[(n as HTMLElement).innerText.replace(":", "").trim()] = val;
+    });
+    return out;
+  };
+  let attributes: Record<string, string> = readAttrs(); // đã mở sẵn → khỏi click
+  if (!Object.keys(attributes).length) {
+    for (const t of Array.from(document.querySelectorAll(SELECTORS.attrTrigger))) {
+      await forceClick(t);
+      for (let w = 0; w < 20 && !Object.keys(attributes).length; w++) { // poll ~6s
+        await wait(300);
+        attributes = readAttrs();
+      }
+      if (Object.keys(attributes).length) break;
+    }
   }
-  const attributes: Record<string, string> = {};
-  document.querySelectorAll(SELECTORS.attrNames).forEach((n, i) => {
-    const val = (document.querySelectorAll(SELECTORS.attrValues)[i] as HTMLElement)?.innerText.trim();
-    if (val) attributes[(n as HTMLElement).innerText.replace(":", "").trim()] = val;
-  });
 
   // 3. ẢNH SẢN PHẨM CHUNG
   const productImages = Array.from(
@@ -403,9 +418,17 @@ async function inPageScrape(opts: ScrapeOptions): Promise<ScrapeResult> {
     }) ||
     document.querySelector('[class*="size-guide"]') ||
     document.querySelector('[class*="size-chart"]');
+  // GUARD: nếu "size guide" match nhằm 1 thẻ <a> có href thật (vd link bài help
+  // /How-to-choose-your-size-a-748.html) thì KHÔNG click — click sẽ ĐIỀU HƯỚNG rời trang sp,
+  // hỏng cả lần cào. Drawer size thật là div/span/button, không phải <a> điều hướng.
+  const isNavLink = (el: any): boolean => {
+    if (!el || el.tagName !== "A") return false;
+    const href = (el.getAttribute("href") || "").trim();
+    return !!href && !/^(#|javascript:)/i.test(href);
+  };
   // skipSizeChart (V2): size_chart/measure/fit là PRODUCT-LEVEL (giống nhau mọi màu) → chỉ mở
   // drawer ở màu ĐẦU. Bỏ qua ở màu 2..N tiết kiệm ~10s/màu (drawer poll tới 8s).
-  if (sizeBtn && !opts.skipSizeChart) {
+  if (sizeBtn && !opts.skipSizeChart && !isNavLink(sizeBtn)) {
     await forceClick(sizeBtn);
     // Drawer Size Guide load ASYNC → POLL chờ NỘI DUNG (bảng / measure-guide / unit-toggle), tối đa ~8s.
     //   KHÔNG click lại để "thử mở": click lần 2 TOGGLE ĐÓNG drawer → đọc rỗng. Nếu sau 8s vẫn trống
@@ -414,9 +437,17 @@ async function inPageScrape(opts: ScrapeOptions): Promise<ScrapeResult> {
       !!document.querySelector(
         ".bsc-common-size-table__content_inner-table tbody tr, .bsc-size-measure-guide__desc, .bsc-size-unit-switch"
       );
-    for (let w = 0; w < 27; w++) {
-      if (drawerReady()) break;
-      await wait(300);
+    // Poll ~12s; chưa render thì thử MỞ LẠI đúng 1 lượt (click 1 lần chỉ TOGGLE ĐÓNG, nên
+    // phải click 2 lần: đóng rồi mở). Trước đây chỉ poll 8s rồi bỏ → 82/146 file mất size_chart.
+    for (let attempt = 0; attempt < 2; attempt++) {
+      for (let w = 0; w < 40; w++) {
+        if (drawerReady()) break;
+        await wait(300);
+      }
+      if (drawerReady() || attempt === 1) break;
+      await forceClick(sizeBtn);
+      await wait(500);
+      await forceClick(sizeBtn);
     }
     await wait(400);
 

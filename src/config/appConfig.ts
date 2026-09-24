@@ -23,9 +23,21 @@ interface PricingFile {
   defaultQty: number;
   defaultWeight: string;
   defaultDimensions: { length: string; width: string; height: string };
+  /**
+   * Đơn vị gửi lên 4Seller. Shop US dùng POUND/INCH — TRƯỚC ĐÂY hardcode KILOGRAM/CENTIMETER
+   * nên 0.3 và 9/1/6 bị gắn nhầm thành kg/cm trên MỌI listing (cả Playwright lẫn API).
+   */
+  weightUnit?: string;
+  dimensionUnit?: string;
 }
 interface WorkerFile {
   autoCron: boolean;
+  autoSource?: boolean; // master-switch cho auto-sourcer (AI tự tìm hàng tới 100 listing/shop)
+  /**
+   * Đăng listing bằng HTTP API 4Seller (~27s) thay Playwright (~135s). Mặc định BẬT;
+   * API lỗi → tự rơi về Playwright. Đặt false để tắt hẳn khi 4Seller đổi API.
+   */
+  listingApi?: boolean;
   concurrency: number;
   headless: boolean;
   fileRouterCron: string;
@@ -97,6 +109,11 @@ export const isAutoCronOn = (): boolean => {
   try { return !!readJson<WorkerFile>("worker.json").autoCron; } catch { return false; }
 };
 
+/** Đọc autoSource TƯƠI (master-switch auto-sourcer) — tắt là dừng trong 1 tick. */
+export const isAutoSourceOn = (): boolean => {
+  try { return !!readJson<WorkerFile>("worker.json").autoSource; } catch { return false; }
+};
+
 export const sizeMap = (): Record<string, string> =>
   (_sizeMap ??= readJson<SizeMapFile>("size-map.json")).map;
 
@@ -144,43 +161,6 @@ export const computeFinalPrice = (originalPrice: number): number => {
   return (originalPrice + offset) / divisor;
 };
 
-/** Agent bridge KBT CRM (config/crm.json). Secret ưu tiên env CRM_BRIDGE_SECRET. */
-export interface CrmFile {
-  enabled: boolean;
-  url: string;                 // gốc public CRM, vd https://apps.kbt.global/api-proxy
-  secret?: string;
-  pullDays?: number;           // cửa sổ hiệu năng (7-120, mặc định 30)
-  refreshHours?: number;       // nhịp pull cache (mặc định 12)
-  gate?: { enabled?: boolean; minOrders?: number; maxEffectiveRefundPct?: number };
-  flash?: { enabled?: boolean; minMarginPct?: number; excludeRisk?: string[] };
-  registry?: { enabled?: boolean; snapshotHour?: number };
-}
-let _crm: CrmFile | null = null;
-export const crmConfig = (): CrmFile => {
-  if (_crm) return _crm;
-  try { _crm = readJson<CrmFile>("crm.json"); }
-  catch { _crm = { enabled: false, url: "" }; } // chưa có file = tắt, không throw
-  return _crm;
-};
-
-/** Apify rank tracking (config/apify.json). Token ưu tiên env APIFY_TOKEN. */
-export interface ApifyFile {
-  enabled: boolean;
-  token?: string;
-  rankActorId: string;
-  rankInput?: Record<string, unknown>;
-  schedule?: string;
-  timezone?: string;
-  runTimeoutMinutes?: number;
-}
-let _apify: ApifyFile | null = null;
-export const apifyConfig = (): ApifyFile => {
-  if (_apify) return _apify;
-  try { _apify = readJson<ApifyFile>("apify.json"); }
-  catch { _apify = { enabled: false, rankActorId: "" }; }
-  return _apify;
-};
-
 /** Force reload config từ disk (dùng cho Settings UI sau này). */
 export const reloadAppConfig = (): void => {
   _brandProfiles = null;
@@ -190,6 +170,4 @@ export const reloadAppConfig = (): void => {
   _categories = null;
   _specificsMap = null;
   _publish = null;
-  _crm = null;
-  _apify = null;
 };

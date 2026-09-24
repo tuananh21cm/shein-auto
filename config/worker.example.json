@@ -1,10 +1,11 @@
 {
   "_comment": "concurrency: số browser chạy song song. 1 = sequential như cũ. autoCron: bật/tắt cron tự động.",
   "autoCron": true,
+  "autoSource": false,
   "concurrency": 6,
   "headless": true,
   "fileRouterCron": "*/30 * * * * *",
-  "queueManagerCron": "*/1 * * * *",
+  "queueManagerCron": "*/30 * * * * *",
   "imageUploadWaitPerImageMs": 7000,
   "imageUploadMaxImages": 9,
   "variantImageCount": 1,
@@ -14,7 +15,7 @@
   "descriptionTrustBanner": true,
   "sizeGuideGalleryImage": false,
   "fillSpecifics": true,
-  "saveDraftOnly": true,
+  "listingApi": true,
   "colorShowcase": {
     "enabled": true,
     "style": "B"

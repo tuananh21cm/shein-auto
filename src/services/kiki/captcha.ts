@@ -25,6 +25,41 @@ export interface CaptchaOptions {
   onLog?: (msg: string) => void;
 }
 
+/**
+ * Bấm "Accept" banner cookie/consent nếu có. KHÔNG accept → SHEIN coi session lạ → dễ captcha.
+ * Ưu tiên nút trong container cookie/consent; fallback quét toàn trang theo text accept.
+ */
+export async function acceptCookies(page: Page, waitMs = 4000): Promise<boolean> {
+  const deadline = Date.now() + Math.max(0, waitMs);
+  do {
+    const ok = await page.evaluate(`(function(){
+      var re=/^(accept all|accept all cookies|accept|i accept|got it|ok,? got it|agree|i agree|allow all|accept cookies|allow cookies)$/i;
+      var hits=[];
+      // KHÔNG lọc theo visible: nút CMP SHEIN (div.cmp_c_50 "Accept All") có thể 0-width lúc render;
+      // click theo TEXT là được (vô hại nếu ẩn, hiệu quả khi banner hiện). Duyệt cả shadow DOM.
+      var walk=function(root){
+        if(!root||!root.querySelectorAll) return;
+        var els=root.querySelectorAll('*');
+        for(var i=0;i<els.length;i++){
+          var e=els[i];
+          var t=((e.innerText||e.textContent||'')+'').trim();
+          if(t.length<=22 && re.test(t)) hits.push(e);
+          if(e.shadowRoot) walk(e.shadowRoot);
+        }
+      };
+      walk(document);
+      // Bấm LEAF (không chứa hit con khác) → đúng nút "Accept All", không phải container/đoạn text.
+      for(var i=0;i<hits.length;i++){ var e=hits[i]; if(!hits.some(function(c){return c!==e && e.contains(c);})){ e.click(); return true; } }
+      if(hits.length){ hits[0].click(); return true; }
+      return false;
+    })()`).catch(() => false);
+    if (ok) return true;
+    if (Date.now() >= deadline) break;
+    await page.waitForTimeout(700);
+  } while (Date.now() < deadline);
+  return false;
+}
+
 /** Phát hiện trang đang ở captcha / risk challenge. */
 export async function isCaptchaPresent(page: Page): Promise<boolean> {
   try {

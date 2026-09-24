@@ -48,3 +48,7 @@ config/shop-listing.json
 config/worker.json
 config/apify.json
 config/crm.json
+
+# per-machine shop niche (user data)
+config/shop-niche.json
+_homie-config-backup/

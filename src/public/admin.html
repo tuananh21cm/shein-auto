@@ -6,6 +6,8 @@
   <title>Homie · Admin</title>
   <style>
     :root[data-theme="dark"] {
+      /* Màu biểu đồ trạng thái — đã chạy validator (CVD/độ tương phản) trên nền card tối. */
+      --ch-bad: #f87171; --ch-warn: #fbbf24; --ch-none: #5e6890; --ch-ok: #4ade80;
       --bg: #0b1020;
       --bg-elev: #131a30;
       --bg-card: #1a2241;
@@ -25,6 +27,8 @@
       --shadow: 0 10px 40px rgba(0, 0, 0, 0.35);
     }
     :root[data-theme="light"] {
+      /* Nền sáng: vàng #f59e0b thay --warn #d97706 (đặt cạnh đỏ chỉ ΔE 14.4 < 15, khó phân biệt). */
+      --ch-bad: #dc2626; --ch-warn: #f59e0b; --ch-none: #94a3b8; --ch-ok: #16a34a;
       --bg: #f4f6fb;
       --bg-elev: #ffffff;
       --bg-card: #ffffff;
@@ -49,6 +53,16 @@
     button { font-family: inherit; }
 
     .app { display: grid; grid-template-columns: 240px 1fr; min-height: 100vh; }
+    .ck-name { font-weight: 800; font-size: 1.15rem; color: var(--accent); padding: 2px 10px; border-radius: 8px; background: color-mix(in srgb, var(--accent) 14%, transparent); }
+    .ck-acc .pill { background: var(--bg-elev); border: 1px solid var(--border); padding: 2px 9px; border-radius: 999px; font-size: 0.8rem; }
+    .ck-more-btn { background: none; border: 1px dashed var(--border); border-radius: 999px; padding: 2px 10px; color: var(--accent); font-size: 0.82rem; font-weight: 600; cursor: pointer; }
+    .ck-more-btn:hover, .ck-more-btn:focus-visible { border-color: var(--accent); }
+    .ck-acc.ck-dead { border: 2px solid var(--danger); border-left-width: 6px; background: color-mix(in srgb, var(--danger) 9%, var(--bg-card)); }
+    .ck-acc.ck-dead .ck-replace { background: var(--danger); border-color: var(--danger); color: #fff; }
+    .ck-alert { position: fixed; top: calc(14px + env(safe-area-inset-top, 0px)); left: 50%; transform: translateX(-50%); z-index: 9000; width: min(640px, calc(100vw - 32px)); display: flex; align-items: flex-start; gap: 12px; padding: 12px 14px; background: var(--bg-card); color: var(--text); border: 1px solid var(--danger); border-left-width: 4px; border-radius: 10px; box-shadow: var(--shadow); font-size: 0.88rem; line-height: 1.45; }
+    .ck-alert .ck-a-body { flex: 1; min-width: 0; }
+    .ck-alert .ck-a-x { background: none; border: 0; color: var(--text-mute); font-size: 1.1rem; cursor: pointer; padding: 0 4px; line-height: 1; }
+    .ck-alert .ck-a-x:hover, .ck-alert .ck-a-x:focus-visible { color: var(--text); }
     .sidebar { background: var(--bg-elev); border-right: 1px solid var(--border); padding: 24px 16px; display: flex; flex-direction: column; gap: 8px; position: sticky; top: 0; height: 100vh; }
     .brand { font-weight: 800; font-size: 1.1rem; letter-spacing: 0.04em; padding: 4px 12px 16px; display: flex; align-items: center; gap: 8px; }
     .brand .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 12px var(--accent); }
@@ -132,6 +146,7 @@
       .back-bar .crumb { flex: 1 1 auto; min-width: 0; }
       #listStatus { min-width: 110px !important; width: auto !important; }
       #listSearch { flex: 1 1 140px; width: auto !important; min-width: 0 !important; }
+      #shopSearch { flex: 1 1 140px; width: auto !important; min-width: 0 !important; }
     }
 
     .card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 14px; padding: 20px; }
@@ -403,6 +418,29 @@
     .seg { display: inline-flex; background: var(--bg-elev); border: 1px solid var(--border); border-radius: 9px; padding: 2px; }
     .seg-btn { background: none; border: none; color: var(--text-mute); font-size: 0.82rem; font-weight: 600; padding: 6px 13px; border-radius: 7px; cursor: pointer; }
     .seg-btn.active { background: var(--accent); color: #fff; }
+    /* Vận hành: biểu đồ HTML thuần. Thanh ≤24px, bo 4px ở đầu dữ liệu, gốc vuông; khe 2px giữa đoạn xếp chồng. */
+    .ops-charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 14px; margin-bottom: 14px; }
+    .ops-chart h3 { margin: 0 0 2px; font-size: 0.95rem; }
+    .ops-sub { font-size: 0.75rem; color: var(--text-mute); margin-bottom: 12px; }
+    .ops-stack { display: flex; gap: 2px; height: 22px; }
+    .ops-stack > div { min-width: 4px; cursor: pointer; }
+    .ops-stack > div:first-child { border-radius: 4px 0 0 4px; } .ops-stack > div:last-child { border-radius: 0 4px 4px 0; }
+    .ops-stack > div:hover, .ops-stack > div:focus-visible { filter: brightness(1.15); outline: 2px solid var(--text); outline-offset: 1px; }
+    .ops-legend { display: flex; flex-wrap: wrap; gap: 8px 16px; margin-top: 12px; font-size: 0.8rem; color: var(--text); }
+    .ops-lg { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+    .ops-sw { width: 10px; height: 10px; border-radius: 2px; flex: none; }
+    .ops-blist { display: grid; grid-template-columns: minmax(80px, 36%) 1fr auto; gap: 7px 10px; align-items: center; font-size: 0.8rem; }
+    .ops-nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
+    .ops-track { height: 14px; display: flex; align-items: center; }
+    .ops-bar { height: 12px; border-radius: 0 4px 4px 0; background: var(--accent); min-width: 2px; }
+    .ops-track:hover .ops-bar { filter: brightness(1.2); }
+    .ops-scroll { max-height: 300px; overflow-y: auto; padding-right: 6px; overscroll-behavior: contain; }
+    .ops-track-full { background: color-mix(in srgb, var(--accent) 16%, transparent); border-radius: 4px; }
+    .ops-track-full .ops-bar { height: 12px; }
+    .ops-val { font-variant-numeric: tabular-nums; color: var(--text); white-space: nowrap; text-align: right; }
+    .ops-meter { height: 12px; background: color-mix(in srgb, var(--accent) 18%, transparent); border-radius: 4px; overflow: hidden; }
+    .ops-meter > i { display: block; height: 100%; background: var(--accent); border-radius: 0 4px 4px 0; }
+    .ops-hero { font-size: 2.6rem; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; color: var(--text); }
     .snc-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(305px, 1fr)); gap: 14px; }
     .snc-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 14px; padding: 14px 16px; }
     .snc-head { font-weight: 700; font-size: 0.92rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -525,8 +563,14 @@
 <div class="app">
   <aside class="sidebar">
     <div class="brand"><span class="dot"></span>Homie</div>
-    <div class="nav-item active" data-view="dashboard">
+    <div class="nav-item active" data-view="ops">
+      <span class="ico">📈</span><span>Vận hành</span>
+    </div>
+    <div class="nav-item" data-view="dashboard">
       <span class="ico">📊</span><span>Dashboard</span>
+    </div>
+    <div class="nav-item" data-view="returns">
+      <span class="ico">↩️</span><span>Return / Refund</span>
     </div>
     <div class="nav-item" data-view="listings">
       <span class="ico">🛍️</span><span>Listings</span>
@@ -534,20 +578,17 @@
     <div class="nav-item" data-view="hub">
       <span class="ico">🗂️</span><span>Hub sản phẩm</span>
     </div>
-    <div class="nav-item" data-view="niche">
-      <span class="ico">🎯</span><span>Ngách</span>
-    </div>
-    <div class="nav-item" data-view="settings" data-admin-only="1">
-      <span class="ico">⚙️</span><span>Settings</span>
-    </div>
     <div class="nav-item" data-view="promotions">
       <span class="ico">🏷️</span><span>Promotions</span>
     </div>
-    <div class="nav-item" data-view="returns">
-      <span class="ico">↩️</span><span>Return / Refund</span>
+    <div class="nav-item" data-view="niche">
+      <span class="ico">🎯</span><span>Ngách</span>
     </div>
     <div class="nav-item" data-view="video">
       <span class="ico">🎬</span><span>Video</span>
+    </div>
+    <div class="nav-item" data-view="settings" data-admin-only="1">
+      <span class="ico">⚙️</span><span>Settings</span>
     </div>
     <div class="nav-item" data-view="domain" data-admin-only="1">
       <span class="ico">🌐</span><span>Domain</span>
@@ -568,7 +609,7 @@
   <main class="main">
 
     <!-- ───── DASHBOARD ───── -->
-    <section class="view active" id="view-dashboard">
+    <section class="view" id="view-dashboard">
       <div class="page-head">
         <div>
           <h1>Dashboard</h1>
@@ -609,7 +650,8 @@
           <h1>Listings</h1>
           <div class="subtitle" id="listingsSubtitle">Click shop để xem danh sách listing</div>
         </div>
-        <div style="display: flex; gap: 8px;">
+        <div style="display: flex; gap: 8px; align-items: center;">
+          <input id="shopSearch" placeholder="🔍 Tìm shop..." oninput="renderListingProgress()" style="width: 200px;" />
           <button class="btn btn-primary" id="createShopBtn" onclick="openCreateShop()">+ Tạo shop</button>
           <button class="btn btn-ghost" id="listingsRefreshBtn" onclick="refreshListings()">Refresh</button>
         </div>
@@ -684,6 +726,47 @@
             <button class="btn btn-primary" id="crawlBtn" onclick="startCrawl()">🕷️ Cào</button>
           </div>
           <div id="crawlLog" style="margin-top:10px; font:11px/1.5 'JetBrains Mono',monospace; background:var(--bg-elev); border-radius:8px; padding:10px; max-height:220px; overflow:auto; white-space:pre-wrap; display:none;"></div>
+        </div>
+      </div>
+
+      <!-- 🔎 Tìm theo keyword → lọc listing ngon → cào Hub -->
+      <div class="card" id="searchCard" style="margin-bottom:14px; border-left:4px solid var(--accent);">
+        <div style="display:flex; justify-content:space-between; align-items:center; cursor:pointer;" onclick="toggleSearch()">
+          <h3 style="margin:0;">🔎 Tìm theo keyword <span style="color:var(--text-mute); font-weight:400; font-size:0.82rem;">— search SHEIN → lọc listing ngon → cào Hub</span></h3>
+          <span id="searchCaret" style="color:var(--text-mute);">▸ Mở</span>
+        </div>
+        <div id="searchBody" style="display:none; margin-top:12px;">
+          <label class="field"><span>Keyword <span style="color:var(--text-mute);">(mỗi dòng 1 từ khoá)</span></span>
+            <textarea id="searchKw" rows="3" placeholder="summer dress&#10;bikini set&#10;cargo pants" style="width:100%; font-family:'JetBrains Mono',monospace; font-size:0.76rem;"></textarea>
+          </label>
+          <div style="display:flex; gap:14px; align-items:center; flex-wrap:wrap; margin-top:8px;">
+            <label style="display:flex; gap:6px; align-items:center;" title="Số review tối thiểu — proxy cho lượng bán">Review ≥ <input id="searchMinRev" type="number" value="100" min="0" style="width:80px;"></label>
+            <label style="display:flex; gap:6px; align-items:center;">Rating ≥ <input id="searchMinRate" type="number" value="4" min="0" max="5" step="0.1" style="width:60px;"></label>
+            <label style="display:flex; gap:6px; align-items:center;" title="Cào tối đa bao nhiêu sp ngon nhất (sort review giảm dần)">Top <input id="searchLimit" type="number" value="50" min="1" max="200" style="width:70px;"></label>
+            <label style="display:flex; gap:6px; align-items:center;" title="Quét tối đa mỗi keyword bao nhiêu sp">Quét/kw <input id="searchPerKw" type="number" value="60" min="1" max="200" style="width:70px;"></label>
+            <button class="btn btn-primary" id="searchBtn" onclick="startSearch()">🔎 Tìm &amp; cào</button>
+          </div>
+          <div style="font-size:0.78rem; color:var(--text-mute); margin-top:6px;">Headless &amp; Chrome song song lấy từ Settings. Tiến trình chạy chung log với "Cào theo link" (cùng 1 job).</div>
+        </div>
+      </div>
+
+      <!-- 🏬 Cào nguyên listing của 1 shop -->
+      <div class="card" id="shopCard" style="margin-bottom:14px; border-left:4px solid var(--accent);">
+        <div style="display:flex; justify-content:space-between; align-items:center; cursor:pointer;" onclick="toggleShop()">
+          <h3 style="margin:0;">🏬 Cào nguyên shop <span style="color:var(--text-mute); font-weight:400; font-size:0.82rem;">— dán link shop → cào hết listing về Hub</span></h3>
+          <span id="shopCaret" style="color:var(--text-mute);">▸ Mở</span>
+        </div>
+        <div id="shopBody" style="display:none; margin-top:12px;">
+          <label class="field"><span>Link shop SHEIN <span style="color:var(--text-mute);">(mỗi dòng 1 shop)</span></span>
+            <textarea id="shopUrls" rows="3" placeholder="https://us.shein.com/store/home?store_code=1234567" style="width:100%; font-family:'JetBrains Mono',monospace; font-size:0.76rem;"></textarea>
+          </label>
+          <div style="display:flex; gap:14px; align-items:center; flex-wrap:wrap; margin-top:8px;">
+            <label style="display:flex; gap:6px; align-items:center;" title="Tối đa bao nhiêu sp mỗi shop">Tối đa sp <input id="shopMax" type="number" value="300" min="1" max="1000" style="width:80px;"></label>
+            <label style="display:flex; gap:6px; align-items:center;" title="0 = lấy hết, không lọc">Review ≥ <input id="shopMinRev" type="number" value="0" min="0" style="width:70px;"></label>
+            <label style="display:flex; gap:6px; align-items:center;">Rating ≥ <input id="shopMinRate" type="number" value="0" min="0" max="5" step="0.1" style="width:60px;"></label>
+            <button class="btn btn-primary" id="shopBtn" onclick="startShopCrawl()">🏬 Cào shop</button>
+          </div>
+          <div style="font-size:0.78rem; color:var(--text-mute); margin-top:6px;">Mặc định lấy HẾT (ngưỡng 0). Headless &amp; Chrome song song lấy từ Settings. Chung log với "Cào theo link".</div>
         </div>
       </div>
 
@@ -854,6 +937,19 @@
             <span id="setAutoCronLabel" style="font-weight:600;">—</span>
           </label>
         </div>
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; margin-top:14px; padding-top:14px; border-top:1px solid var(--border);">
+          <div>
+            <h3 style="margin:0 0 4px;">🤖 Tự tìm hàng (Auto-source)</h3>
+            <div style="color: var(--text-mute); font-size: 0.85rem;">
+              Bật = mọi shop đã set <b>ngách</b> tự: AI sinh keyword → search → chấm chọn → cào → tới <b>100 listing/shop</b>.<br>
+              ⚠️ Cần bật cả "Tự động chạy (Cron)" phía trên để tự <b>đăng</b> lên shop.
+            </div>
+          </div>
+          <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+            <input type="checkbox" id="setAutoSource" style="width: 20px; height: 20px;" />
+            <span id="setAutoSourceLabel" style="font-weight:600;">—</span>
+          </label>
+        </div>
       </div>
 
       <div class="grid grid-2" style="margin-top: 18px; align-items: start;">
@@ -918,6 +1014,9 @@
                 <option value="true">Ẩn — chạy ngầm (dễ bị chặn hơn)</option>
               </select>
             </label>
+            <label class="field"><span>📄 Số trang search / keyword <span style="color:var(--text-mute);">(?page=N — càng nhiều càng sâu nhưng dễ captcha, nên có proxy)</span></span>
+              <input type="number" id="crawlSetPages" min="1" max="10" />
+            </label>
           </div>
         </div>
 
@@ -944,21 +1043,6 @@
         </div>
       </div>
 
-      <div class="card" style="margin-top:18px;">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-          <h3 style="margin:0;">🖼️ Pool imgbb <span style="color:var(--text-mute); font-weight:400; font-size:0.85rem;">— host ảnh banner/size-guide trong mô tả</span></h3>
-          <div style="display:flex; gap:8px;">
-            <button class="btn btn-ghost" onclick="loadImgbbStatus()">↻ Refresh</button>
-            <button class="btn btn-ghost" id="imgbbTestBtn" onclick="testImgbbKeys()" title="Upload 1 ảnh 1px bằng từng key để kiểm tra sống/limit (tốn 1 lượt quota mỗi key)">🧪 Test keys</button>
-          </div>
-        </div>
-        <div id="imgbbSummary" style="margin-bottom:10px;"></div>
-        <div id="imgbbKeysWrap"><div class="empty">Đang tải…</div></div>
-        <p style="color: var(--text-mute); font-size: 0.8rem; margin-top: 10px;">
-          ⓘ imgbb không công bố quota chính thức — cột "giờ này" so với ngưỡng <b>~100 upload/key/giờ</b> ước tính từ quan sát thực tế.
-          "Bó tay" = upload thất bại sau toàn bộ backoff → <b>listing đó thiếu banner/size-guide</b>. Thêm key mới vào <code>IMGBB_API_KEYS</code> trong .env (phẩy) rồi restart.
-        </p>
-      </div>
 
       <div class="card" style="margin-top:18px; border-left: 4px solid var(--accent);">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; gap:12px; flex-wrap:wrap;">
@@ -1017,7 +1101,36 @@
         </div>
       </div>
       <div id="retSummary" style="margin-bottom: 12px;"></div>
+      <div class="ops-charts" id="retCharts"></div>
       <div class="card"><div id="retTableWrap"><div class="empty">Chưa có data — bấm "Quét mới"</div></div></div>
+    </section>
+
+    <section class="view active" id="view-ops">
+      <div class="page-head">
+        <div>
+          <h1>📈 Vận hành</h1>
+          <div class="subtitle">Shop nào đang gặp nguy, tiền đang bị giữ ở đâu, còn chỗ đăng ở đâu, SKU nào lãi. Chỉ đọc.</div>
+        </div>
+        <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+          <span id="opsSource" style="font-size:0.8rem; color:var(--text-mute);"></span>
+          <button class="btn btn-ghost" id="opsRefreshBtn" onclick="loadOps(true)">🔄 Làm mới</button>
+        </div>
+      </div>
+      <div id="opsKpis" style="margin-bottom:14px;"></div>
+      <div class="ops-charts" id="opsCharts"></div>
+      <div class="card" style="margin-bottom:14px;">
+        <h3 style="margin:0 0 2px;">⏰ Đơn cần xử lý</h3>
+        <div class="ops-sub">Đơn sắp hoặc đã quá hạn bị phạt (từ CRM), gấp nhất lên đầu.</div>
+        <div id="opsTodayTable"><div class="empty">Đang tải…</div></div>
+      </div>
+      <div class="card" style="margin-bottom:14px;" id="opsHealthCard">
+        <div id="opsHealthHead"></div>
+        <div id="opsHealthTable"><div class="empty">Đang tải…</div></div>
+      </div>
+      <div class="card">
+        <div id="opsSkuHead"></div>
+        <div id="opsSkuTable"><div class="empty">Đang tải…</div></div>
+      </div>
     </section>
 
     <!-- ───── COOKIE (đa tài khoản 4Seller — port từ main) ───── -->
@@ -1194,7 +1307,7 @@ setTheme(localStorage.getItem("theme") || "dark");
 // Chuyển màn + cập nhật URL /admin/<view>. push=true → thêm history (bấm nav); false → boot/back.
 function goToView(view, push) {
   const item = document.querySelector(`.nav-item[data-view="${view}"]`);
-  if (!item) { view = "dashboard"; }
+  if (!item) { view = "ops"; } // màn mặc định = Vận hành
   window._view = view;
   document.querySelectorAll(".nav-item").forEach((i) => i.classList.remove("active"));
   document.querySelectorAll(".view").forEach((v) => v.classList.remove("active"));
@@ -1211,9 +1324,10 @@ function goToView(view, push) {
   if (view === "domain") loadTunnels();
   if (view === "niche") loadNiche();
   if (view === "users") renderUsers();
-  if (view === "settings") { loadSettings(); loadBrands(); loadPricing(); loadImgbbStatus(); loadMyToken(); }
+  if (view === "settings") { loadSettings(); loadBrands(); loadPricing(); loadMyToken(); }
   if (view === "promotions") loadPromotions();
   if (view === "returns") loadReturns();
+  if (view === "ops") loadOps();
   if (view === "cookie") loadCookieStatus();
   closeNav(); // đóng drawer sau khi chọn (mobile)
 }
@@ -1222,13 +1336,13 @@ document.querySelectorAll(".nav-item").forEach((item) => {
 });
 // Back/forward trình duyệt
 window.addEventListener("popstate", (e) => {
-  const view = (e.state && e.state.view) || (location.pathname.match(/^\/admin\/([a-z]+)/) || [])[1] || "dashboard";
+  const view = (e.state && e.state.view) || (location.pathname.match(/^\/admin\/([a-z]+)/) || [])[1] || "ops";
   goToView(view, false);
 });
-// Boot: mở đúng màn theo URL (/admin/video → view video). Chỉ khi khác dashboard mặc định.
+// Boot: mở đúng màn theo URL (/admin/video → view video). Không có / sai tên màn → Vận hành (mặc định).
 function routeFromUrl() {
   const view = (location.pathname.match(/^\/admin\/([a-z]+)/) || [])[1];
-  if (view && document.querySelector(`.nav-item[data-view="${view}"]`)) goToView(view, false);
+  goToView(view && document.querySelector(`.nav-item[data-view="${view}"]`) ? view : "ops", false);
 }
 
 // ── Public domain (Cloudflare Tunnel) ──
@@ -1395,10 +1509,9 @@ const HELP = {
       <li>Đặt <b>brand mặc định</b> + brand riêng từng shop (trong modal cấu hình shop).</li>
       <li>Nút <b>✨ Gợi ý tên</b>: chọn vibe/ngách → AI đặt tên brand ngắn gọn kiểu ROMWE.</li>
     </ul>
-    <h4>💰 Pricing &amp; imgbb</h4>
+    <h4>💰 Pricing</h4>
     <ul>
       <li><b>Pricing</b>: công thức tính giá bán (phí ship, hệ số, cộng thêm).</li>
-      <li><b>imgbb</b>: pool API key upload ảnh mô tả. Key hết quota → thay key mới ở đây.</li>
     </ul>
     <div class="help-warn">⚠️ Config per-máy (gitignore): pull code không bị đè, nhưng cũng không tự đồng bộ sang máy khác.</div>` },
 
@@ -1427,7 +1540,7 @@ const HELP = {
     </ul>
     <h4>♻️ Cookie hết hạn → renew</h4>
     <ul>
-      <li>Card cookie chết viền đỏ. Bấm <b>🔄 Thay cookie</b> ngay trên card đó → chọn file cookie mới.</li>
+      <li>Card cookie chết viền đỏ. Bấm <b>🔄 Làm mới cookie</b> ngay trên card đó → chọn file cookie mới.</li>
       <li>Cách này <b>ép vào đúng tài khoản cũ</b>, KHÔNG tạo tài khoản trùng (kể cả cookie mới thiếu uid).</li>
     </ul>
     <h4>Các nút khác trên card</h4>
@@ -1463,9 +1576,41 @@ async function bootstrap() {
     await Promise.all([refreshDashboard(), loadConfig()]);
     connectSSE();
     routeFromUrl(); // /admin/<view> → mở đúng màn (deep-link/refresh)
+    checkCookieAlerts();
+    setInterval(checkCookieAlerts, 60_000);
   } catch (err) {
     console.error(err);
   }
+}
+
+// ─── Banner nổi: cookie 4Seller hết hạn (mọi màn) ──────
+// Server dừng đăng shop của tài khoản chết. ✕ = ẩn đúng LẦN CHẾT đó (key uid:since) — cookie chết
+// lần sau (since mới) thì hiện lại. Import cookie mới → server đánh dấu sống → banner tự mất.
+const CK_DISMISS = "ckAlertDismissed";
+const _ckHidden = new Set(); // dự phòng khi localStorage bị chặn
+const ckDismissed = () => { try { return JSON.parse(localStorage.getItem(CK_DISMISS) || "[]"); } catch { return []; } };
+async function checkCookieAlerts() {
+  let dead = [];
+  try { dead = (await (await fetch("/admin/api/cookie/alerts")).json()).dead || []; } catch { return; }
+  const hidden = new Set([...ckDismissed(), ..._ckHidden]);
+  const show = dead.filter((d) => !hidden.has(`${d.uid}:${d.since}`));
+  let el = $("#ckAlert");
+  if (!show.length) { if (el) el.remove(); return; }
+  if (!el) { el = document.createElement("div"); el.id = "ckAlert"; el.className = "ck-alert"; el.setAttribute("role", "alert"); document.body.appendChild(el); }
+  el.dataset.keys = JSON.stringify(show.map((d) => `${d.uid}:${d.since}`));
+  el.innerHTML = `<span aria-hidden="true">🍪</span>
+    <div class="ck-a-body"><b style="color:var(--danger);">Cookie 4Seller hết hạn — đã dừng đăng</b><br>
+      ${show.map((d) => `<b>${escapeHtml(d.label)}</b> · ${d.shops} shop · phát hiện ${relTime(d.since)}`).join("<br>")}
+      <div style="margin-top:8px;"><button class="btn btn-primary" style="padding:4px 12px;" onclick="goToView('cookie', true)">Import lại cookie</button></div>
+    </div>
+    <button class="ck-a-x" title="Ẩn thông báo" aria-label="Ẩn thông báo" onclick="dismissCookieAlert()">✕</button>`;
+}
+function dismissCookieAlert() {
+  const el = $("#ckAlert"); if (!el) return;
+  const keys = JSON.parse(el.dataset.keys || "[]");
+  keys.forEach((k) => _ckHidden.add(k));
+  try { localStorage.setItem(CK_DISMISS, JSON.stringify([...new Set([...ckDismissed(), ...keys])].slice(-50))); } catch { /* không lưu được → chỉ ẩn phiên này */ }
+  el.remove();
 }
 
 // ─── Dashboard (overview — port từ main) ────────────────
@@ -1790,17 +1935,34 @@ function connectSSE() {
 }
 
 const MAX_LOG_LINES = 500;
+// Gom log theo KHUNG HÌNH: server đẩy mọi console.log qua SSE (lúc cào/đăng tới hàng chục dòng/giây).
+// Trước đây MỖI dòng chèn DOM + đặt scrollTop = scrollHeight → ép trình duyệt tính lại layout từng
+// dòng → cuộn giật. Nay chèn 1 lần/khung hình, và chỉ tự cuộn khi đang đứng ở cuối khung log.
+let _logBuf = [];
+let _logRaf = 0;
 function appendLog(entry) {
-  const panel = $("#logPanel");
-  const ts = new Date(entry.ts).toLocaleTimeString();
-  const line = document.createElement("div");
-  line.className = `log-line ${entry.level}`;
-  line.innerHTML = `<span class="ts">${ts}</span>${escapeHtml(entry.message)}`;
-  panel.appendChild(line);
-  while (panel.children.length > MAX_LOG_LINES) panel.removeChild(panel.firstChild);
-  panel.scrollTop = panel.scrollHeight;
+  _logBuf.push(entry);
+  if (_logBuf.length > MAX_LOG_LINES) _logBuf.splice(0, _logBuf.length - MAX_LOG_LINES);
+  if (!_logRaf) _logRaf = requestAnimationFrame(flushLogs);
 }
-const clearLogs = () => $("#logPanel").innerHTML = "";
+function flushLogs() {
+  _logRaf = 0;
+  const panel = $("#logPanel");
+  if (!panel) { _logBuf = []; return; }
+  const atBottom = panel.scrollHeight - panel.scrollTop - panel.clientHeight < 40;
+  const frag = document.createDocumentFragment();
+  for (const entry of _logBuf) {
+    const line = document.createElement("div");
+    line.className = `log-line ${entry.level}`;
+    line.innerHTML = `<span class="ts">${new Date(entry.ts).toLocaleTimeString()}</span>${escapeHtml(entry.message)}`;
+    frag.appendChild(line);
+  }
+  _logBuf = [];
+  panel.appendChild(frag);
+  for (let extra = panel.children.length - MAX_LOG_LINES; extra > 0; extra--) panel.removeChild(panel.firstChild);
+  if (atBottom) panel.scrollTop = panel.scrollHeight;
+}
+const clearLogs = () => { _logBuf = []; $("#logPanel").innerHTML = ""; };
 
 // ─── History ──────────────────────────────────────────
 async function loadHistory() {
@@ -1967,13 +2129,13 @@ function renderQueueProgress(d) {
 
   const slots = Array.from({ length: concurrency }, (_, i) => `<span class="qp-slot${i < inProgress ? " on" : ""}"></span>`).join("");
   const jobs = active.length
-    ? active.map((j) => `<span class="qp-job"><span class="qp-dot"></span>${escapeHtml(nicheCleanShop(j.profile))} <b>${fmtElapsed(now - j.startedAt)}</b></span>`).join("")
+    ? active.map((j) => `<span class="qp-job"><span class="qp-dot"></span>${escapeHtml(nicheCleanShop(j.profile))} <b class="qp-el" data-start="${Number(j.startedAt) || 0}">${fmtElapsed(now - j.startedAt)}</b></span>`).join("")
     : '<span class="qp-idle">Không có listing nào đang chạy</span>';
   const maxP = Math.max(1, ...folders.map((f) => f.pendingCount));
   const topPending = folders.slice().sort((a, b) => b.pendingCount - a.pendingCount).slice(0, 6)
     .map((f) => `<div class="qp-prow"><span class="qp-pname" title="${escapeHtml(f.name)}">${escapeHtml(nicheCleanShop(f.name))}</span><span class="qp-pbar"><span style="width:${Math.round(f.pendingCount / maxP * 100)}%"></span></span><b>${f.pendingCount}</b></div>`).join("");
 
-  el.innerHTML = `
+  const html = `
     <div class="card qp-card">
       <div class="qp-head">
         <h3 style="margin:0;">🚀 Queue listing ${inProgress ? '<span class="qp-live">● live</span>' : ''}</h3>
@@ -1989,21 +2151,40 @@ function renderQueueProgress(d) {
       ${topPending ? `<div class="qp-ptitle">Chờ nhiều nhất</div><div class="qp-pending">${topPending}</div>` : ''}
     </div>`;
 
+  // Chỉ dựng lại thẻ khi NỘI DUNG đổi (bỏ phần giây đang chạy khỏi chữ ký). Trước đây vòng 1s và
+  // mỗi sự kiện SSE worker/queue đều thay nguyên innerHTML của thẻ → trang giật khi đang cuộn.
+  const sig = html.replace(/<b class="qp-el"[^>]*>[^<]*<\/b>/g, "");
+  if (sig !== el._qpSig) { el.innerHTML = html; el._qpSig = sig; }
+
   clearInterval(_qpTick); _qpTick = null;
   if (inProgress && document.getElementById("view-listings")?.classList.contains("active")) {
-    _qpTick = setInterval(() => renderQueueProgress(_lastDashConfig), 1000);
+    _qpTick = setInterval(tickQueueElapsed, 1000);
   }
+}
+// Vòng 1s: chỉ sửa chữ "đã chạy Xs" của từng job, không đụng phần còn lại của thẻ.
+function tickQueueElapsed() {
+  if (!document.getElementById("view-listings")?.classList.contains("active")) { clearInterval(_qpTick); _qpTick = null; return; }
+  const now = Date.now();
+  document.querySelectorAll("#queueProgress .qp-el").forEach((b) => { b.textContent = fmtElapsed(now - Number(b.dataset.start)); });
 }
 
 // ── Dashboard tiến độ đăng — target 100 listing/shop (TẤT CẢ shop 4Seller, vai seller) ──
 const LP_TARGET = 100;
 let _lpShops = [];
+let _lpLimitsReady = true;
 function loadListingProgress() {
   const el = $("#listProgress");
   if (el && !_lpShops.length) el.innerHTML = '<div class="card" style="margin-bottom:14px;"><div class="empty">Đang tính tiến độ đăng (lấy live 4Seller)…</div></div>';
   fetch("/admin/api/listings/progress")
     .then((r) => r.json())
-    .then((d) => { if (d.error) throw new Error(d.error); _lpShops = d.shops || []; renderListingProgress(); })
+    .then((d) => {
+      if (d.error) throw new Error(d.error);
+      _lpShops = d.shops || [];
+      _lpLimitsReady = d.limitsReady !== false;
+      renderListingProgress();
+      // Server vừa khởi động, chưa dựng xong hạn mức → tải lại 1 lần sau ít giây (không poll).
+      if (!_lpLimitsReady && !loadListingProgress._retried) { loadListingProgress._retried = true; setTimeout(() => { if (window._view === "listings") loadListingProgress(); }, 12000); }
+    })
     .catch((err) => { if (el) el.innerHTML = `<div class="card" style="margin-bottom:14px;"><div class="empty">Lỗi tiến độ: ${escapeHtml(err.message)}</div></div>`; });
 }
 function renderListingProgress() {
@@ -2012,41 +2193,48 @@ function renderListingProgress() {
   if (!shops.length) { if (el) el.innerHTML = ""; return; }
   const countOf = (s) => (s.live != null ? s.live : (s.success || 0)); // live 4Seller, fallback success local
   const rows = shops.map((s) => ({ ...s, cnt: countOf(s) }));
+  // Hạn mức listing THẬT từng shop (publish_limit TikTok: 0/20/100/200/1000) thay mốc cứng 100.
+  // Chưa có số (server vừa khởi động / shop chưa có dữ liệu) → tạm tính 100 như trước.
+  const tgtOf = (s) => (s.limit != null ? s.limit : LP_TARGET);
+  const isFull = (s) => s.cnt >= tgtOf(s); // hạn mức 0 = khoá đăng mới → luôn tính là đầy
   const totalCnt = rows.reduce((a, s) => a + s.cnt, 0);
-  const totalTarget = rows.length * LP_TARGET;
-  const done = rows.filter((s) => s.cnt >= LP_TARGET).length;
+  const totalTarget = rows.reduce((a, s) => a + tgtOf(s), 0);
+  const done = rows.filter(isFull).length;
   const pendingSum = rows.reduce((a, s) => a + (s.pending || 0), 0);
   const todaySum = rows.reduce((a, s) => a + (s.todayCount || 0), 0);
   const failSum = rows.reduce((a, s) => a + (s.fail || 0), 0);
-  const overallPct = Math.min(100, Math.round(totalCnt / totalTarget * 100));
-  const barColor = (c) => c >= LP_TARGET ? "#22c55e" : c >= 50 ? "#3b82f6" : c >= 1 ? "#f59e0b" : "var(--text-mute)";
+  const overallPct = Math.min(100, Math.round(totalCnt / Math.max(1, totalTarget) * 100));
+  const barColor = (s) => isFull(s) ? "#22c55e" : s.cnt >= tgtOf(s) * 0.5 ? "#3b82f6" : s.cnt >= 1 ? "#f59e0b" : "var(--text-mute)";
   // Shop CÒN HÀNG CHỜ ĐĂNG lên đầu (còn việc phải publish); rồi chưa đạt & tụt nhất; đã đạt xuống cuối.
   const sorted = rows.slice().sort((a, b) =>
     (((b.pending || 0) > 0) - ((a.pending || 0) > 0))
-    || ((a.cnt >= LP_TARGET) - (b.cnt >= LP_TARGET))
+    || (isFull(a) - isFull(b))
     || a.cnt - b.cnt);
   const pendingShops = rows.filter((s) => (s.pending || 0) > 0).length;
-  let view = state.lpHideDone ? sorted.filter((s) => s.cnt < LP_TARGET) : sorted;
+  let view = state.lpHideDone ? sorted.filter((s) => !isFull(s)) : sorted;
   if (state.lpOnlyPending) view = view.filter((s) => (s.pending || 0) > 0);
+  // Ô "Tìm shop" ở page-head — lọc theo tên shop + owner (49 shop, cuộn tìm bằng mắt rất mệt).
+  const q = (($("#shopSearch") || {}).value || "").toLowerCase().trim();
+  if (q) view = view.filter((s) => `${s.folder} ${s.owner || ""}`.toLowerCase().includes(q));
 
   const sub = $("#listingsSubtitle");
-  if (sub) sub.innerHTML = `${rows.length} shop &nbsp;·&nbsp; <b>${totalCnt}</b>/${totalTarget} listing (${overallPct}%) &nbsp;·&nbsp; <span style="color:var(--success);">✅ ${done} đạt target</span> &nbsp;·&nbsp; <span style="color:var(--warn);">⏳ ${pendingSum} chờ</span>`;
+  if (sub) sub.innerHTML = `${q ? `<b>${view.length}</b>/${rows.length}` : rows.length} shop${q ? ` khớp "${escapeHtml(q)}"` : ""} &nbsp;·&nbsp; <b>${totalCnt}</b>/${totalTarget} listing (${overallPct}%) &nbsp;·&nbsp; <span style="color:var(--success);">✅ ${done} đầy hạn mức</span> &nbsp;·&nbsp; <span style="color:var(--warn);">⏳ ${pendingSum} chờ</span>`;
 
   // KPI tổng (không còn list bar riêng — progress nằm trong từng card bên dưới)
   if (el) el.innerHTML = `
     <div class="card" style="margin-bottom:14px;">
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; gap:12px; flex-wrap:wrap;">
-        <h3 style="margin:0;">📊 Tiến độ đăng — target ${LP_TARGET} listing/shop</h3>
+        <h3 style="margin:0;">📊 Tiến độ đăng — theo hạn mức listing TikTok từng shop${_lpLimitsReady ? "" : ' <span style="font-size:0.75rem; color:var(--text-mute); font-weight:400;">(đang tải hạn mức, tạm tính 100)</span>'}</h3>
         <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
           ${failSum ? `<button class="btn btn-danger" style="padding:5px 12px;" onclick="retryAllFails(${failSum})">↻ Chạy lại hết fail (${failSum})</button>` : ""}
           ${pendingShops ? `<label style="font-size:0.8rem; display:flex; align-items:center; gap:6px; cursor:pointer; color:var(--warn);"><input type="checkbox" ${state.lpOnlyPending ? "checked" : ""} onchange="state.lpOnlyPending=this.checked; renderListingProgress()"> ⏳ Chỉ shop còn chờ đăng (${pendingShops})</label>` : ""}
-          <label style="font-size:0.8rem; display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" ${state.lpHideDone ? "checked" : ""} onchange="state.lpHideDone=this.checked; renderListingProgress()"> Ẩn shop đã đạt (${done})</label>
+          <label style="font-size:0.8rem; display:flex; align-items:center; gap:6px; cursor:pointer;"><input type="checkbox" ${state.lpHideDone ? "checked" : ""} onchange="state.lpHideDone=this.checked; renderListingProgress()"> Ẩn shop đã đầy (${done})</label>
         </div>
       </div>
       <div class="lp-kpis">
         <div class="lp-kpi"><div class="lp-kpi-k">Tổng listing</div><div class="lp-kpi-v">${totalCnt}<span style="font-size:0.9rem; color:var(--text-mute); font-weight:600;">/${totalTarget}</span></div></div>
         <div class="lp-kpi"><div class="lp-kpi-k">Hoàn thành</div><div class="lp-kpi-v" style="color:${overallPct >= 100 ? "var(--success)" : "var(--accent)"};">${overallPct}%</div></div>
-        <div class="lp-kpi"><div class="lp-kpi-k">Shop đạt target</div><div class="lp-kpi-v">${done}<span style="font-size:0.9rem; color:var(--text-mute); font-weight:600;">/${rows.length}</span></div></div>
+        <div class="lp-kpi"><div class="lp-kpi-k">Shop đầy hạn mức</div><div class="lp-kpi-v">${done}<span style="font-size:0.9rem; color:var(--text-mute); font-weight:600;">/${rows.length}</span></div></div>
         <div class="lp-kpi"><div class="lp-kpi-k">Đang chờ đăng</div><div class="lp-kpi-v" style="color:var(--warn);">${pendingSum}</div></div>
         <div class="lp-kpi"><div class="lp-kpi-k">❌ Fail</div><div class="lp-kpi-v" style="color:${failSum ? "var(--danger)" : "var(--text-mute)"};">${failSum}</div></div>
         <div class="lp-kpi"><div class="lp-kpi-k">Đăng hôm nay</div><div class="lp-kpi-v" style="color:var(--success);">+${todaySum}</div></div>
@@ -2056,24 +2244,32 @@ function renderListingProgress() {
 
   // Card từng shop — progress bar /100 NẰM TRONG card (như yêu cầu)
   if (grid) grid.innerHTML = '<div class="shops-grid">' + view.map((s) => {
-    const pct = Math.min(100, Math.round(s.cnt / LP_TARGET * 100));
-    const rem = Math.max(0, LP_TARGET - s.cnt);
-    return `<div class="shop-card ${s.cnt >= LP_TARGET ? "lp-done" : ""}" onclick="enterShopDetail('${escapeHtml(s.folder)}','${escapeHtml(s.owner || "")}')">
+    const tgt = tgtOf(s);
+    const pct = tgt > 0 ? Math.min(100, Math.round(s.cnt / tgt * 100)) : 100;
+    const rem = Math.max(0, tgt - s.cnt);
+    const stTxt = s.limit === 0 ? '<span style="color:var(--danger); font-weight:700;">🔒 khoá đăng mới</span>'
+      : isFull(s) ? '<span style="color:var(--success); font-weight:700;">✓ đầy</span>'
+      : `<span style="color:var(--text-mute);">còn ${rem}</span>`;
+    const tgtTxt = s.limit != null ? `/${tgt}` : `/${tgt}<span title="Chưa có hạn mức thật của shop — tạm tính ${LP_TARGET}" style="cursor:help;">?</span>`;
+    return `<div class="shop-card ${isFull(s) ? "lp-done" : ""}" onclick="enterShopDetail('${escapeHtml(s.folder)}','${escapeHtml(s.owner || "")}')">
       <div class="cover">${s.image
         ? `<img src="${escapeHtml(s.image)}" alt="" loading="lazy" decoding="async" onerror="this.parentElement.innerHTML='<div class=&quot;placeholder&quot;>(no image)</div>'"/>`
         : '<div class="placeholder">(no image)</div>'}</div>
       <div class="body" style="gap:9px;">
         <div class="name" style="font-size:0.9rem;">${escapeHtml(s.folder)} <span style="font-size:0.68rem; color:var(--text-mute); font-weight:400;">@${escapeHtml((s.owner || "").split(",")[0])}</span></div>
-        <div class="lp-bar" style="height:9px;"><i style="width:${pct}%; background:${barColor(s.cnt)};"></i></div>
+        <div class="lp-bar" style="height:9px;"><i style="width:${pct}%; background:${barColor(s)};"></i></div>
         <div style="display:flex; justify-content:space-between; align-items:center; font-size:0.82rem;">
-          <span><b style="font-size:1.05rem;">${s.cnt}</b><span style="color:var(--text-mute);">/${LP_TARGET}</span> ${s.cnt >= LP_TARGET ? '<span style="color:var(--success); font-weight:700;">✓ đạt</span>' : `<span style="color:var(--text-mute);">còn ${rem}</span>`}</span>
-          <span>${s.pending ? `<span class="lp-badge" style="background:rgba(245,158,11,.15); color:var(--warn);">⏳${s.pending}</span>` : ""}${s.fail ? `<span class="lp-badge" style="background:rgba(239,68,68,.15); color:var(--danger);">fail : ${s.fail}</span>` : ""}${s.todayCount ? `<span class="lp-badge" style="background:rgba(34,197,94,.15); color:var(--success);">+${s.todayCount}</span>` : ""}</span>
+          <span><b style="font-size:1.05rem;">${s.cnt}</b><span style="color:var(--text-mute);">${tgtTxt}</span> ${stTxt}</span>
+          <span>${s.blocked ? `<span class="lp-badge" title="Tạm không đăng: ${escapeHtml(s.blocked)}${s.pending ? ` — ${s.pending} file vẫn nằm chờ` : ""}" style="background:rgba(239,68,68,.15); color:var(--danger); cursor:help;">⛔</span>` : ""}${s.pending ? `<span class="lp-badge" style="background:rgba(245,158,11,.15); color:var(--warn);">⏳${s.pending}</span>` : ""}${s.fail ? `<span class="lp-badge" style="background:rgba(239,68,68,.15); color:var(--danger);">fail : ${s.fail}</span>` : ""}${s.todayCount ? `<span class="lp-badge" style="background:rgba(34,197,94,.15); color:var(--success);">+${s.todayCount}</span>` : ""}</span>
         </div>
       </div>
     </div>`;
   }).join("") + "</div>";
 }
 
+// LƯU Ý: hàm này hiện KHÔNG được gọi ở đâu — lưới shop thật do renderListingProgress()
+// dựng (cùng ghi vào #shopsGrid, lấy từ _lpShops). Ô "Tìm shop" gắn vào hàm kia, đừng
+// thêm lọc ở đây kẻo hai chỗ cùng vẽ một lưới.
 function renderShops() {
   const shops = state.listings.shops;
   const totals = shops.reduce(
@@ -2623,6 +2819,100 @@ function toggleCrawl() {
   b.style.display = open ? "" : "none";
   c.textContent = open ? "▾ Đóng" : "▸ Mở";
 }
+function toggleSearch() {
+  const b = $("#searchBody"), c = $("#searchCaret");
+  const open = b.style.display === "none";
+  b.style.display = open ? "" : "none";
+  c.textContent = open ? "▾ Đóng" : "▸ Mở";
+}
+async function startSearch() {
+  const keywords = ($("#searchKw").value || "").split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
+  if (!keywords.length) return toast("Nhập ít nhất 1 keyword", "error");
+  const body = {
+    keywords,
+    minReviews: Number($("#searchMinRev").value) || 0,
+    minRating: Number($("#searchMinRate").value) || 0,
+    limit: Number($("#searchLimit").value) || 50,
+    maxPerKeyword: Number($("#searchPerKw").value) || 60,
+  };
+  const btn = $("#searchBtn"); btn.disabled = true; btn.textContent = "⏳ Đang tìm…";
+  // Dùng chung log với panel "Cào theo link" (cùng 1 job) → mở panel đó cho thấy log.
+  $("#crawlBody").style.display = ""; $("#crawlCaret").textContent = "▾ Đóng";
+  $("#crawlLog").style.display = "block"; $("#crawlLog").textContent = "Khởi động search…";
+  try {
+    const res = await fetch("/admin/api/search/keywords", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    const d = await res.json(); if (!res.ok) throw new Error(d.error);
+    pollCrawl();
+  } catch (e) { toast(e.message, "error"); btn.disabled = false; btn.textContent = "🔎 Tìm & cào"; }
+}
+function toggleShop() {
+  const b = $("#shopBody"), c = $("#shopCaret");
+  const open = b.style.display === "none";
+  b.style.display = open ? "" : "none";
+  c.textContent = open ? "▾ Đóng" : "▸ Mở";
+}
+async function startShopCrawl() {
+  const shops = ($("#shopUrls").value || "").split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
+  if (!shops.length) return toast("Dán ít nhất 1 link shop", "error");
+  const body = {
+    shops,
+    maxProducts: Number($("#shopMax").value) || 300,
+    minReviews: Number($("#shopMinRev").value) || 0,
+    minRating: Number($("#shopMinRate").value) || 0,
+  };
+  const btn = $("#shopBtn"); btn.disabled = true; btn.textContent = "⏳ Đang cào shop…";
+  $("#crawlBody").style.display = ""; $("#crawlCaret").textContent = "▾ Đóng";
+  $("#crawlLog").style.display = "block"; $("#crawlLog").textContent = "Khởi động cào shop…";
+  try {
+    const res = await fetch("/admin/api/search/shop", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    const d = await res.json(); if (!res.ok) throw new Error(d.error);
+    pollCrawl();
+  } catch (e) { toast(e.message, "error"); btn.disabled = false; btn.textContent = "🏬 Cào shop"; }
+}
+// ─── AI ngách cho shop (đặt trong modal Settings per-shop) ───
+let _aiCategories = null;
+async function aiCategories() {
+  if (_aiCategories) return _aiCategories;
+  try { _aiCategories = await (await fetch("/admin/api/ai/categories")).json(); }
+  catch { _aiCategories = { categories: [] }; }
+  return _aiCategories;
+}
+let _spNiches = [];
+function renderNicheChips() {
+  const wrap = $("#spNicheChips"); if (!wrap) return;
+  wrap.innerHTML = _spNiches.length
+    ? _spNiches.map((n, i) => `<span style="display:inline-flex; align-items:center; gap:6px; background:var(--bg-elev); border:1px solid var(--border); border-radius:14px; padding:3px 10px; font-size:0.82rem;">${escapeHtml(n)} <span onclick="spRemoveNiche(${i})" title="Xoá" style="cursor:pointer; color:var(--danger); font-weight:700;">✕</span></span>`).join("")
+    : '<span style="color:var(--text-mute); font-size:0.82rem;">Chưa chọn ngách — auto-sourcer sẽ không chạy cho shop này.</span>';
+}
+function spAddNiche(n) {
+  n = (n || "").trim(); if (!n) return;
+  if (!_spNiches.some((x) => x.toLowerCase() === n.toLowerCase())) { _spNiches.push(n); renderNicheChips(); }
+}
+function spRemoveNiche(i) { _spNiches.splice(i, 1); renderNicheChips(); }
+async function spLoadNiche(shop) {
+  try {
+    const d = await (await fetch("/admin/api/ai/niche?shop=" + encodeURIComponent(shop))).json();
+    _spNiches = Array.isArray(d.niches) ? d.niches : (d.niche ? [d.niche] : []);
+  } catch { _spNiches = []; }
+  renderNicheChips();
+}
+async function spInferNiche(shop) {
+  const btn = $("#spInferBtn"); if (btn) { btn.disabled = true; btn.textContent = "⏳…"; }
+  try {
+    const res = await fetch("/admin/api/ai/niche/infer", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ shop }) });
+    const d = await res.json(); if (!res.ok) throw new Error(d.error);
+    spAddNiche(d.niche || "");
+    toast(`AI đoán từ ${d.sampled} listing → thêm "${d.niche}" (bấm Lưu)`);
+  } catch (e) { toast(e.message, "error"); }
+  finally { if (btn) { btn.disabled = false; btn.textContent = "🔮 AI đoán"; } }
+}
+async function spSaveNiche(shop) {
+  try {
+    const res = await fetch("/admin/api/ai/niche", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ shop, niches: _spNiches }) });
+    const d = await res.json(); if (!res.ok) throw new Error(d.error);
+    toast(_spNiches.length ? `✓ Đã lưu ${_spNiches.length} ngách — auto-sourcer sẽ xoay từng ngách` : "✓ Đã xoá ngách (dừng auto cho shop này)");
+  } catch (e) { toast(e.message, "error"); }
+}
 let _crawlPoll = null;
 async function startCrawl() {
   const links = ($("#crawlLinks").value || "").split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
@@ -2657,7 +2947,9 @@ function pollCrawl() {
       if (d.done) {
         clearInterval(_crawlPoll);
         const btn = $("#crawlBtn"); btn.disabled = false; btn.textContent = "🕷️ Cào";
-        if (d.summary) toast(`Cào xong: ${d.summary.ok}/${d.summary.total} OK`);
+        const sb = $("#searchBtn"); if (sb) { sb.disabled = false; sb.textContent = "🔎 Tìm & cào"; }
+        const pb = $("#shopBtn"); if (pb) { pb.disabled = false; pb.textContent = "🏬 Cào shop"; }
+        if (d.summary) toast(`Xong: ${d.summary.ok}/${d.summary.total} OK`);
         loadHub();
       }
     } catch { /* ignore */ }
@@ -2990,7 +3282,6 @@ function renderHub(resetPage) {
         <div class="time-row"><span title="${escapeHtml(absTime(it.mtimeMs))}">⏱ ${escapeHtml(relTime(it.mtimeMs))}</span>${it.lastListedMs ? `<span class="scraped" title="List gần nhất">📤 ${escapeHtml(relTime(it.lastListedMs))}</span>` : ''}</div>
         <div class="actions">
           <button onclick="viewHub('${idEnc}')">View</button>
-          ${canEdit ? `<button onclick="editHubVariants('${idEnc}')" title="Xoá bớt màu không cần">✏️</button>` : ''}
           ${canEdit ? `<button class="retry" onclick="listHubOne('${idEnc}')">📤 List</button>` : ''}
           ${canEdit ? `<button class="delete" onclick="deleteHubOne('${idEnc}')">🗑</button>` : ''}
         </div>
@@ -3548,107 +3839,6 @@ async function viewHub(idEnc) {
     $("#modalBg").classList.add("show");
   } catch (err) {
     toast(err.message, "error");
-  }
-}
-
-// ─── Sửa variant Hub: bỏ bớt màu không cần ────────────────
-// Tick màu nào là BỎ màu đó. Hiện ảnh + giá + số size để nhìn là quyết được, khỏi mở JSON.
-async function editHubVariants(idEnc) {
-  const id = decodeURIComponent(idEnc);
-  try {
-    const res = await fetch("/admin/api/hub/json?file=" + encodeURIComponent(id));
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error);
-    const d = data.content || {};
-    const colors = d.listing_variations?.colors || [];
-    if (!colors.length) return toast("Sản phẩm này không có màu nào", "error");
-
-    const imgOf = (c) => {
-      const hit = (d.variant_images || []).find((x) => Object.keys(x)[0] === c);
-      const v = hit ? Object.values(hit)[0] : null;
-      return Array.isArray(v) ? v[0] : v;
-    };
-    const priceOf = (c) => {
-      const hit = (d.variant_price || []).find((x) => Object.keys(x)[0] === c);
-      return hit ? Object.values(hit)[0] : "";
-    };
-
-    state.hubEdit = { file: id, total: colors.length };
-    $("#modalTitle").textContent = `✏️ Sửa màu — ${d.product_name || id}`;
-    $("#modalBody").innerHTML = `
-      <div style="color:var(--text-mute); font-size:0.85rem; margin-bottom:12px;">
-        Tick màu muốn <b>bỏ</b>. Ảnh, giá và ô size của màu đó sẽ bị gỡ khỏi sản phẩm.
-        Danh sách size tổng được tính lại theo các màu còn giữ. Phải chừa ít nhất 1 màu.
-      </div>
-      <div style="display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:10px; max-height:52vh; overflow:auto;">
-        ${colors.map((c) => {
-          const img = imgOf(c);
-          const avail = (d.available_matrix?.[c] || []).length;
-          const oos = (d.oos_matrix?.[c] || []).length;
-          return `
-          <label class="hub-edit-color" style="display:block; border:1px solid var(--border); border-radius:10px; overflow:hidden; cursor:pointer;">
-            <input type="checkbox" class="hub-edit-cb" value="${escapeHtml(c)}" onchange="onHubEditToggle(this)" style="position:absolute; margin:8px;" />
-            ${img ? `<img src="${escapeHtml(img)}" alt="" loading="lazy" style="width:100%; aspect-ratio:3/4; object-fit:cover; display:block;" onerror="this.style.display='none'" />` : `<div style="aspect-ratio:3/4; display:flex; align-items:center; justify-content:center; color:var(--text-mute); font-size:0.8rem;">(no image)</div>`}
-            <div style="padding:7px 9px;">
-              <div style="font-weight:600; font-size:0.85rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${escapeHtml(c)}">${escapeHtml(c)}</div>
-              <div style="color:var(--text-mute); font-size:0.78rem; margin-top:2px;">
-                ${escapeHtml(String(priceOf(c)))} · ${avail} size${oos ? ` · <span style="color:var(--danger);">${oos} hết</span>` : ''}
-              </div>
-            </div>
-          </label>`;
-        }).join('')}
-      </div>
-      <div id="hubEditInfo" style="color:var(--text-mute); font-size:0.82rem; margin-top:12px; min-height:18px;">Chưa chọn màu nào để bỏ.</div>
-      <div style="display:flex; gap:8px; margin-top:10px;">
-        <button class="btn btn-ghost" onclick="closeModal()" style="flex:1;">Huỷ</button>
-        <button class="btn btn-primary" id="hubEditSave" onclick="saveHubVariants()" style="flex:1;" disabled>Bỏ màu đã chọn</button>
-      </div>`;
-    $("#modalBg").classList.add("show");
-  } catch (err) {
-    toast(err.message, "error");
-  }
-}
-
-function onHubEditToggle(cb) {
-  cb.closest('.hub-edit-color').style.opacity = cb.checked ? '0.4' : '1';
-  const picked = [...document.querySelectorAll('.hub-edit-cb:checked')].length;
-  const total = state.hubEdit?.total || 0;
-  const info = $("#hubEditInfo"), btn = $("#hubEditSave");
-  if (!info || !btn) return;
-  if (picked === 0) {
-    info.textContent = "Chưa chọn màu nào để bỏ.";
-    info.style.color = "var(--text-mute)";
-    btn.disabled = true;
-  } else if (picked >= total) {
-    info.textContent = `Không thể bỏ hết ${total} màu — phải chừa lại ít nhất 1.`;
-    info.style.color = "var(--danger)";
-    btn.disabled = true;
-  } else {
-    info.textContent = `Bỏ ${picked} màu, còn lại ${total - picked}.`;
-    info.style.color = "var(--text-mute)";
-    btn.disabled = false;
-  }
-}
-
-async function saveHubVariants() {
-  const remove = [...document.querySelectorAll('.hub-edit-cb:checked')].map((c) => c.value);
-  if (!remove.length || !state.hubEdit) return;
-  const btn = $("#hubEditSave");
-  btn.disabled = true; btn.textContent = "Đang lưu…";
-  try {
-    const res = await fetch("/admin/api/hub/variants", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ file: state.hubEdit.file, remove }),
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error);
-    closeModal();
-    toast(`Đã bỏ ${data.removed} màu — còn ${data.colors.length}`);
-    await loadHub();
-  } catch (err) {
-    toast(err.message, "error");
-    btn.disabled = false; btn.textContent = "Bỏ màu đã chọn";
   }
 }
 
@@ -4213,6 +4403,12 @@ async function loadSettings() {
       $("#setAutoCronLabel").textContent = e.target.checked ? "🟢 BẬT" : "🔴 TẮT";
       saveSettings(); // toggle → lưu ngay
     };
+    $("#setAutoSource").checked = !!data.autoSource;
+    $("#setAutoSourceLabel").textContent = data.autoSource ? "🟢 BẬT" : "🔴 TẮT";
+    $("#setAutoSource").onchange = (e) => {
+      $("#setAutoSourceLabel").textContent = e.target.checked ? "🟢 BẬT" : "🔴 TẮT";
+      saveSettings();
+    };
     // Sửa input/select "Máy đăng hàng" → tự lưu (debounce)
     if (state.user.role === "admin") {
       ["setConcurrency","setHeadless","setCronFileRouter","setCronQueueManager","setImgWait","setImgMax","setDescImg","setDescAttr"]
@@ -4256,8 +4452,9 @@ async function loadCrawlSettings() {
     const data = await (await fetch("/admin/api/crawl/settings")).json();
     $("#crawlSetConc").value = data.concurrency;
     $("#crawlSetHeadless").value = String(data.headless);
+    $("#crawlSetPages").value = data.searchPages ?? 2;
     if (state.user.role === "admin") {
-      ["crawlSetConc", "crawlSetHeadless"].forEach((id) => {
+      ["crawlSetConc", "crawlSetHeadless", "crawlSetPages"].forEach((id) => {
         const el = $("#" + id); if (el) el.onchange = () => autoSave("crawlSettings", saveCrawlSettings);
       });
     }
@@ -4269,7 +4466,7 @@ async function saveCrawlSettings() {
   try {
     const res = await fetch("/admin/api/crawl/settings", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ concurrency: Number($("#crawlSetConc").value), headless: $("#crawlSetHeadless").value === "true" }),
+      body: JSON.stringify({ concurrency: Number($("#crawlSetConc").value), headless: $("#crawlSetHeadless").value === "true", searchPages: Number($("#crawlSetPages").value) }),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error);
@@ -4282,6 +4479,7 @@ async function saveSettings() {
   try {
     const body = {
       autoCron: $("#setAutoCron").checked,
+      autoSource: $("#setAutoSource").checked,
       concurrency: Number($("#setConcurrency").value),
       headless: $("#setHeadless").value === "true",
       fileRouterCron: $("#setCronFileRouter").value,
@@ -4508,8 +4706,24 @@ function openShopPrefs(shop) {
     : (inherit
         ? `<div style="background:rgba(99,102,241,.1); border-radius:8px; padding:8px 12px; margin-bottom:12px; font-size:0.83rem; color:var(--accent);">↪ Đang <b>ăn theo Mặc định chung</b>. Lưu để cấu hình riêng cho shop này.</div>`
         : "");
+  const nicheField = isDefault ? "" : `
+    <label class="field" style="margin-bottom:14px;">
+      <span>🎯 Ngách <span style="color:var(--text-mute);">(chọn NHIỀU — auto-sourcer xoay từng ngách tới 100 listing)</span></span>
+      <div id="spNicheChips" style="display:flex; flex-wrap:wrap; gap:6px; margin-bottom:6px;"></div>
+      <div style="display:flex; gap:8px;">
+        <select id="spNicheCat" onchange="if(this.value){spAddNiche(this.value); this.value='';}" style="flex:1;">
+          <option value="">＋ Thêm từ danh mục…</option>
+        </select>
+        <button type="button" class="btn btn-ghost" id="spInferBtn" style="white-space:nowrap;" onclick="spInferNiche('${escapeHtml(shop)}')">🔮 AI đoán</button>
+      </div>
+      <div style="display:flex; gap:8px; margin-top:6px;">
+        <input id="spNicheFree" placeholder="hoặc gõ ngách tự do rồi Enter (vd: váy nữ dự tiệc y2k)" onkeydown="if(event.key==='Enter'){event.preventDefault(); spAddNiche(this.value); this.value='';}" style="flex:1;" />
+        <button type="button" class="btn btn-primary" style="white-space:nowrap;" onclick="spSaveNiche('${escapeHtml(shop)}')">💾 Lưu</button>
+      </div>
+    </label>`;
   $("#modalBody").innerHTML = `
     ${brandField}
+    ${nicheField}
     ${note}
     <div style="font-weight:600; margin-bottom:8px;">Tính năng listing ${isDefault ? "mặc định" : "cho shop này"}: <span style="color:var(--text-mute); font-weight:400; font-size:0.82rem;">(click ảnh để xem to)</span></div>
     ${SHOP_FEATURES.map((f) => `
@@ -4526,6 +4740,21 @@ function openShopPrefs(shop) {
       </div>
     </div>`;
   $("#modalBg").classList.add("show");
+  if (!isDefault) {
+    aiCategories().then((data) => {
+      const sel = $("#spNicheCat");
+      if (!sel) return;
+      const addOpt = (parent, c) => { const o = document.createElement("option"); o.value = c; o.textContent = c; parent.appendChild(o); };
+      if (data.groups && data.groups.length) {
+        data.groups.forEach((g) => {
+          const og = document.createElement("optgroup"); og.label = g.label;
+          (g.items || []).forEach((c) => addOpt(og, c));
+          sel.appendChild(og);
+        });
+      } else (data.categories || []).forEach((c) => addOpt(sel, c));
+    });
+    spLoadNiche(shop);
+  }
 }
 
 // Xoá cấu hình riêng của shop → quay lại ăn theo Mặc định chung
@@ -4638,78 +4867,6 @@ async function saveBrands() {
   }
 }
 
-// ─── Pool imgbb (Settings) ─────────────────────────────
-async function loadImgbbStatus() {
-  try {
-    const res = await fetch("/admin/api/imgbb/status");
-    const d = await res.json();
-    if (!res.ok) throw new Error(d.error);
-    const est = d.estHourlyLimitPerKey || 100;
-
-    // Tổng quan: bó tay (banner thiếu) + verify fail
-    const warnGaveup = d.gaveup > 0;
-    $("#imgbbSummary").innerHTML = `
-      <div class="attn-bar" style="border-left-color:${warnGaveup ? "var(--danger)" : "var(--success)"};">
-        <span class="it">🚫 Bó tay (thiếu banner): <b style="color:${warnGaveup ? "var(--danger)" : "inherit"};">${d.gaveup}</b>${d.lastGaveupAt ? ` · lần cuối ${relTime(d.lastGaveupAt)}` : ""}</span>
-        <span class="it">🔍 Verify fail (URL chết): <b>${d.verifyFail}</b>${d.lastVerifyFailAt ? ` · ${relTime(d.lastVerifyFailAt)}` : ""}</span>
-        <span style="flex:1"></span>
-        <span class="it" style="color:var(--text-mute);">${d.keys.length} key trong pool</span>
-      </div>`;
-
-    $("#imgbbKeysWrap").innerHTML = `
-      <table style="width:100%;">
-        <thead><tr><th>Key</th><th>Giờ này</th><th>Còn lại (ước tính)</th><th>24h qua</th><th>Tổng OK</th><th>Tổng limit</th><th>Limit gần nhất</th></tr></thead>
-        <tbody>
-        ${d.keys.map((k) => {
-          const used = k.hourOk;
-          const left = Math.max(0, est - used);
-          const pct = Math.min(100, Math.round((used / est) * 100));
-          const barColor = pct >= 90 ? "var(--danger)" : pct >= 60 ? "var(--warn)" : "var(--success)";
-          const limitedNow = k.lastLimitAt && Date.now() - k.lastLimitAt < 15 * 60e3;
-          const spark = k.hours.map((h) => {
-            const t = h.ok + h.limit;
-            const hgt = t ? Math.max(2, Math.min(22, Math.round((t / est) * 22))) : 1;
-            return `<div title="${h.h}: ${h.ok} ok, ${h.limit} limit" style="width:4px; height:${hgt}px; border-radius:1px; background:${h.limit ? "var(--danger)" : t ? "var(--success)" : "var(--bg-elev)"};"></div>`;
-          }).join("");
-          return `<tr>
-            <td><code>${escapeHtml(k.keyMasked)}</code> ${limitedNow ? '<span class="badge badge-danger">đang limit</span>' : '<span class="badge badge-success">ok</span>'}</td>
-            <td style="min-width:130px;">
-              <div style="display:flex; align-items:center; gap:8px;">
-                <div class="bar-track" style="flex:1; height:9px;"><div class="bar-seg" style="width:${pct}%; background:${barColor};"></div></div>
-                <span style="font-variant-numeric:tabular-nums;">${used}/${est}</span>
-              </div>
-            </td>
-            <td style="font-weight:700; color:${barColor};">${left}</td>
-            <td><div style="display:flex; align-items:flex-end; gap:1px; height:22px;">${spark}</div></td>
-            <td>${k.ok.toLocaleString()}</td>
-            <td style="color:${k.ratelimit ? "var(--warn)" : "var(--text-mute)"};">${k.ratelimit.toLocaleString()}</td>
-            <td style="color:var(--text-mute); font-size:0.82rem;">${k.lastLimitAt ? relTime(k.lastLimitAt) : "—"}</td>
-          </tr>`;
-        }).join("")}
-        </tbody>
-      </table>`;
-  } catch (err) {
-    $("#imgbbKeysWrap").innerHTML = `<div class="empty">Lỗi: ${escapeHtml(err.message)}</div>`;
-  }
-}
-
-async function testImgbbKeys() {
-  const btn = $("#imgbbTestBtn");
-  btn.disabled = true; btn.textContent = "⏳ Đang test…";
-  try {
-    const res = await fetch("/admin/api/imgbb/test", { method: "POST" });
-    const d = await res.json();
-    if (!res.ok) throw new Error(d.error);
-    const lines = d.results.map((r) => `${r.keyMasked}: ${r.ok ? "✓ sống" : r.ratelimited ? "⛔ RATE-LIMIT" : "✕ " + (r.error || "lỗi")}`);
-    toast(lines.join(" · "), d.results.every((r) => r.ok) ? "success" : "error");
-    loadImgbbStatus();
-  } catch (err) {
-    toast(err.message, "error");
-  } finally {
-    btn.disabled = false; btn.textContent = "🧪 Test keys";
-  }
-}
-
 // ─── Promotions (port từ main) ─────────────────────────
 // ─── Return / Refund: case sắp hết hạn xử lý (mặc định 7 ngày) ───
 let _retData = null;
@@ -4783,6 +4940,7 @@ function renderReturns() {
       ${r.errors?.length ? `<span style="color:var(--danger);">⚠️ ${escapeHtml(r.errors.join(" · "))}</span>` : ""}
     </div>`;
 
+  renderRetCharts(r);
   if (!view.length) {
     $("#retTableWrap").innerHTML = `<div class="empty">${showAll ? "Không có case nào đang mở" : "✓ Không có case nào hết hạn trong 7 ngày tới"}</div>`;
     return;
@@ -4811,6 +4969,327 @@ function renderReturns() {
         ${td(`<code style="font-size:0.75rem;">${escapeHtml(x.orderId)}</code>`)}
       </tr>`;
     }).join("")}</tbody></table></div>`;
+}
+
+// ─── Vận hành (1 màn): KPI + biểu đồ + đơn cần xử lý + sức khoẻ shop + lãi lỗ SKU ───
+// Tải 1 lần khi mở màn (2 nguồn song song), KHÔNG poll. Biểu đồ vẽ bằng HTML thuần từ dữ liệu đã có.
+let _opsHealth = null, _opsSku = null;
+const opsF = { lvl: "", full: false, q: "", skuQ: "", skuTier: "", skuRisk: "", skuSort: "profit", skuShown: 100 };
+// Thứ tự đỏ → vàng → xám → xanh: xanh và vàng KHÔNG đứng cạnh nhau trên thanh xếp chồng (validator:
+// cặp đó chỉ ΔE 7.3 với người mù màu đỏ-lục). Màu biểu đồ = --ch-*, đã kiểm cho cả 2 theme.
+const OPS_LVL = {
+  red: { kpi: "fail", label: "Nguy hiểm", color: "var(--danger)", chart: "var(--ch-bad)" },
+  yellow: { kpi: "pending", label: "Cần chú ý", color: "var(--warn)", chart: "var(--ch-warn)" },
+  none: { kpi: "unc", label: "Chưa có dữ liệu", color: "var(--text-mute)", chart: "var(--ch-none)" },
+  green: { kpi: "live", label: "Ổn", color: "var(--success)", chart: "var(--ch-ok)" },
+};
+const OPS_KIND = {
+  awaiting_shipment_overdue: ["Quá hạn ship", "var(--danger)"],
+  shipped_no_pickup: ["Có label, carrier chưa lấy hàng", "var(--danger)"],
+  in_transit_stalled: ["Kẹt khi đang giao", "var(--warn)"],
+  no_tracking_48h: ["Chờ tracking quá 48h", "var(--warn)"],
+};
+const OPS_RISK = { safe: ["var(--success)", "An toàn"], medium: ["var(--warn)", "Trung bình"], high: ["var(--danger)", "Cao"] };
+const opsAgo = (ms) => {
+  if (!ms) return "chưa có";
+  const d = (Date.now() - ms) / 864e5;
+  if (d * 24 < 1) return d * 1440 < 1 ? "vừa xong" : `${Math.round(d * 1440)} phút trước`;
+  return d < 1 ? `${Math.round(d * 24)} giờ trước` : `${Math.round(d)} ngày trước`;
+};
+const opsStale = (ms, days) => (ms && (Date.now() - ms) / 864e5 > days ? "color:var(--warn); font-weight:600;" : "");
+const opsMoney = (v, dec = 0) => (v == null ? '<span style="color:var(--text-mute);">—</span>' : "$" + Number(v).toLocaleString("en-US", { minimumFractionDigits: dec, maximumFractionDigits: dec }));
+const opsDash = (v) => (v == null || v === "" ? '<span style="color:var(--text-mute);">—</span>' : escapeHtml(String(v)));
+const opsChip = (color, label) => `<span style="display:inline-flex; align-items:center; gap:6px; font-size:0.78rem; font-weight:600; color:${color}; white-space:nowrap;"><span style="width:8px; height:8px; border-radius:50%; background:${color}; flex:none;"></span>${escapeHtml(label)}</span>`;
+const opsTh = (t, right) => `<th style="text-align:${right ? "right" : "left"}; padding:8px 10px; font-size:0.75rem; color:var(--text-mute); font-weight:600; white-space:nowrap;">${t}</th>`;
+const opsTd = (t, extra = "") => `<td style="padding:8px 10px; border-top:1px solid var(--border); font-size:0.83rem; vertical-align:top; ${extra}">${t}</td>`;
+const opsNum = "text-align:right; white-space:nowrap; font-variant-numeric:tabular-nums;";
+// Hạn mức listing: chỗ trống ĐĂNG MỚI = publish_limit − active. limit 0 = TikTok khoá đăng mới.
+const opsCap = (r) => {
+  const a = r.activeListings, l = r.publishLimit;
+  if (l == null) return { html: opsDash(a), full: false, style: "" };
+  const sub = (t, c) => `<div style="font-size:0.72rem; ${c ? "" : "color:var(--text-mute);"}">${t}</div>`;
+  if (l === 0) return { html: `${a ?? "?"} / 0${sub("khoá đăng mới", 1)}`, full: true, style: "color:var(--danger); font-weight:600;" };
+  const room = l - (a ?? 0);
+  if (room <= 0) return { html: `${a} / ${l}${sub("đầy", 1)}`, full: true, style: "color:var(--danger); font-weight:600;" };
+  const tight = room <= Math.max(2, l * 0.1);
+  return { html: `${a ?? "?"} / ${l}${sub("còn " + room, tight)}`, full: false, style: tight ? "color:var(--warn); font-weight:600;" : "" };
+};
+const opsProfit = (r) => (r.margin_usd == null ? null : r.margin_usd * (r.orders || 0));
+const opsLeft = (at) => {
+  if (!at) return '<span style="color:var(--text-mute);">—</span>';
+  const h = (at - Date.now()) / 36e5;
+  if (h < 0) return `<b style="color:var(--danger);">quá hạn ${-h < 48 ? Math.round(-h) + "h" : Math.round(-h / 24) + " ngày"}</b>`;
+  const color = h < 24 ? "var(--danger)" : h < 72 ? "var(--warn)" : "var(--text-mute)";
+  return `<b style="color:${color};">${h < 48 ? Math.floor(h) + "h " + Math.round((h % 1) * 60) + "p" : (h / 24).toFixed(1) + " ngày"}</b>`;
+};
+
+async function loadOps(refresh) {
+  const btn = $("#opsRefreshBtn");
+  if (btn) { btn.disabled = true; btn.textContent = "⏳ Đang tải…"; }
+  if (!_opsHealth) $("#opsCharts").innerHTML = '<div class="card"><div class="empty">⏳ Đang tải số liệu vận hành…</div></div>';
+  const [h, s] = await Promise.allSettled([
+    fetch("/admin/api/ops/health" + (refresh ? "?refresh=1" : "")).then((r) => r.json()),
+    fetch("/admin/api/ops/sku").then((r) => r.json()),
+  ]);
+  if (h.status === "fulfilled" && !h.value.error) _opsHealth = h.value;
+  else toast("Lỗi tải sức khoẻ shop: " + (h.reason?.message || h.value?.error || ""), "error");
+  if (s.status === "fulfilled" && !s.value.error) _opsSku = s.value;
+  else toast("Lỗi tải lãi lỗ SKU: " + (s.reason?.message || s.value?.error || ""), "error");
+  renderOps();
+  if (btn) { btn.disabled = false; btn.textContent = "🔄 Làm mới"; }
+}
+function renderOps() {
+  if (_opsHealth) { renderOpsSource(); renderOpsKpis(); renderOpsTodayTable(); renderOpsHealth(); }
+  renderOpsCharts();
+  if (_opsSku) renderOpsSku();
+}
+// Bấm KPI / đoạn biểu đồ → lọc bảng Sức khoẻ shop rồi cuộn tới bảng.
+function opsFilter(kind, val) {
+  if (kind === "lvl") { opsF.lvl = opsF.lvl === val ? "" : val; opsF.full = false; }
+  if (kind === "full") { opsF.full = !opsF.full; opsF.lvl = ""; }
+  renderOpsKpis(); renderOpsHealth();
+  $("#opsHealthCard")?.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function renderOpsSource() {
+  const d = _opsHealth;
+  const newest = Math.max(0, ...d.rows.map((r) => (r.updatedAt ? Date.parse(r.updatedAt) : 0)));
+  const limitLocal = d.source === "crm" && d.rows.some((r) => r.limitFrom === "local");
+  const miss = [d.pnlOk === false && "lãi lỗ", d.riskOk === false && "đơn sắp phạt"].filter(Boolean);
+  $("#opsSource").innerHTML = `Nguồn: ${d.source === "crm" ? "CRM KBT" : "snapshot addon TikCheck"} · <span style="${opsStale(newest, 3)}">dữ liệu shop mới nhất ${opsAgo(newest)}</span>${limitLocal ? " · hạn mức lấy từ snapshot addon" : ""}${d.crmError ? ` · <b style="color:var(--danger);">⚠️ CRM lỗi, đang dùng dữ liệu local</b>` : ""}${miss.length ? ` · <b style="color:var(--danger);">⚠️ chưa lấy được ${miss.join(", ")} từ CRM</b>` : ""}${d.crmEnabled ? "" : " · chưa nối CRM"}`;
+}
+
+function renderOpsKpis() {
+  const d = _opsHealth;
+  const red = d.rows.filter((r) => r.level === "red").length;
+  const full = d.rows.filter((r) => opsCap(r).full).length;
+  const hold = d.rows.reduce((s, r) => s + (r.onHold || 0), 0);
+  const withPnl = d.rows.filter((r) => r.pnl);
+  const net = withPnl.reduce((s, r) => s + r.pnl.net, 0);
+  const overdue = (d.riskOrders || []).filter((o) => o.deadlineAt && o.deadlineAt < Date.now()).length;
+  const tile = (cls, val, label, onclick, on, title) =>
+    `<div class="kpi ${cls}"${title ? ` title="${escapeHtml(title)}"` : ""}${onclick ? ` role="button" tabindex="0" onkeydown="if(event.key==='Enter')this.click()" style="cursor:pointer;${on ? " outline:2px solid var(--accent);" : ""}" onclick="${onclick}"` : ""}><div class="kpi-v">${val}</div><div class="kpi-k">${label}</div></div>`;
+  $("#opsKpis").innerHTML = `<div class="kpis">
+    ${tile("fail", `${red}<span style="font-size:0.85rem; color:var(--text-mute); font-weight:600;">/${d.rows.length}</span>`, "Shop nguy hiểm", "opsFilter('lvl','red')", opsF.lvl === "red", "Bấm để lọc bảng Sức khoẻ shop")}
+    ${tile("pending", full, "Hết chỗ đăng mới", "opsFilter('full')", opsF.full, "Đã chạm hạn mức listing TikTok hoặc bị khoá đăng — queue tự bỏ qua. Bấm để lọc")}
+    ${tile("", opsMoney(hold), "Tiền đang bị giữ (on hold)")}
+    ${tile("live", d.pnlOk === false ? opsDash(null) : withPnl.length ? opsMoney(net) : opsDash(null), d.pnlOk === false ? "Lãi 30 ngày · CRM lỗi" : `Lãi 30 ngày${withPnl.length ? ` · ${withPnl.length} shop có đơn` : ""}`)}
+    ${tile("fail", d.riskOk === false ? opsDash(null) : overdue, d.riskOk === false ? "Đơn quá hạn · CRM lỗi" : "Đơn quá hạn xử lý", "document.querySelector('#opsTodayTable')?.scrollIntoView({behavior:'smooth', block:'center'})", false, "Bấm để xem danh sách")}
+  </div>`;
+}
+
+/* ── Biểu đồ ── */
+// Danh sách thanh xếp hạng: tên | thanh (1 màu) | giá trị. Vừa là biểu đồ vừa là bảng số.
+// Thanh bấm được: i.act là đoạn JS (vd lọc bảng) — escape để an toàn khi nằm trong thuộc tính HTML.
+const opsAct = (i) => (i.act ? ` role="button" tabindex="0" style="cursor:pointer;" onkeydown="if(event.key==='Enter')this.click()" onclick="${escapeHtml(i.act)}"` : "");
+function opsBarList(items, fmt, empty) {
+  if (!items.length) return `<div class="empty" style="padding:18px;">${empty}</div>`;
+  const max = Math.max(...items.map((i) => i.value)) || 1;
+  return `<div class="ops-blist">${items.map((i) => `
+    <div class="ops-nm" title="${escapeHtml(i.name)}"${opsAct(i)}>${escapeHtml(i.name)}</div>
+    <div class="ops-track${i.pct != null ? " ops-track-full" : ""}" title="${escapeHtml(i.tip || "")}"${opsAct(i)}>${(() => {
+      // i.pct: vẽ theo tỷ lệ cố định (vd % hạn mức đã dùng) thay vì so với giá trị lớn nhất.
+      const w = i.pct != null ? Math.min(100, i.pct) : (i.value / max) * 100;
+      return w > 0 ? `<div class="ops-bar" style="width:${Math.max(1, w).toFixed(1)}%;"></div>` : "";
+    })()}</div>
+    <div class="ops-val">${fmt(i)}</div>`).join("")}</div>`;
+}
+const opsCard = (title, sub, body) => `<div class="card ops-chart"><h3>${title}</h3><div class="ops-sub">${sub}</div>${body}</div>`;
+const opsShort = (s) => String(s || "").replace(/_US$/, "");
+
+function renderOpsCharts() {
+  const cards = [];
+  const d = _opsHealth;
+  if (d) {
+    // 1) Sức khoẻ: 1 thanh xếp chồng (part-to-whole) + chú giải luôn hiện (màu KHÔNG đứng một mình).
+    const order = ["red", "yellow", "none", "green"];
+    const cnt = { red: 0, yellow: 0, none: 0, green: 0 };
+    d.rows.forEach((r) => cnt[r.level]++);
+    const total = d.rows.length || 1;
+    const seg = order.filter((l) => cnt[l]).map((l) => `<div role="button" tabindex="0" onkeydown="if(event.key==='Enter')this.click()" style="flex:${cnt[l]}; background:${OPS_LVL[l].chart};${opsF.lvl && opsF.lvl !== l ? " opacity:.35;" : ""}" title="${OPS_LVL[l].label}: ${cnt[l]} shop (${Math.round((cnt[l] / total) * 100)}%) — bấm để lọc" onclick="opsFilter('lvl','${l}')"></div>`).join("");
+    const legend = order.map((l) => `<span class="ops-lg"><span class="ops-sw" style="background:${OPS_LVL[l].chart};"></span>${OPS_LVL[l].label} <b>${cnt[l]}</b> <span style="color:var(--text-mute);">${Math.round((cnt[l] / total) * 100)}%</span></span>`).join("");
+    // Lý do của nhóm nguy hiểm — câu hỏi tự nhiên ngay sau con số (TikTok ghi nguyên văn ở shop_status).
+    const why = new Map();
+    d.rows.filter((r) => r.level === "red").forEach((r) => { const k = r.status || "Không rõ"; why.set(k, (why.get(k) || 0) + 1); });
+    const whyItems = [...why].map(([k, v]) => ({ name: k, value: v, tip: `${v} shop` })).sort((a, b) => b.value - a.value).slice(0, 5);
+    const whyHtml = whyItems.length ? `<div class="ops-sub" style="margin:16px 0 8px;">Lý do của ${cnt.red} shop nguy hiểm</div>${opsBarList(whyItems, (i) => `<b>${i.value}</b> shop`, "")}` : "";
+    cards.push(opsCard("🩺 Sức khoẻ shop", `${d.rows.length} shop · theo mức TikTok gắn (severity + trạng thái) · bấm đoạn để lọc bảng`, `<div class="ops-stack">${seg}</div><div class="ops-legend">${legend}</div>${whyHtml}`));
+
+    // 2) Còn chỗ đăng nhiều nhất — nơi nên đổ hàng tiếp.
+    // Bỏ shop đã đóng / terminal: 0 listing nên trông "còn nhiều chỗ" nhưng không bán được. Shop bị phạt
+    // đơn (blocked) vẫn đăng được nên GIỮ.
+    const dead = (r) => r.severity === "terminal" || /closed|đóng|terminat|deactiv|banned/i.test(r.status || "");
+    const room = d.rows.filter((r) => !dead(r) && r.publishLimit > 0 && r.activeListings != null && r.publishLimit - r.activeListings > 0)
+      // Thanh = % hạn mức ĐÃ DÙNG (active/limit): sắp đầy → thanh gần kín, còn trống nhiều → thanh ngắn.
+      // Xếp theo SỐ CHỖ còn trống (tuyệt đối) nhiều lên đầu — nơi đổ hàng được nhiều nhất (903/1000 trước 20/20);
+      // cùng số chỗ thì shop dùng ít hạn mức hơn trước.
+      .map((r) => ({ name: opsShort(r.shop), value: r.publishLimit - r.activeListings, limit: r.publishLimit, pct: (r.activeListings / r.publishLimit) * 100, tip: `${r.activeListings}/${r.publishLimit} listing · đã dùng ${Math.round((r.activeListings / r.publishLimit) * 100)}% hạn mức` }))
+      .sort((a, b) => b.value - a.value || a.pct - b.pct); // MỌI shop còn chỗ (cắt top 10 thì chỉ còn thanh đầy, mất shop còn thừa nhiều)
+    const fullN = d.rows.filter((r) => opsCap(r).full).length;
+    cards.push(opsCard("📦 Giới hạn Listing còn thừa", `Thanh = % hạn mức đã dùng · ${room.length} shop còn chỗ, còn trống nhiều lên đầu · không tính shop đã đóng · ${fullN} shop đã hết chỗ`, `<div class="ops-scroll">${opsBarList(room, (i) => `còn <b>${i.value}</b><span style="color:var(--text-mute);">/${i.limit}</span>`, "Không shop nào còn chỗ")}</div>`));
+
+    // 3) Lãi 30 ngày theo shop.
+    const pnl = d.rows.filter((r) => r.pnl);
+    const loss = pnl.filter((r) => r.pnl.net < 0).length;
+    const pItems = pnl.filter((r) => r.pnl.net > 0).map((r) => ({ name: opsShort(r.shop), value: r.pnl.net, tip: `${r.pnl.orders} đơn · doanh thu $${Math.round(r.pnl.revenue)} · chi phí $${Math.round(r.pnl.cost)} · refund $${Math.round(r.pnl.refund)}` }))
+      .sort((a, b) => b.value - a.value).slice(0, 10);
+    cards.push(opsCard("📈 Lãi 30 ngày theo shop", `Top 10 · ${pnl.length} shop có đơn${loss ? ` · <b style="color:var(--danger);">${loss} shop lỗ</b>` : " · không shop nào lỗ"} · công thức trang Finance (CRM)`, opsBarList(pItems, (i) => `<b>${opsMoney(i.value)}</b>`, d.pnlOk === false ? "⚠️ Chưa lấy được lãi lỗ từ CRM — bấm Làm mới để thử lại" : !d.crmEnabled ? "Chưa nối CRM" : "Chưa có shop nào có đơn trong 30 ngày")));
+
+    // 4) Tiền đang bị giữ theo shop.
+    const hItems = d.rows.filter((r) => r.onHold > 0).map((r) => ({ name: opsShort(r.shop), value: r.onHold, tip: `${OPS_LVL[r.level].label}${r.status ? " · " + r.status : ""}` }))
+      .sort((a, b) => b.value - a.value).slice(0, 10);
+    const hold = d.rows.reduce((s, r) => s + (r.onHold || 0), 0);
+    cards.push(opsCard("💰 Tiền đang bị giữ theo shop", `Top 10 · tổng ${opsMoney(hold)}`, opsBarList(hItems, (i) => `<b>${opsMoney(i.value)}</b>`, "Không shop nào bị giữ tiền")));
+  }
+  if (_opsSku) {
+    // 5) Top SKU lãi nhất. (Từng thử gom theo ngách nhưng CRM chưa phân ngách → 1 thanh "Khác", vô dụng.)
+    const sItems = _opsSku.rows.map((r) => ({ name: r.title || r.goods_id, value: opsProfit(r) ?? 0, tip: `goods_id ${r.goods_id} · ${r.orders || 0} đơn × ${opsMoney(r.margin_usd, 2).replace(/<[^>]+>/g, "")} lãi/đơn` }))
+      .filter((i) => i.value > 0).sort((x, y) => y.value - x.value).slice(0, 8);
+    cards.push(opsCard("🧵 SKU lãi nhất", `Top 8 · lãi/đơn × số đơn · cửa sổ ${_opsSku.windowDays ?? "?"} ngày · <span style="${opsStale(_opsSku.fetchedAt, 7)}">dữ liệu ${opsAgo(_opsSku.fetchedAt)}</span>`, opsBarList(sItems, (i) => `<b>${opsMoney(i.value)}</b>`, "Chưa có dữ liệu SKU")));
+  }
+  $("#opsCharts").innerHTML = cards.join("");
+}
+
+/* ── Đơn cần xử lý (chỉ đơn sắp/đã bị phạt — Return/Refund có màn riêng) ── */
+function renderOpsTodayTable() {
+  const rows = [...(_opsHealth.riskOrders || [])].sort((a, b) => (a.deadlineAt ?? Infinity) - (b.deadlineAt ?? Infinity));
+  if (!rows.length) { $("#opsTodayTable").innerHTML = `<div class="empty">${_opsHealth.riskOk === false ? "⚠️ Chưa lấy được đơn từ CRM — bấm Làm mới để thử lại" : !_opsHealth.crmEnabled ? "Chưa nối CRM" : "✓ Không có đơn nào sắp bị phạt"}</div>`; return; }
+  $("#opsTodayTable").innerHTML = `<div style="overflow-x:auto;"><table style="width:100%; border-collapse:collapse;">
+    <thead><tr>${opsTh("Còn lại")}${opsTh("Việc")}${opsTh("Shop")}${opsTh("Mã đơn")}${opsTh("goods_id")}</tr></thead>
+    <tbody>${rows.map((x) => { const K = OPS_KIND[x.kind] || [x.kind, "var(--text-mute)"]; return `<tr>
+      ${opsTd(opsLeft(x.deadlineAt), "white-space:nowrap;")}
+      ${opsTd(opsChip(K[1], K[0]))}
+      ${opsTd(escapeHtml(x.shop), "white-space:nowrap;")}
+      ${opsTd(`<code style="font-size:0.75rem;">${escapeHtml(x.orderId)}</code>`)}
+      ${opsTd(x.goodsId ? `<code style="font-size:0.75rem;">${escapeHtml(x.goodsId)}</code>` : opsDash(null))}
+    </tr>`; }).join("")}</tbody></table></div>`;
+}
+
+/* ── Sức khoẻ shop (bảng) ── */
+function renderOpsHealth() {
+  const chip = opsF.lvl ? `<button class="btn btn-ghost" onclick="opsFilter('lvl','${opsF.lvl}')">✕ Bỏ lọc "${OPS_LVL[opsF.lvl].label}"</button>`
+    : opsF.full ? `<button class="btn btn-ghost" onclick="opsFilter('full')">✕ Bỏ lọc "Hết chỗ đăng mới"</button>` : "";
+  $("#opsHealthHead").innerHTML = `
+    <div style="display:flex; align-items:baseline; gap:10px; flex-wrap:wrap; margin-bottom:10px;"><h3 style="margin:0;">🩺 Sức khoẻ shop</h3><span class="ops-sub" style="margin:0;">nguy hiểm lên đầu · bấm KPI / biểu đồ phía trên để lọc</span></div>
+    <div class="filter-bar" style="align-items:center;">
+      <input placeholder="🔍 Tìm shop, tên TikTok, mã shop…" value="${escapeHtml(opsF.q)}" oninput="opsF.q=this.value; renderOpsHealthTable()">
+      ${chip}
+    </div>`;
+  renderOpsHealthTable();
+}
+function renderOpsHealthTable() {
+  const d = _opsHealth;
+  const q = opsF.q.trim().toLowerCase();
+  const rows = d.rows.filter((r) => (!opsF.lvl || r.level === opsF.lvl) && (!opsF.full || opsCap(r).full) && (!q || [r.shop, r.tiktokName, r.shopCode].some((x) => String(x || "").toLowerCase().includes(q))));
+  if (!rows.length) { $("#opsHealthTable").innerHTML = '<div class="empty">Không có shop nào khớp bộ lọc</div>'; return; }
+  $("#opsHealthTable").innerHTML = `<div style="overflow-x:auto;"><table style="width:100%; border-collapse:collapse;">
+    <thead><tr>${opsTh("Mức")}${opsTh("Shop")}${opsTh("Trạng thái TikTok")}${opsTh("On hold", 1)}${opsTh("Net", 1)}${opsTh("Lãi 30 ngày", 1)}${opsTh("Đơn sắp phạt", 1)}${opsTh("SP bị hạn chế", 1)}${opsTh("Hạn mức listing", 1)}${opsTh("Đơn/ngày", 1)}${opsTh("Cập nhật")}</tr></thead>
+    <tbody>${rows.map((r) => {
+      const L = OPS_LVL[r.level], upd = r.updatedAt ? Date.parse(r.updatedAt) : 0, c = opsCap(r);
+      return `<tr>
+        ${opsTd(opsChip(L.color, L.label))}
+        ${opsTd(`<div style="font-weight:600;">${escapeHtml(r.shop)}</div><div style="color:var(--text-mute); font-size:0.75rem;">${escapeHtml(r.account)}${r.tiktokName ? " · " + escapeHtml(r.tiktokName) : ""}${r.shopCode ? ` · <code>${escapeHtml(r.shopCode)}</code>` : ""}</div>`)}
+        ${opsTd(`${opsDash(r.status)}${r.payoutFrozen ? '<div style="color:var(--danger); font-size:0.75rem; font-weight:600;">⛔ treo rút tiền</div>' : ""}${r.severity ? `<div style="color:var(--text-mute); font-size:0.75rem;">severity: ${escapeHtml(r.severity)}</div>` : ""}`, "min-width:160px;")}
+        ${opsTd(opsMoney(r.onHold), opsNum)}
+        ${opsTd(opsMoney(r.net), opsNum)}
+        ${opsTd(r.pnl ? `${opsMoney(r.pnl.net)}<div style="color:var(--text-mute); font-size:0.75rem;">${r.pnl.orders} đơn · DT ${opsMoney(r.pnl.revenue)}</div>` : opsDash(null), opsNum + (r.pnl && r.pnl.net < 0 ? " color:var(--danger);" : ""))}
+        ${opsTd(r.atRisk == null ? opsDash(null) : r.atRisk > 0 ? `<b style="color:var(--danger);">${r.atRisk}</b>` : "0", opsNum)}
+        ${opsTd(opsDash(r.restricted), opsNum + (r.restricted > 0 ? " color:var(--warn); font-weight:600;" : ""))}
+        ${opsTd(c.html, opsNum + " " + c.style)}
+        ${opsTd(opsDash(r.dailyOrders), opsNum)}
+        ${opsTd(opsAgo(upd), "white-space:nowrap; font-size:0.78rem; " + (opsStale(upd, 3) || "color:var(--text-mute);"))}
+      </tr>`;
+    }).join("")}</tbody></table></div>`;
+}
+
+/* ── Lãi lỗ SKU (bảng) ── */
+async function refreshOpsSku(btn) {
+  btn.disabled = true; btn.textContent = "⏳ Đang kéo từ CRM…";
+  try {
+    const res = await fetch("/admin/api/ops/sku/refresh", { method: "POST" });
+    const d = await res.json();
+    if (!res.ok) throw new Error(d.error);
+    toast(`✓ Đã kéo ${d.count} SKU từ CRM`);
+    _opsSku = await (await fetch("/admin/api/ops/sku")).json();
+    renderOpsCharts(); renderOpsSku();
+  } catch (err) {
+    toast(err.message, "error");
+    btn.disabled = false; btn.textContent = "🔄 Kéo lại từ CRM";
+  }
+}
+function renderOpsSku() {
+  const d = _opsSku;
+  const tiers = [...new Set(d.rows.map((r) => r.tier).filter(Boolean))].sort();
+  const sel = (val, cur, label) => `<option value="${escapeHtml(val)}" ${val === cur ? "selected" : ""}>${escapeHtml(label)}</option>`;
+  $("#opsSkuHead").innerHTML = `
+    <div style="display:flex; align-items:baseline; gap:10px; flex-wrap:wrap; margin-bottom:10px;"><h3 style="margin:0;">💰 Lãi lỗ SKU</h3><span class="ops-sub" style="margin:0; ${opsStale(d.fetchedAt, 7)}">${d.rows.length} SKU · dữ liệu CRM · cửa sổ ${d.windowDays ?? "?"} ngày · lấy ${opsAgo(d.fetchedAt)}</span></div>
+    <div class="filter-bar" style="align-items:center;">
+      <input placeholder="🔍 Tìm tên SP, goods_id, ngách…" value="${escapeHtml(opsF.skuQ)}" oninput="opsF.skuQ=this.value; opsF.skuShown=100; renderOpsSkuTable()">
+      <select onchange="opsF.skuTier=this.value; opsF.skuShown=100; renderOpsSkuTable()">${sel("", opsF.skuTier, "Mọi tier")}${tiers.map((t) => sel(t, opsF.skuTier, t)).join("")}</select>
+      <select onchange="opsF.skuRisk=this.value; opsF.skuShown=100; renderOpsSkuTable()">${sel("", opsF.skuRisk, "Mọi mức rủi ro")}${sel("safe", opsF.skuRisk, "Rủi ro: An toàn")}${sel("medium", opsF.skuRisk, "Rủi ro: Trung bình")}${sel("high", opsF.skuRisk, "Rủi ro: Cao")}</select>
+      <select onchange="opsF.skuSort=this.value; renderOpsSkuTable()">${sel("profit", opsF.skuSort, "Xếp: lãi tổng")}${sel("orders", opsF.skuSort, "Xếp: số đơn")}${sel("margin", opsF.skuSort, "Xếp: % lãi")}${sel("refund", opsF.skuSort, "Xếp: % refund")}</select>
+      <button class="btn btn-ghost" style="margin-left:auto;" ${d.crmEnabled ? "" : 'disabled title="Chưa nối CRM: cần CRM_BRIDGE_SECRET"'} onclick="refreshOpsSku(this)">🔄 Kéo lại từ CRM</button>
+    </div>`;
+  renderOpsSkuTable();
+}
+function renderOpsSkuTable() {
+  const d = _opsSku;
+  const q = opsF.skuQ.trim().toLowerCase();
+  const key = { profit: (r) => opsProfit(r) ?? -Infinity, orders: (r) => r.orders || 0, margin: (r) => r.margin_pct ?? -Infinity, refund: (r) => r.effective_refund_rate_pct ?? -Infinity }[opsF.skuSort];
+  const rows = d.rows
+    .filter((r) => (!opsF.skuTier || r.tier === opsF.skuTier) && (!opsF.skuRisk || r.risk === opsF.skuRisk) && (!q || [r.title, r.goods_id, r.niche].some((x) => String(x || "").toLowerCase().includes(q))))
+    .sort((a, b) => key(b) - key(a));
+  if (!rows.length) { $("#opsSkuTable").innerHTML = '<div class="empty">Không có SKU nào khớp bộ lọc</div>'; return; }
+  const shown = rows.slice(0, opsF.skuShown);
+  $("#opsSkuTable").innerHTML = `<div style="overflow-x:auto;"><table style="width:100%; border-collapse:collapse;">
+    <thead><tr>${opsTh("Sản phẩm")}${opsTh("Tier")}${opsTh("Rủi ro refund")}${opsTh("Đơn", 1)}${opsTh("Đơn/tháng", 1)}${opsTh("Giá bán TB", 1)}${opsTh("Giá vốn", 1)}${opsTh("Lãi/đơn", 1)}${opsTh("Lãi tổng", 1)}${opsTh("Shop", 1)}</tr></thead>
+    <tbody>${shown.map((r) => {
+      const R = OPS_RISK[r.risk] || ["var(--text-mute)", r.risk || "—"];
+      const shops = Array.isArray(r.shops) ? r.shops : [];
+      return `<tr>
+        ${opsTd(`<div style="max-width:360px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:600;" title="${escapeHtml(r.title || "")}">${escapeHtml(r.title || "")}</div><div style="color:var(--text-mute); font-size:0.75rem;"><code>${escapeHtml(r.goods_id)}</code>${r.niche ? " · " + escapeHtml(r.niche) : ""}${r.has_oos ? ' · <span style="color:var(--warn);">có màu/size hết hàng</span>' : ""}</div>`)}
+        ${opsTd(opsDash(r.tier), "white-space:nowrap;")}
+        ${opsTd(`${opsChip(R[0], R[1])}<div style="color:var(--text-mute); font-size:0.75rem;">${r.effective_refund_rate_pct != null ? r.effective_refund_rate_pct.toFixed(1) + "% · " : ""}${r.refund_count || 0} refund</div>`)}
+        ${opsTd(`${(r.orders || 0).toLocaleString("en-US")}${r.orders_prev ? `<div style="color:var(--text-mute); font-size:0.75rem;">kỳ trước ${r.orders_prev}</div>` : ""}`, opsNum)}
+        ${opsTd(r.monthly_velocity != null ? r.monthly_velocity.toFixed(1) : opsDash(null), opsNum)}
+        ${opsTd(opsMoney(r.revenue_avg, 2), opsNum)}
+        ${opsTd(opsMoney(r.fulfill_price, 2), opsNum)}
+        ${opsTd(`${opsMoney(r.margin_usd, 2)}${r.margin_pct != null ? `<div style="color:var(--text-mute); font-size:0.75rem;">${r.margin_pct.toFixed(0)}%</div>` : ""}`, opsNum)}
+        ${opsTd(`<b>${opsMoney(opsProfit(r))}</b>`, opsNum)}
+        ${opsTd(`<span title="${escapeHtml(shops.join(", "))}">${shops.length}</span>`, opsNum)}
+      </tr>`;
+    }).join("")}</tbody></table></div>
+    ${rows.length > shown.length ? `<div style="text-align:center; padding:12px;"><button class="btn btn-ghost" onclick="opsF.skuShown+=100; renderOpsSkuTable()">Xem thêm (${rows.length - shown.length} SKU nữa)</button></div>` : `<div style="text-align:center; padding:10px; font-size:0.78rem; color:var(--text-mute);">${rows.length} SKU</div>`}`;
+}
+
+// Biểu đồ màn Return/Refund — tính trên MỌI case đang mở (không theo bộ lọc bảng), bấm shop để lọc bảng.
+const RET_TYPE = { RETURN_AND_REFUND: "Trả hàng + hoàn tiền", REFUND: "Chỉ hoàn tiền", EXCHANGE: "Đổi hàng", REPLACEMENT: "Gửi lại hàng" };
+function renderRetCharts(r) {
+  const rows = r.rows || [];
+  if (!rows.length) { $("#retCharts").innerHTML = ""; return; }
+  const now = Date.now();
+  const group = (key) => { const m = new Map(); for (const x of rows) { const k = key(x) || "Không rõ"; const e = m.get(k) || { n: 0, amt: 0 }; e.n++; e.amt += Number(x.amount) || 0; m.set(k, e); } return m; };
+  const money = (v) => "$" + Math.round(v).toLocaleString("en-US");
+  // 1) Theo hạn xử lý — các mốc giữ THỨ TỰ THỜI GIAN (không xếp theo số lượng).
+  const BUCKETS = [["Đã quá hạn", (h) => h < 0], ["Dưới 24 giờ", (h) => h < 24], ["1–3 ngày", (h) => h < 72], ["3–7 ngày", (h) => h < 168], ["Trên 7 ngày", () => true]];
+  const bc = BUCKETS.map(([n]) => ({ name: n, value: 0 })); let noDl = 0;
+  for (const x of rows) { if (!x.deadlineAt) { noDl++; continue; } const h = (x.deadlineAt - now) / 36e5; bc[BUCKETS.findIndex(([, f]) => f(h))].value++; }
+  const dItems = [...bc, { name: "Không có hạn chót", value: noDl }].map((i) => ({ ...i, tip: `${i.value} case` }));
+  // 2) Lý do — kèm tỷ lệ do SAI SIZE (quá to / quá nhỏ): chỉ thẳng vào bảng size của listing.
+  const reasons = [...group((x) => x.reason)].map(([k, e]) => ({ name: k, value: e.n, tip: `${e.n} case · ${money(e.amt)}` })).sort((a, b) => b.value - a.value).slice(0, 8);
+  const sizeN = rows.filter((x) => /too big|too small|size/i.test(x.reason || "")).length;
+  // 3) Theo shop — bấm để lọc bảng bên dưới.
+  const shops = [...group((x) => x.shop)].map(([k, e]) => ({ name: k.replace(/_US$/, ""), value: e.n, amt: e.amt, tip: `${e.n} case · ${money(e.amt)} · bấm để lọc bảng`, act: `state.retShop=${JSON.stringify(k)}; state.retShowAll=true; renderReturns()` })).sort((a, b) => b.value - a.value || b.amt - a.amt).slice(0, 10);
+  // 4) Trạng thái (+ loại case ở phụ đề).
+  const stats = [...group((x) => x.statusText || x.status)].map(([k, e]) => ({ name: k, value: e.n, tip: `${e.n} case · ${money(e.amt)}` })).sort((a, b) => b.value - a.value);
+  const types = [...group((x) => x.type)].sort((a, b) => b[1].n - a[1].n).map(([k, e]) => `${RET_TYPE[k] || k} ${e.n}`).join(" · ");
+  const total = rows.length, amt = rows.reduce((s, x) => s + (Number(x.amount) || 0), 0);
+  $("#retCharts").innerHTML = [
+    opsCard("⏰ Case theo hạn xử lý", `${total} case đang mở · theo thứ tự thời gian`, opsBarList(dItems, (i) => `<b>${i.value}</b> case`, "")),
+    opsCard("🧾 Lý do return", `Top 8 · <b style=\"color:var(--text);\">${Math.round((sizeN / total) * 100)}%</b> do sai size (quá to / quá nhỏ) — xem lại bảng size`, opsBarList(reasons, (i) => `<b>${i.value}</b>`, "Không có lý do")),
+    opsCard("🏪 Case theo shop", `Top 10 · ${new Set(rows.map((x) => x.shop)).size} shop có case · tổng ${money(amt)} · bấm để lọc bảng`, opsBarList(shops, (i) => `<b>${i.value}</b> <span style=\"color:var(--text-mute);\">${money(i.amt)}</span>`, "")),
+    opsCard("📋 Trạng thái case", types, opsBarList(stats, (i) => `<b>${i.value}</b>`, "")),
+  ].join("");
 }
 
 async function loadPromotions() {
@@ -4859,7 +5338,7 @@ function renderPromotions(r) {
   const rel = (ms) => {
     if (!ms) return "—";
     const h = Math.round((ms - now) / 3600e3);
-    if (h < -1) return `${-h}h trước`;
+    if (h < -1) return -h < 48 ? `${-h}h trước` : `${Math.round(-h / 24)} ngày trước`; // "766h trước" khó đọc
     if (h <= 0) return "vừa xong";
     return h < 48 ? `còn ${h}h` : `còn ${Math.round(h / 24)} ngày`;
   };
@@ -4915,21 +5394,23 @@ function renderPromotions(r) {
       ${!noDiscount.length && !uncoveredShops.length && !discountSoon.length ? '<div class="empty" style="padding:12px;">✓ Discount phủ đủ mọi shop</div>' : ""}
     </div>`;
 
-  const uncRows = rows.filter((x) => (x.uncoveredProducts ?? 0) > 0 || x.discountOngoing === 0)
-    .sort((a, b) => (b.uncoveredProducts ?? 0) - (a.uncoveredProducts ?? 0));
-  const maxUnc = Math.max(1, ...uncRows.map((x) => x.uncoveredProducts ?? 0));
-  const chart = uncRows.length ? `
-    <div class="card" style="margin-top:14px;">
-      <h3 style="margin:0 0 10px;">📦 Sản phẩm chưa chạy discount theo shop</h3>
-      <div style="display:flex; flex-direction:column; gap:6px;">
-        ${uncRows.map((x) => `
-          <div class="bar-row" style="cursor:default;">
-            <div class="bn" title="${escapeHtml(x.shop)}">${escapeHtml(x.shop.replace(/^T[AN] Scan\s*/i, "").slice(0, 18))}</div>
-            <div class="bar-track"><div class="bar-seg" style="width:${((x.uncoveredProducts ?? 0) / maxUnc * 100).toFixed(1)}%;background:var(--warn);" title="${x.uncoveredProducts} sp"></div></div>
-            <div class="bt">${x.uncoveredProducts ?? 0}</div>
-          </div>`).join("")}
-      </div>
-    </div>` : "";
+  // Biểu đồ (khuôn chung màn Vận hành). Thay biểu đồ cũ "SP chưa chạy discount" — liệt kê MỌI shop ở cuối
+  // trang, tô màu cảnh báo cho một đại lượng — bằng lưới biểu đồ ngay dưới KPI.
+  const act = rows.reduce((t, x) => t + (x.activeListings || 0), 0);
+  const covAct = rows.reduce((t, x) => { const a = x.activeListings || 0; return t + Math.max(0, Math.min(a, a - (x.uncoveredProducts ?? 0))); }, 0);
+  const withListings = rows.filter((x) => (x.activeListings || 0) > 0);
+  const shopsDisc = withListings.filter((x) => x.discountOngoing > 0).length;
+  const meter = (label, n, d, tip) => { const pct = d ? Math.round((n / d) * 100) : 0; return `<div style="margin-bottom:16px;" title="${escapeHtml(tip)}"><div style="display:flex; justify-content:space-between; gap:10px; font-size:0.8rem; margin-bottom:6px;"><span>${label}</span><span class="ops-val"><b>${pct}%</b> <span style="color:var(--text-mute);">${n.toLocaleString("en-US")}/${d.toLocaleString("en-US")}</span></span></div><div class="ops-meter"><i style="width:${pct}%;"></i></div></div>`; };
+  const uItems = rows.filter((x) => (x.uncoveredProducts ?? 0) > 0).map((x) => ({ name: x.shop.replace(/_US$/, ""), value: x.uncoveredProducts, active: x.activeListings || 0, tip: `${x.uncoveredProducts}/${x.activeListings || 0} sản phẩm chưa có discount${x.discountOngoing === 0 ? " · shop chưa có discount nào" : ""}` })).sort((p, q) => q.value - p.value).slice(0, 10);
+  const eItems = rows.filter((x) => x.nextDiscountEnd && x.nextDiscountEnd > now).map((x) => ({ name: x.shop.replace(/_US$/, ""), value: (x.nextDiscountEnd - now) / 864e5, end: x.nextDiscountEnd, tip: `hết lúc ${fmtT(x.nextDiscountEnd)}` })).sort((p, q) => p.value - q.value).slice(0, 8);
+  const flashLive = rows.filter((x) => x.flashOngoing > 0 || x.flashUpcoming > 0).length;
+  const lastFlash = Math.max(0, ...rows.map((x) => x.lastFlashEnd || 0));
+  const promoCharts = `<div class="ops-charts">${[
+    opsCard("🏷️ Độ phủ discount", `${rows.length - withListings.length} shop chưa có listing active không tính`, meter("Sản phẩm active đang có discount", covAct, act, "active − sản phẩm chưa vào discount, cộng mọi shop") + meter("Shop có discount đang chạy", shopsDisc, withListings.length, "shop có ít nhất 1 Product Discount đang chạy")),
+    opsCard("⚡ Flash deal", "Shop có flash đang hoặc sắp chạy", `<div style=\"display:flex; align-items:baseline; gap:8px; margin:6px 0 10px;\"><span class=\"ops-hero\">${flashLive}</span><span style=\"color:var(--text-mute); font-size:1.1rem; font-weight:700;\">/${rows.length} shop</span></div><div style=\"font-size:0.82rem; color:var(--text);\">${flashLive ? `${rows.length - flashLive} shop không có flash nào` : "<b>Không shop nào</b> còn flash đang hoặc sắp chạy"}${lastFlash ? ` · flash gần nhất kết thúc <b>${rel(lastFlash)}</b>` : ""}</div>`),
+    opsCard("📦 Sản phẩm chưa vào discount", `Top 10 shop · tổng ${totalUncovered.toLocaleString("en-US")} sản phẩm`, opsBarList(uItems, (i) => `<b>${i.value}</b><span style=\"color:var(--text-mute);\">/${i.active}</span>`, "✓ Mọi sản phẩm đều đã có discount")),
+    opsCard("⏳ Discount sắp hết hạn", "Gấp nhất lên đầu · thanh = thời gian còn lại", opsBarList(eItems, (i) => `<b>${rel(i.end)}</b>`, "Không có discount nào đang chạy")),
+  ].join("")}</div>`;
 
   $("#promoSummary").innerHTML = `
     <div class="attn-bar">
@@ -4939,8 +5420,8 @@ function renderPromotions(r) {
       <span class="it">⚠️ <b>${rows.reduce((a, x) => a + x.alerts.length, 0)}</b> cảnh báo</span>
     </div>
     ${kpis}
-    <div class="grid grid-2">${flashPanel}${discountPanel}</div>
-    ${chart}`;
+    ${promoCharts}
+    <div class="grid grid-2">${flashPanel}${discountPanel}</div>`;
 
   const dot = (ok) => `<span style="color:${ok ? "var(--success)" : "var(--danger)"}">●</span>`;
   $("#promoTableWrap").innerHTML = `
@@ -4996,7 +5477,15 @@ async function autoLogin() {
   }
 }
 
+function toggleCkShops(btn, n) {
+  const open = btn.getAttribute("aria-expanded") !== "true";
+  btn.parentElement.querySelectorAll(".ck-more").forEach((el) => { el.hidden = !open; });
+  btn.setAttribute("aria-expanded", String(open));
+  btn.textContent = open ? "Thu gọn ▴" : `+${n} shop nữa ▾`;
+  btn.parentElement.appendChild(btn); // nút luôn nằm cuối danh sách
+}
 async function loadCookieStatus() {
+  checkCookieAlerts(); // vừa import cookie mới → banner tự mất
   try {
     const res = await fetch("/admin/api/cookie/status");
     const data = await res.json();
@@ -5017,25 +5506,26 @@ async function loadCookieStatus() {
     wrap.innerHTML =
       `<div style="margin-bottom:12px; font-size:0.92rem;">🔑 <b>${accounts.length}</b> tài khoản · <span id="ckSummary" style="color:var(--text-mute);">⏳ đang kiểm tra cookie…</span></div>` +
       accounts.map((a) => {
-        const shopsPreview = (a.shops || []).slice(0, 6).map((s) => `<span class="pill">${escapeHtml(s)}</span>`).join(" ");
-        const more = a.shopCount > 6 ? `<span style="color:var(--text-mute);font-size:0.82rem;">+${a.shopCount - 6} shop nữa</span>` : "";
+        // Hiện 6 shop đầu; phần còn lại ẩn (class ck-more), bấm "+N shop nữa" để xổ hết / thu gọn.
+        const shopsPreview = (a.shops || []).map((s, i) => `<span class="pill${i >= 6 ? " ck-more" : ""}"${i >= 6 ? " hidden" : ""}>${escapeHtml(s)}</span>`).join(" ");
+        const more = a.shopCount > 6 ? `<button type="button" class="ck-more-btn" aria-expanded="false" onclick="toggleCkShops(this, ${a.shopCount - 6})">+${a.shopCount - 6} shop nữa ▾</button>` : "";
         const stale = Date.now() - (a.cookieUpdatedAt || 0) > 3 * 864e5;
         return `
         <div class="card ck-acc" data-uid="${escapeHtml(a.uid)}" style="margin-bottom: 10px;">
           <div style="display:flex; align-items:center; gap: 10px; flex-wrap: wrap;">
             <span class="ck-health badge" style="background:var(--bg-elev); color:var(--text-mute);">⏳ kiểm tra…</span>
-            <div style="font-weight: 700; font-size: 1.02rem;">${a.email ? "📧" : "🔑"} ${escapeHtml(a.label)}</div>
+            <div class="ck-name">${a.email ? "📧" : "🔑"} ${escapeHtml(a.label)}</div>
             ${a.email && a.email !== a.label ? `<span style="color: var(--accent); font-size: 0.84rem;">📧 ${escapeHtml(a.email)}</span>` : ""}
             <span style="color: var(--text-mute); font-size: 0.82rem;">uid ${escapeHtml(a.uid)}</span>
             <span class="badge ${a.shopCount > 0 ? "badge-success" : "badge-warn"}">${a.shopCount} shop</span>
             <span style="color: ${stale ? "var(--warn)" : "var(--text-mute)"}; font-size: 0.84rem;">${a.cookieCount} cookies · cập nhật ${relTime(a.cookieUpdatedAt)}${stale ? " ⚠️" : ""}</span>
             <span style="flex:1"></span>
-            <button class="btn btn-primary" style="padding: 4px 12px;" onclick="replaceCookie('${escapeHtml(a.uid)}','${escapeHtml(a.label)}')" title="Chọn file cookie mới của tài khoản này — tự thay, KHÔNG cần xoá cái cũ">🔄 Thay cookie</button>
+            <button class="btn btn-primary ck-replace" style="padding: 4px 12px;" onclick="replaceCookie('${escapeHtml(a.uid)}','${escapeHtml(a.label)}')" title="Chọn file cookie mới của tài khoản này — tự thay, KHÔNG cần xoá cái cũ">🔄 Làm mới cookie</button>
             <button class="btn btn-ghost" style="padding: 4px 10px;" onclick="renameCookieAccount('${escapeHtml(a.uid)}', '${escapeHtml(a.label)}')" title="Đổi tên">✏️</button>
             <button class="btn btn-ghost" style="padding: 4px 10px;" onclick="refreshAccountShopsUi('${escapeHtml(a.uid)}', this)" title="Sync lại danh sách shop">↺</button>
             ${isAdmin ? `<button class="btn btn-ghost" style="padding: 4px 10px; color: var(--danger);" onclick="deleteCookieAccount('${escapeHtml(a.uid)}', '${escapeHtml(a.label)}')" title="Xoá tài khoản">🗑</button>` : ""}
           </div>
-          <div class="ck-cta" style="display:none; margin-top:8px; padding:8px 10px; background:rgba(239,68,68,.1); border-radius:8px; color:var(--danger); font-size:0.85rem;">⚠️ Cookie <b>HẾT HẠN</b> — bấm <b>🔄 Thay cookie</b> chọn file cookie mới của tài khoản này. Tự thay, không cần xoá cái cũ.</div>
+          <div class="ck-cta" style="display:none; margin-top:8px; padding:8px 10px; background:rgba(239,68,68,.1); border-radius:8px; color:var(--danger); font-size:0.85rem;">⚠️ Cookie <b>HẾT HẠN</b> — bấm <b>🔄 Làm mới cookie</b> chọn file cookie mới của tài khoản này. Tự thay, không cần xoá cái cũ.</div>
           <div style="margin-top: 8px; display:flex; gap: 6px; flex-wrap: wrap; align-items:center;">${shopsPreview} ${more}</div>
         </div>`;
       }).join("") +
@@ -5053,10 +5543,16 @@ async function loadCookieStatus() {
       if (r.alive) {
         alive++;
         badge.textContent = "✅ Sống"; badge.style.background = "rgba(34,197,94,.15)"; badge.style.color = "var(--success)";
+      } else if (!r.expired) {
+        // Lỗi mạng/timeout/4Seller trục trặc ≠ cookie chết → không tô đỏ, không bắt thay cookie.
+        badge.textContent = "⚠️ Không kiểm tra được"; badge.style.background = "rgba(234,179,8,.15)"; badge.style.color = "var(--warn)";
+        badge.title = r.error || "";
       } else {
         dead++;
         badge.textContent = "❌ Hết hạn"; badge.style.background = "rgba(239,68,68,.15)"; badge.style.color = "var(--danger)";
-        card.style.borderColor = "var(--danger)";
+        card.classList.add("ck-dead");
+        card.parentElement.insertBefore(card, card.parentElement.querySelector(".ck-acc")); // chết → lên đầu danh sách
+        if (dead === 1) card.scrollIntoView({ behavior: "smooth", block: "center" });
         const cta = card.querySelector(".ck-cta"); if (cta) cta.style.display = "";
       }
       checkedN++;
@@ -5068,7 +5564,7 @@ async function loadCookieStatus() {
   }
 }
 
-// Thay cookie 1 chạm: mở file picker → upload → server tự upsert theo uid (thay cái cũ)
+// Làm mới cookie 1 chạm: mở file picker → upload → server tự upsert theo uid (thay cái cũ)
 let _ckReplaceLabel = "";
 let _ckReplaceUid = "";
 function replaceCookie(uid, label) {
@@ -5081,7 +5577,7 @@ async function onReplaceCookieFile(input) {
   if (!f) return;
   try {
     const parsed = JSON.parse(await f.text());
-    await uploadCookieArray(parsed, `Thay cookie "${_ckReplaceLabel}"`, _ckReplaceUid);
+    await uploadCookieArray(parsed, `Làm mới cookie "${_ckReplaceLabel}"`, _ckReplaceUid);
   } catch (err) {
     toast(err.message, "error");
   }
@@ -5117,6 +5613,13 @@ async function loadNicheByShop() {
     renderNicheByShop(d);
   } catch (err) { $("#nicheOverview").innerHTML = `<div class="empty">Lỗi: ${escapeHtml(err.message)}</div>`; }
 }
+// Ảnh CDN SHEIN có sẵn bản thu nhỏ: chèn "_thumbnail_WxH" trước đuôi file. Đo 22/09: ảnh gốc
+// ~340KB → 220x293 ~9KB, 405x552 ~29KB. Màn Ngách trước tải 92 ảnh gốc (~31MB) chỉ để vẽ ô
+// xem trước cỡ con tem → lag. Ảnh không phải CDN SHEIN (vd imgbb cũ) giữ nguyên.
+const shThumb = (u, size = "220x293") => {
+  const s = String(u || "");
+  return /ltwebstatic\.com\//.test(s) && !/_thumbnail_/.test(s) ? s.replace(/(\.(?:webp|jpe?g|png))$/i, `_thumbnail_${size}$1`) : s;
+};
 function renderNicheByShop(d) {
   const shops = d.shops || [];
   const sub = $("#nicheSubtitle");
@@ -5142,10 +5645,21 @@ function renderNicheOverview(d) {
   const sub = $("#nicheSubtitle");
   if (sub) sub.innerHTML = `<b>${t.niches || 0}</b> ngách · <b>${t.shops || 0}</b> shop đang chơi · <b>${t.products || 0}</b> sản phẩm crawl`;
   const pill = (s) => `<span class="nstat ${s.status || "testing"}" title="${escapeHtml(s.shop)} · ${escapeHtml(s.status || "")}">${escapeHtml(nicheCleanShop(s.shop))}</span>`;
-  $("#nicheOverview").innerHTML = niches.length
-    ? '<div class="niche-grid">' + niches.map((n) => {
+  // Biểu đồ (khuôn chung màn Vận hành) — bấm thanh để mở ngách đó.
+  const nItem = (n, value, tip) => ({ name: n.niche.replace(/-/g, " "), value, tip, act: `enterNicheDetail(${JSON.stringify(n.niche)})` });
+  const topBy = (key) => niches.filter((n) => key(n) > 0).sort((a, b) => key(b) - key(a)).slice(0, 10);
+  const charts = niches.length ? `<div class="ops-charts">${[
+    opsCard("📦 Sản phẩm Hub theo ngách", `Top 10 / ${niches.length} ngách · ${(t.products || 0).toLocaleString("en-US")} sản phẩm · bấm để mở ngách`,
+      opsBarList(topBy((n) => n.products).map((n) => nItem(n, n.products, `${n.products} sp · ${n.listed} đã list · ${n.shops.length} shop`)), (i) => `<b>${i.value.toLocaleString("en-US")}</b>`, "")),
+    opsCard("✅ Listing đã đăng theo ngách", "Top 10 · số lần đã list sang shop (cả đội)",
+      opsBarList(topBy((n) => n.listed).map((n) => nItem(n, n.listed, `${n.listed} lần list · ${n.products} sp trong Hub`)), (i) => `<b>${i.value.toLocaleString("en-US")}</b>`, "Chưa ngách nào được list")),
+    opsCard("🏪 Số shop chơi theo ngách", "Top 10 · ngách nhiều shop cùng chơi = cạnh tranh nội bộ",
+      opsBarList(topBy((n) => n.shops.length).map((n) => nItem(n, n.shops.length, n.shops.map((s) => s.shop).join(", "))), (i) => `<b>${i.value}</b> shop`, "Chưa ngách nào gán shop")),
+  ].join("")}</div>` : "";
+  $("#nicheOverview").innerHTML = !niches.length ? '<div class="empty">Chưa có data ngách</div>' : charts
+    + '<div class="niche-grid">' + niches.map((n) => {
         const prev = (n.previews || []).length
-          ? n.previews.map((u) => `<div style="background-image:url('${escapeHtml(u)}')"></div>`).join("")
+          ? n.previews.map((u) => `<div style="background-image:url('${escapeHtml(shThumb(u))}')"></div>`).join("")
           : '<div style="display:flex;align-items:center;justify-content:center;color:var(--text-mute);font-size:0.8rem;flex:1;">(no image)</div>';
         return `<div class="niche-card" onclick="enterNicheDetail('${escapeHtml(n.niche)}')">
           <div class="niche-prev">${prev}</div>
@@ -5155,8 +5669,7 @@ function renderNicheOverview(d) {
             <div class="niche-shops">${n.shops.length ? n.shops.map(pill).join("") : '<span style="color:var(--text-mute);font-size:0.78rem;">chưa gán shop</span>'}</div>
           </div>
         </div>`;
-      }).join("") + "</div>"
-    : '<div class="empty">Chưa có data ngách</div>';
+      }).join("") + "</div>";
 }
 async function enterNicheDetail(niche) {
   $("#nicheOverview").style.display = "none";
@@ -5175,7 +5688,7 @@ async function enterNicheDetail(niche) {
       ? '<div class="prod-grid">' + ps.map((p, i) => {
           const url = escapeHtml(p.url || "");
           return `<div class="prod-card" ${url ? `onclick="window.open('${url}','_blank')"` : ""}>
-            <div class="pimg" style="${p.image ? `background-image:url('${escapeHtml(p.image)}')` : ""}">
+            <div class="pimg" style="${p.image ? `background-image:url('${escapeHtml(shThumb(p.image, "405x552"))}')` : ""}">
               <span class="prank">#${i + 1}</span>
               ${p.listed ? '<span class="prank" style="left:auto;right:6px;background:rgba(34,197,94,.85);">✓ listed</span>' : ""}
             </div>
@@ -5194,7 +5707,7 @@ function exitNicheDetail() {
   if (dt) dt.style.display = "none";
 }
 
-// Upload 1 mảng cookie (1 file export). targetUid: ép vào 1 tài khoản cụ thể (nút Thay cookie).
+// Upload 1 mảng cookie (1 file export). targetUid: ép vào 1 tài khoản cụ thể (nút Làm mới cookie).
 async function uploadCookieArray(arr, sourceLabel, targetUid) {
   const res = await fetch("/admin/api/cookie", {
     method: "POST",
@@ -5204,7 +5717,10 @@ async function uploadCookieArray(arr, sourceLabel, targetUid) {
   const data = await res.json();
   if (!res.ok) throw new Error(`${sourceLabel}: ${data.error}`);
   const syncWarn = data.shopSyncError ? ` (sync shop lỗi: ${data.shopSyncError})` : ` — ${data.shopCount} shop`;
-  toast(`✓ ${sourceLabel} → ${data.label}${syncWarn}`);
+  // Kéo file vào ô chung nhưng nhận ra là cookie của tài khoản có sẵn (khớp shop) → nói rõ đã làm mới, không tạo mới.
+  toast(data.matchedBy
+    ? `✓ Nhận ra cookie của "${data.matchedBy.label}" (khớp ${data.matchedBy.hit}/${data.matchedBy.total} shop) → đã làm mới cookie`
+    : `✓ ${sourceLabel} → ${data.label}${syncWarn}`);
 }
 
 async function handleCookieFiles(files) {

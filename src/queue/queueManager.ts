@@ -2,14 +2,16 @@ import * as fs from "fs-extra";
 import * as path from "path";
 import { workerConfig, isAutoCronOn } from "../config/appConfig";
 import { listing4sellerShein } from "../core/listing4sellerShein";
+import { listing4sellerApi } from "../core/listing4sellerApi";
 import { getProfileNameFromFolder } from "../core/steps/randomUtils";
 import { workerState } from "../state/workerState";
 import { refreshQueueSnapshot } from "../state/queueState";
 import { historyStore } from "../state/historyStore";
 import { notifyFail } from "../services/notification/telegram";
 import { getAllUsersForCron, getAllUserDirs, UserDirs, getEffectiveSettings } from "../state/userDirs";
-import { pushRegistryForListingJson } from "../core/crmSync";
 import { loadAdminConfig } from "../adminConfig";
+import { shopBlockMap, isShopBlocked } from "../core/opsBoard";
+import { deadCookieForShop, isCookieDeadError } from "../state/cookieHealth";
 
 const LAST_FOLDER_FILE_NAME = ".last_folder.txt";
 
@@ -103,9 +105,12 @@ export const processFile = async (
   const claimedPath = absJsonPath + ".processing";
   try {
     await fs.move(absJsonPath, claimedPath, { overwrite: false });
-  } catch {
+  } catch (claimErr: any) {
+    // In KÈM lỗi thật: ENOENT = sai đường dẫn/file không có (khác hẳn "bị tranh mất"), EPERM/EBUSY
+    // = file đang bị khoá. Trước đây chỉ in "đã bị tiến trình khác xử lý" nên sai đường dẫn cũng
+    // hiện y như tranh chấp, mất công đi tìm tiến trình không tồn tại.
     console.warn(
-      `⏭️ [${owner}/${folderName}] Không claim được "${fileName}" (đã bị tiến trình khác xử lý hoặc đã move). Skip.`
+      `⏭️ [${owner}/${folderName}] Không claim được "${fileName}" (${claimErr?.code ?? "?"}: ${String(claimErr?.message ?? claimErr).slice(0, 120)}). Skip.`
     );
     folderLocks.delete(key);
     runningCount--;
@@ -127,11 +132,35 @@ export const processFile = async (
       // Owner có thể dạng "userA,userB" do dedup baseDir → lấy user đầu.
       const primaryOwner = owner.split(",")[0];
       const effective = await getEffectiveSettings(primaryOwner);
-      await listing4sellerShein(claimedPath, {
-        cookieUser: primaryOwner,
-        headless: effective.headless,
-        pricing: effective.pricing,
-      });
+      const viaPlaywright = () =>
+        listing4sellerShein(claimedPath, {
+          cookieUser: primaryOwner,
+          headless: effective.headless,
+          pricing: effective.pricing,
+        });
+
+      if (workerConfig().listingApi === false) {
+        await viaPlaywright();
+      } else {
+        // API TRƯỚC (~27s vs ~135s). Lỗi API → rơi về Playwright để không mất listing.
+        try {
+          const r = await listing4sellerApi(claimedPath, {
+            cookieUser: primaryOwner,
+            pricing: effective.pricing,
+          });
+          console.log(`⚡ [${owner}/${folderName}] API: listingId=${r.listingId}`);
+        } catch (apiErr: any) {
+          const msg = String(apiErr?.message ?? apiErr);
+          // File cào hỏng (thiếu product_name/category, thiếu colors/sizes) → Playwright cũng
+          // hỏng y vậy, fallback chỉ phí thêm ~2 phút rồi vẫn vào Fail. Ném luôn.
+          // Cookie chết → Playwright dùng cùng cookie, cũng chết → ném luôn (xử lý ở nhánh fail).
+          if (/JSON hỏng|Thiếu colors\/sizes/i.test(msg) || isCookieDeadError(apiErr)) throw apiErr;
+          console.warn(
+            `⚠️ [${owner}/${folderName}] API lỗi → fallback Playwright: ${msg.slice(0, 140)}`
+          );
+          await viaPlaywright();
+        }
+      }
       publishOk = true; // publish thành công trên 4Seller
     } catch (err: any) {
       publishOk = false;
@@ -158,16 +187,6 @@ export const processFile = async (
       }
       console.log(`✅ [${owner}/${folderName}] Hoàn thành: ${fileName}`);
 
-      // Đẩy registry lên CRM (agent bridge) — fire-and-forget, lỗi không ảnh hưởng flow.
-      void (async () => {
-        try {
-          const movedPath = path.join(successDir, fileName);
-          const src = (await fs.pathExists(movedPath)) ? movedPath : claimedPath;
-          const data = JSON.parse(await fs.readFile(src, "utf-8"));
-          await pushRegistryForListingJson(data, folderName, profile);
-        } catch { /* bridge tắt / file đã bị dọn — snapshot cron sẽ bù */ }
-      })();
-
       const finishedAt = Date.now();
       await historyStore.add({
         file: fileName,
@@ -179,6 +198,13 @@ export const processFile = async (
         durationMs: finishedAt - startedAt,
       });
       // Không bắn Telegram khi success — chỉ notify khi fail (user request)
+    } else if (isCookieDeadError(publishError)) {
+      // Cookie 4Seller hết hạn: KHÔNG phải lỗi listing → trả file về hàng chờ (tick tự bỏ qua
+      // shop của tài khoản chết cho tới khi import cookie mới), không vào Fail, không bắn Telegram.
+      await fs.move(claimedPath, absJsonPath, { overwrite: false }).catch((e) =>
+        console.error(`⚠️ [${owner}/${folderName}] Không trả được "${fileName}" về hàng chờ:`, e?.message ?? e)
+      );
+      console.warn(`🍪 [${owner}/${folderName}] Cookie 4Seller hết hạn → "${fileName}" trả về hàng chờ`);
     } else {
       // Listing thật sự fail
       const errorMessage = publishError?.message ?? String(publishError);
@@ -237,7 +263,10 @@ const processOldestInFolder = async (
   await processFile(baseDir, folderName, oldestFile, owner);
 };
 
-const tickForUser = async (dirs: UserDirs, slotsAvailable: number): Promise<number> => {
+// Log shop bị chặn tối đa 1 lần/30 phút/shop (tick 30s → không spam log).
+const blockedLoggedAt = new Map<string, number>();
+
+const tickForUser = async (dirs: UserDirs, slotsAvailable: number, blocked: Map<string, string>): Promise<number> => {
   const { username, baseSheinAutoDir, profiles } = dirs;
   if (slotsAvailable <= 0) return 0;
   if (!(await fs.pathExists(baseSheinAutoDir))) return 0;
@@ -283,6 +312,16 @@ const tickForUser = async (dirs: UserDirs, slotsAvailable: number): Promise<numb
     if (folderLocks.has(key)) continue;
     const oldest = await getOldestJsonFile(path.join(baseSheinAutoDir, f));
     if (!oldest) continue;
+    // Shop hết hạn mức listing / bị khoá đăng / treo tiền → đăng vào chỉ ra draft Day_Limit
+    // (tốn AI + upload vô ích). Để file NẰM CHỜ: shop có chỗ lại thì tự chạy tiếp.
+    const why = isShopBlocked(blocked, f) ?? ((await deadCookieForShop(f)) ? "cookie 4Seller hết hạn — import lại ở tab Cookie" : null);
+    if (why) {
+      if (Date.now() - (blockedLoggedAt.get(f) ?? 0) > 30 * 60_000) {
+        console.log(`⛔ [${username}/${f}] tạm không đăng: ${why} — file giữ nguyên trong hàng chờ`);
+        blockedLoggedAt.set(f, Date.now());
+      }
+      continue;
+    }
 
     lastPicked = f;
     spawned++;
@@ -320,9 +359,10 @@ export const runQueueManagerOnce = async (): Promise<void> => {
   }
 
   let slotsLeft = concurrency - runningCount;
+  const blocked = await shopBlockMap(); // cache 10p, trả ngay — không làm chậm tick
   for (const dirs of allDirs) {
     if (slotsLeft <= 0) break;
-    const spawned = await tickForUser(dirs, slotsLeft);
+    const spawned = await tickForUser(dirs, slotsLeft, blocked);
     slotsLeft -= spawned;
   }
 };

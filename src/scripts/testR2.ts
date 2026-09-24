@@ -4,7 +4,7 @@ import fs from "fs";
 import path from "path";
 import assert from "assert";
 import { uploadToR2 } from "../utils/uploadToR2";
-import { verifyImageUrl } from "../utils/uploadToImgbb";
+import { verifyImageUrl } from "../utils/hostImage";
 
 (async () => {
   // PNG 1x1 đỏ hợp lệ

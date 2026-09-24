@@ -9,6 +9,8 @@
  */
 import { getShopList, getDraftPage, batchPublish, type FourSellerShop } from "../services/fourseller/client";
 import { publishConfig } from "../config/appConfig";
+import { listAccounts } from "../state/fourSellerAccounts";
+import { shopBlockMap, isShopBlocked } from "./opsBoard";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -22,6 +24,19 @@ export function randMs(minMin: number, maxMin: number): number {
 function jitterMs(minSec: number, maxSec: number): number {
   return Math.floor((minSec + Math.random() * Math.max(0, maxSec - minSec)) * 1000);
 }
+
+/**
+ * Shop đã đụng TRẦN LISTING (errMsg Listing.Back.Day_Limit) thì retry bao nhiêu lần cũng vô ích:
+ * đo 17/09 TN Scan43 (active=101, 37 draft) nhận batchPublish suốt 25 phút mà active đứng im,
+ * trong khi TaiAri (95) lên 99 và Urban Noble (97) lên 101. Trần KHÔNG đồng nhất 100
+ * (Calmwell 411, MaeBLa 200) nên không hardcode ngưỡng được — thay vào đó nhận diện bằng
+ * dấu hiệu thực nghiệm: shop mà MỌI draft đều publish_failed (không có draft mới nào) coi như
+ * đã đầy, chỉ thử lại mỗi RETRY_COLD_MS thay vì mỗi cycle 25-35 phút.
+ * Có draft mới về → publish ngay, không dính backoff.
+ */
+const RETRY_COLD_MS = 6 * 3_600_000;
+// ponytail: Map in-memory, mất khi restart — chấp nhận, restart hiếm hơn nhiều so với cycle.
+const coldShop = new Map<string, number>();
 
 export interface DripOptions {
   cookieUser: string;
@@ -49,21 +64,47 @@ export async function runDripCycle(opts: DripOptions): Promise<DripCycleResult> 
   let published = 0;
   let remaining = 0;
   const perShop: Record<string, number> = {};
+  const blocked = await shopBlockMap();
 
   for (const shop of list) {
+    // Biết chắc shop hết chỗ / bị khoá đăng (publish_limit) → khỏi thử. coldShop bên dưới vẫn lo
+    // các shop chưa có dữ liệu hạn mức.
+    const why = isShopBlocked(blocked, shop.shopName);
+    if (why) { log(`  ⛔ ${shop.shopName}: ${why} → bỏ qua`); continue; }
     try {
       // 4Seller trả data=null khi shop không còn draft (hoặc shop đóng) → coi như 0 draft.
       const resp = await getDraftPage(opts.cookieUser, { shopId: shop.id });
       const all = (resp?.records ?? []) as any[];
-      // CHỈ publish draft đang "publishable". Draft "publishing" (đang publish dở) → batch-publish
-      // báo "status does not support modification" → nếu lấy nhầm sẽ KẸT vĩnh viễn ở draft đầu.
-      const drafts = all.filter((d) => d.publishStatus === "publishable" || !d.publishStatus);
+      // Nhặt cả "publishable" LẪN "publish_failed": đa số publish_failed là
+      // Listing.Back.Day_Limit (hết hạn mức đăng/ngày của shop) — hôm sau đăng lại được.
+      // Trước đây bộ lọc chỉ lấy "publishable" nên đám này KHÔNG AI nhặt lại, đọng vĩnh viễn
+      // (đo 17/09: 183 draft kẹt trên 2 tài khoản, 0 cái drip lấy được).
+      // Đã verify batchPublish CHẤP NHẬN chúng: publish_failed → publishing.
+      // LOẠI "publishing" (đang publish dở → batch-publish báo "status does not support
+      // modification", lấy nhầm sẽ KẸT vĩnh viễn ở draft đầu) và "unpublishable" (thiếu dữ
+      // liệu, đăng lại vẫn hỏng nên chỉ quay vòng vô ích).
+      const SKIP = new Set(["publishing", "unpublishable", "normal"]);
+      const drafts = all.filter((d) => !SKIP.has(String(d.publishStatus ?? "")));
       if (!drafts.length) {
-        const stuck = all.filter((d) => d.publishStatus === "publishing").length;
-        if (stuck) log(`  ⏳ ${shop.shopName}: ${stuck} draft đang 'publishing', 0 publishable → bỏ qua cycle`);
+        const busy = all.filter((d) => d.publishStatus === "publishing").length;
+        if (busy) log(`  ⏳ ${shop.shopName}: ${busy} draft đang 'publishing' → bỏ qua cycle`);
         continue;
       }
-      const batch = drafts.slice(0, per);
+      // Draft MỚI (chưa từng fail) ưu tiên đăng trước hàng tồn.
+      const fresh = drafts.filter((d) => d.publishStatus !== "publish_failed");
+      if (!fresh.length) {
+        const key = `${opts.cookieUser}/${shop.id}`;
+        const last = coldShop.get(key) ?? 0;
+        const waited = Date.now() - last;
+        if (waited < RETRY_COLD_MS) {
+          log(`  ❄️ ${shop.shopName}: ${drafts.length} draft toàn publish_failed (nghi đầy trần) → chờ ${Math.round((RETRY_COLD_MS - waited) / 3600_000)}h nữa`);
+          continue;
+        }
+        coldShop.set(key, Date.now());
+      }
+      const retryN = drafts.filter((d) => d.publishStatus === "publish_failed").length;
+      if (retryN) log(`  ↻ ${shop.shopName}: ${retryN}/${drafts.length} draft là publish_failed → đăng lại`);
+      const batch = [...fresh, ...drafts.filter((d) => d.publishStatus === "publish_failed")].slice(0, per);
       const ids = batch.map((d) => d.id);
       await batchPublish(opts.cookieUser, ids as any);
       published += ids.length;
@@ -94,12 +135,32 @@ export function scheduleDripPublisher(): void {
     running = true;
     try {
       console.log("[drip] ▶ cycle bắt đầu…");
-      const r = await runDripCycle({
-        cookieUser: cfg.cookieUser,
-        perShopPerCycle: cfg.perShopPerCycle,
-        interShopJitterSec: [cfg.interShopJitterMinSec, cfg.interShopJitterMaxSec],
-        onLog: (m) => console.log("[drip]", m),
-      });
+      // Duyệt MỌI tài khoản 4Seller, không chỉ cfg.cookieUser: trước đây drip chạy duy nhất
+      // 1 principal nên shop của các tài khoản khác không ai publish (đo 17/09: 164/183 draft
+      // kẹt nằm ở acct 53770051197 — ngoài tầm với của drip dù bộ lọc đã sửa).
+      // cfg.cookieUser chỉ còn là fallback khi chưa có account nào lưu cookie.
+      let principals = [cfg.cookieUser];
+      try {
+        const accs = await listAccounts();
+        if (accs.length) principals = accs.map((a) => `acct:${a.uid}`);
+      } catch (e: any) {
+        console.warn("[drip] ⚠ Không đọc được danh sách account → dùng cfg.cookieUser:", e?.message ?? e);
+      }
+      const r = { published: 0, remaining: 0 };
+      for (const principal of principals) {
+        if (principals.length > 1) console.log(`[drip] ── ${principal}`);
+        const one = await runDripCycle({
+          cookieUser: principal,
+          perShopPerCycle: cfg.perShopPerCycle,
+          interShopJitterSec: [cfg.interShopJitterMinSec, cfg.interShopJitterMaxSec],
+          onLog: (m) => console.log("[drip]", m),
+        }).catch((e: any) => {
+          console.error(`[drip] ✗ ${principal}: ${e?.message ?? e}`);
+          return { published: 0, remaining: 0, perShop: {} };
+        });
+        r.published += one.published;
+        r.remaining += one.remaining;
+      }
       console.log(`[drip] cycle xong: publish ${r.published}, còn ~${r.remaining} draft`);
       if (r.published === 0 && r.remaining === 0) {
         // Hết draft mọi shop → KHÔNG dừng vĩnh viễn (crawl/list vẫn đổ draft mới về).

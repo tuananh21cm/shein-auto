@@ -118,7 +118,7 @@ export const refreshAccountShops = async (uid: string): Promise<string[]> => {
 export const saveAccountCookie = async (
   parsed: any,
   opts?: { targetUid?: string }
-): Promise<{ account: FourSellerAccount; shopSyncError?: string }> => {
+): Promise<{ account: FourSellerAccount; shopSyncError?: string; matchedBy?: { label: string; hit: number; total: number } }> => {
   const cookies = normalizeCookieArray(parsed);
   if (cookies.length === 0) throw new Error("File cookie rỗng hoặc sai format (cần array cookie export)");
   const hasFourSeller = cookies.some((c) => String(c?.domain || "").includes("4seller.com"));
@@ -127,11 +127,21 @@ export const saveAccountCookie = async (
   // targetUid: nút "Thay cookie" cho 1 tài khoản CỤ THỂ → ép cookie mới vào đúng tài khoản đó,
   // KỂ CẢ khi cookie mới thiếu `uid` hoặc userToken đổi (session mới) → tránh tạo tài khoản trùng.
   const detected = extractAccountUid(cookies);
-  const uid = opts?.targetUid || detected;
-  if (!uid) throw new Error("Không detect được tài khoản (thiếu cookie `uid`/`userToken`). Bấm '🔄 Thay cookie' trên đúng tài khoản để gán thẳng.");
+  const existing = (await readIndex()).accounts;
+  // Kéo file vào ô chung mà `uid` không khớp tài khoản nào (export thiếu cookie `uid` → hash
+  // userToken đổi mỗi lần login; hoặc login bằng tài khoản con uid khác) → trước đây sinh tài
+  // khoản TRÙNG y hệt shop. Giờ hỏi 4Seller danh sách shop của cookie mới rồi so shop.
+  let matchedBy: { label: string; hit: number; total: number } | undefined;
+  let uid = opts?.targetUid || (detected && existing.some((a) => a.uid === detected) ? detected : null);
+  if (!uid) {
+    const m = await matchAccountByShops(cookies, existing);
+    if (m) { uid = m.uid; matchedBy = { label: m.label, hit: m.hit, total: m.total }; }
+    else uid = detected;
+  }
+  if (!uid) throw new Error("Không detect được tài khoản (thiếu cookie `uid`/`userToken`). Bấm '🔄 Làm mới cookie' trên đúng tài khoản để gán thẳng.");
 
-  // Đảm bảo file có cookie `uid` = uid tài khoản (API cần). Khi ép targetUid → override luôn
-  // để nhất quán (cookie session mới có thể thiếu uid hoặc mang uid khác).
+  // Đảm bảo file có cookie `uid` (API cần). Nút "Làm mới cookie" (targetUid) → ép đúng uid tài
+  // khoản. Gộp theo shop → KHÔNG sửa uid có sẵn (tài khoản con có uid riêng, sửa là hỏng cookie).
   const dom = cookies.find((c) => String(c?.domain || "").includes("4seller.com"))?.domain || ".4seller.com";
   const uidCookie = cookies.find((c) => c?.name === "uid");
   if (uidCookie) { if (opts?.targetUid) uidCookie.value = String(uid); }
@@ -166,8 +176,48 @@ export const saveAccountCookie = async (
   } catch (e: any) {
     shopSyncError = e?.message ?? String(e);
   }
-  return { account: acc, shopSyncError };
+  return { account: acc, shopSyncError, matchedBy };
 };
+
+/** Lọc shop TikTok từ get-tidy-list (giống refreshAccountShops). */
+const tiktokShops = (records: { platform?: string; shopName: string }[]): string[] => {
+  const t = records.filter((s) => !s.platform || /tiktok/i.test(String(s.platform))).map((s) => s.shopName).filter(Boolean);
+  return t.length ? t : records.map((s) => s.shopName).filter(Boolean);
+};
+
+/**
+ * Cookie mới (chưa ghi ổ) thuộc tài khoản có sẵn nào? Lấy shop list bằng cookie trong RAM, tài
+ * khoản nào chung ≥ 50% shop của cookie mới → là nó. Cookie chết → throw (không sinh tài khoản rác).
+ * Lỗi mạng → null (rơi về cách nhận diện cũ theo uid).
+ */
+async function matchAccountByShops(
+  cookies: any[],
+  accounts: FourSellerAccount[]
+): Promise<{ uid: string; label: string; hit: number; total: number } | null> {
+  if (!accounts.length) return null;
+  const { setExtCookie, clearExtCookie } = await import("../services/fourseller/client");
+  const { isCookieDeadError } = await import("./cookieHealth");
+  const key = `probe-${crypto.randomBytes(6).toString("hex")}`;
+  let shops: string[];
+  try {
+    setExtCookie(key, JSON.stringify(cookies));
+    shops = tiktokShops((await getShopList(`ext:${key}`))?.records ?? []);
+  } catch (e: any) {
+    if (isCookieDeadError(e)) throw new Error("Cookie này đã HẾT HẠN (4Seller từ chối) — không lưu. Export lại cookie sau khi đăng nhập 4Seller.");
+    console.warn(`⚠️ Không lấy được shop của cookie mới để so tài khoản: ${e?.message ?? e}`);
+    return null;
+  } finally {
+    clearExtCookie(key);
+  }
+  if (!shops.length) return null;
+  const mine = new Set(shops.map(normShopName));
+  let best: { uid: string; label: string; hit: number; total: number } | null = null;
+  for (const a of accounts) {
+    const hit = a.shops.filter((s) => mine.has(normShopName(s))).length;
+    if (hit * 2 >= mine.size && hit > (best?.hit ?? 0)) best = { uid: a.uid, label: a.email || a.label, hit, total: mine.size };
+  }
+  return best;
+}
 
 export const setAccountLabel = async (uid: string, label: string): Promise<void> => {
   const idx = await readIndex();

@@ -98,9 +98,25 @@ const THEMES = [
   },
 ];
 
-const generateSizeChartHtml = (data: any[], headers: string[], unit: string = "inch") => {
+export const generateSizeChartHtml = (
+  data: any[],
+  headers: string[],
+  unit: string = "inch",
+  /** Cạnh ảnh vuông (px). Ô Size Chart của TikTok cần ảnh VUÔNG. */
+  canvas: number = 900
+) => {
+  const card = canvas - 70; // chừa lề quanh thẻ
   const rowCount = data.length;
-  const rowPadding = rowCount <= 6 ? 20 : rowCount <= 10 ? 14 : 9;
+  // Ảnh cố định 900x900 và thẻ có overflow:hidden → phải CO cỡ chữ theo SỐ DÒNG, không thì
+  // bảng dài bị XÉN MẤT dòng cuối (đo thật: 14 dòng ở cỡ cũ mất 3 dòng + mất cả dòng chân).
+  // Trần theo SỐ CỘT giữ cho không tràn ngang.
+  const cols = headers.length || 1;
+  const k = canvas / 900; // hệ số scale theo khổ ảnh (900 → 1, không đổi hành vi cũ)
+  const AVAIL = card - Math.round(260 * k); // chỗ cho bảng (header ~200 + footer ~60, scale theo khổ)
+  const rowH = Math.floor(AVAIL / (rowCount + 1)); // +1 = hàng tiêu đề
+  const capByCols = Math.round((cols <= 4 ? 34 : cols === 5 ? 30 : cols === 6 ? 26 : cols === 7 ? 22 : 19) * k);
+  const numFont = Math.max(13, Math.min(capByCols, Math.floor(rowH * 0.52)));
+  const rowPadding = Math.max(4, Math.floor((rowH - Math.round(numFont * 1.3)) / 2));
 
   const t = THEMES[Math.floor(Math.random() * THEMES.length)];
   console.log(`🎨 Size Chart theme: ${t.name}`);
@@ -108,29 +124,24 @@ const generateSizeChartHtml = (data: any[], headers: string[], unit: string = "i
   return `<!DOCTYPE html>
 <html><head><meta charset="UTF-8"><style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
-body { width: 900px; height: 900px; font-family: 'Georgia', 'Times New Roman', serif; background: ${t.bodyBg}; display: flex; align-items: center; justify-content: center; }
-.card { width: 820px; height: 820px; background: ${t.cardBg}; border: 1.5px solid ${t.cardBorder}; border-radius: 2px; display: flex; flex-direction: column; position: relative; overflow: hidden; box-shadow: 0 4px 40px ${t.shadowColor}, inset 0 0 0 6px ${t.rowEvenBg}; }
-.card::before, .card::after { content: ''; position: absolute; width: 28px; height: 28px; border-color: ${t.cornerColor}; border-style: solid; z-index: 2; }
-.card::before { top: 12px; left: 12px; border-width: 2px 0 0 2px; }
-.card::after  { bottom: 12px; right: 12px; border-width: 0 2px 2px 0; }
-.header { background: ${t.headerBg}; padding: 34px 60px 28px; text-align: center; flex-shrink: 0; position: relative; }
-.header .gold-line { position: absolute; bottom: 0; left: 0; right: 0; height: 2px; background: linear-gradient(90deg, transparent 0%, ${t.accentColor} 30%, ${t.accentMid} 50%, ${t.accentColor} 70%, transparent 100%); }
-.header .label { color: ${t.labelColor}; font-size: 11px; letter-spacing: 7px; text-transform: uppercase; font-family: Arial, sans-serif; font-weight: 400; margin-bottom: 10px; }
-.header h1 { color: ${t.titleColor}; font-size: 40px; font-weight: 700; letter-spacing: 10px; text-transform: uppercase; line-height: 1; }
-.header .unit { color: ${t.unitColor}; font-size: 12px; letter-spacing: 3px; margin-top: 12px; text-transform: uppercase; font-family: Arial, sans-serif; }
-.table-wrap { flex: 1; display: flex; flex-direction: column; justify-content: center; padding: 0 52px 24px; }
+body { width: ${canvas}px; height: ${canvas}px; font-family: -apple-system, "Segoe UI", Roboto, Arial, Helvetica, sans-serif; background: ${t.bodyBg}; display: flex; align-items: center; justify-content: center; }
+.card { width: ${card}px; height: ${card}px; background: ${t.cardBg}; border: 2px solid ${t.cardBorder}; border-radius: 6px; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 4px 30px ${t.shadowColor}; }
+.header { background: ${t.headerBg}; padding: ${Math.round(30 * k)}px ${Math.round(40 * k)}px ${Math.round(26 * k)}px; text-align: center; flex-shrink: 0; }
+.header .label { color: ${t.labelColor}; font-size: ${Math.round(13 * k)}px; letter-spacing: 3px; text-transform: uppercase; font-weight: 600; margin-bottom: 8px; }
+.header h1 { color: ${t.titleColor}; font-size: ${Math.round(40 * k)}px; font-weight: 800; letter-spacing: 1px; text-transform: uppercase; line-height: 1.1; }
+.header .unit { color: ${t.unitColor}; font-size: ${Math.round(15 * k)}px; font-weight: 600; letter-spacing: 1px; margin-top: 10px; text-transform: uppercase; }
+.table-wrap { flex: 1; display: flex; flex-direction: column; justify-content: center; padding: 0 26px 20px; }
 table { width: 100%; border-collapse: collapse; table-layout: fixed; }
-thead tr { border-bottom: 2px solid ${t.thBorder}; }
-th { color: ${t.thColor}; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 3px; padding: ${rowPadding}px 8px; text-align: center; font-family: Arial, sans-serif; }
-tbody tr { border-bottom: 1px solid ${t.rowEvenBg.replace("0.06", "0.25")}; }
+thead tr { border-bottom: 3px solid ${t.thBorder}; }
+th { color: ${t.thColor}; font-size: ${Math.min(Math.round(15 * k), numFont)}px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; padding: ${rowPadding}px 6px; text-align: center; }
+tbody tr { border-bottom: 1px solid ${t.rowEvenBg.replace("0.06", "0.35")}; }
 tbody tr:nth-child(even) { background: ${t.rowEvenBg}; }
 tbody tr:last-child { border-bottom: none; }
-td { color: ${t.tdColor}; font-size: 20px; font-weight: 500; padding: ${rowPadding}px 8px; text-align: center; letter-spacing: 0.5px; }
-td:first-child { color: ${t.tdFirst}; font-size: 15px; font-family: Arial, sans-serif; letter-spacing: 1.5px; font-weight: 600; }
-td:nth-child(2) { color: ${t.tdSecond}; font-weight: 800; font-size: 21px; letter-spacing: 2.5px; }
-.footer { padding: 0 60px 28px; text-align: center; flex-shrink: 0; }
-.footer .divider { width: 50px; height: 1px; background: linear-gradient(90deg, transparent, ${t.footerDivider}, transparent); margin: 0 auto 14px; }
-.footer p { color: ${t.footerText}; font-size: 11px; font-style: italic; letter-spacing: 0.5px; font-family: Arial, sans-serif; }
+td { color: ${t.tdColor}; font-size: ${numFont}px; font-weight: 700; padding: ${rowPadding}px 6px; text-align: center; font-variant-numeric: tabular-nums; }
+td:first-child { color: ${t.tdFirst}; font-size: ${Math.round(numFont * 0.8)}px; font-weight: 600; }
+td:nth-child(2) { color: ${t.tdSecond}; font-weight: 800; }
+.footer { padding: 0 40px 22px; text-align: center; flex-shrink: 0; }
+.footer p { color: ${t.footerText}; font-size: ${Math.round(13 * k)}px; font-weight: 500; }
 </style></head>
 <body>
   <div class="card">
@@ -138,7 +149,6 @@ td:nth-child(2) { color: ${t.tdSecond}; font-weight: 800; font-size: 21px; lette
       <div class="label">Measurements</div>
       <h1>Size Guide</h1>
       <div class="unit">Unit: ${unit}</div>
-      <div class="gold-line"></div>
     </div>
     <div class="table-wrap">
       <table>
@@ -152,7 +162,6 @@ td:nth-child(2) { color: ${t.tdSecond}; font-weight: 800; font-size: 21px; lette
       </table>
     </div>
     <div class="footer">
-      <div class="divider"></div>
       <p>* Please refer to the measurements above for the best fit.</p>
     </div>
   </div>
@@ -181,7 +190,10 @@ export const handleSizeChartUpload = async (page: any, jsonData: any): Promise<v
 
     if (chartRows && chartHeaders) {
       console.log(`🎨 Tạo ảnh từ JSON (ID: ${uniqueId})`);
-      const html = generateSizeChartHtml(chartRows, chartHeaders);
+      // LUÔN inch: scraper đã ép toggle SHEIN về inch (ensureInch) nên số trong bảng là inch;
+      // một số file (cào bằng addon) ghi nhầm `unit: "cm"` dù số vẫn là inch — tin theo field đó
+      // sẽ in sai đơn vị cho khách. Không đọc sc.unit.
+      const html = generateSizeChartHtml(chartRows, chartHeaders, "inch");
       await renderHtmlToPng(page, html, tempPath);
     } else if (jsonData.size_chart_img) {
       console.log("📸 Sử dụng ảnh base64 có sẵn...");

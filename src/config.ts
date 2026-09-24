@@ -11,9 +11,11 @@ const envHub = process.env.HUB_DIR?.trim() ?? "";
 export const config = {
   geminiApiKey: process.env.GEMINI_API_KEY ?? "",
   rapidApiKey: process.env.RAPIDAPI_KEY ?? "",
-  /** imgbb API key — host banner marketing để chèn vào mô tả (URL public). Lấy free tại imgbb.com/api. */
-  imgbbApiKey: process.env.IMGBB_API_KEY ?? "",
-  /** Nhiều key imgbb (xoay vòng né rate limit). Gộp IMGBB_API_KEYS (phẩy) + IMGBB_API_KEY, dedup. */
+  /**
+   * imgbb — ĐƯỜNG LUI host ảnh mô tả khi máy chưa cấu hình R2 (xem utils/hostImage).
+   * homie đã bỏ imgbb vì bên đó có R2; máy này chưa có, thiếu đường host là ảnh mô tả
+   * giữ nguyên .webp và TikTok chặn publish. Nhiều key cách nhau bằng dấu phẩy để xoay vòng.
+   */
   imgbbApiKeys: Array.from(
     new Set(
       [process.env.IMGBB_API_KEY ?? "", ...(process.env.IMGBB_API_KEYS ?? "").split(",")]
@@ -21,7 +23,7 @@ export const config = {
         .filter(Boolean)
     )
   ),
-  /** Cloudflare R2 — host ảnh chính (không rate limit); thiếu bất kỳ giá trị nào → dùng imgbb như cũ. */
+  /** Cloudflare R2 — host ảnh mô tả (không rate limit). Thiếu bất kỳ giá trị nào → rơi về imgbb. */
   r2AccountId: process.env.R2_ACCOUNT_ID?.trim() ?? "",
   r2AccessKey: process.env.R2_ACCESS_KEY_ID?.trim() ?? "",
   r2SecretKey: process.env.R2_SECRET_ACCESS_KEY?.trim() ?? "",

@@ -10,6 +10,7 @@
 import axios from "axios";
 import fs from "fs-extra";
 import path from "path";
+import { isCookieDeadError, markCookieAlive, markCookieDead } from "../../state/cookieHealth";
 
 const BASE_URL = "https://www.4seller.com";
 const PER_USER_COOKIE_DIR = path.resolve(process.cwd(), "data", "cookies");
@@ -80,6 +81,14 @@ async function getCookieHeader(principal: string): Promise<string> {
   return cookiesToHeader(cookies);
 }
 
+/** Ghi nhận sống/chết cookie tài khoản (chỉ principal "acct:<uid>") — xem state/cookieHealth. */
+function trackCookie(principal: string, data: any): void {
+  if (!principal.startsWith("acct:")) return;
+  const uid = principal.slice(5);
+  if (data?.code === 0) markCookieAlive(uid);
+  else if (isCookieDeadError(data?.msg ?? data?.messages)) markCookieDead(uid);
+}
+
 const COMMON_HEADERS = {
   "Content-Type": "application/json",
   Accept: "application/json, text/plain, */*",
@@ -89,7 +98,7 @@ const COMMON_HEADERS = {
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36",
 };
 
-async function fourSellerPost<T = any>(
+export async function fourSellerPost<T = any>(
   username: string,
   pathSeg: string,
   body: any,
@@ -110,6 +119,7 @@ async function fourSellerPost<T = any>(
     if (res.status !== 200) {
       throw new Error(`4Seller ${pathSeg} HTTP ${res.status}: ${JSON.stringify(res.data).slice(0, 200)}`);
     }
+    trackCookie(username, res.data);
     if (res.data?.code !== 0) {
       const msg = res.data?.msg ?? res.data?.messages ?? "Unknown error";
       throw new Error(`4Seller ${pathSeg} error: ${msg}`);
@@ -123,7 +133,7 @@ async function fourSellerPost<T = any>(
   }
 }
 
-async function fourSellerGet<T = any>(
+export async function fourSellerGet<T = any>(
   username: string,
   pathSeg: string
 ): Promise<T> {
@@ -137,6 +147,7 @@ async function fourSellerGet<T = any>(
     if (res.status !== 200) {
       throw new Error(`4Seller ${pathSeg} HTTP ${res.status}: ${JSON.stringify(res.data).slice(0, 200)}`);
     }
+    trackCookie(username, res.data);
     if (res.data?.code !== 0) {
       const msg = res.data?.msg ?? res.data?.messages ?? "Unknown error";
       throw new Error(`4Seller ${pathSeg} error: ${msg}`);

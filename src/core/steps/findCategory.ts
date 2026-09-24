@@ -56,7 +56,20 @@ export const findCategory = async (category: string): Promise<string> => {
   if (!mappingResult || !mappingResult.tiktok_category_path) {
     throw new Error(`findCategory thất bại: Gemini trả về null cho category "${category}"`);
   }
-  const mappedPath = mappingResult.tiktok_category_path.replace(/^"|"$/g, "");
+  let mappedPath = mappingResult.tiktok_category_path.replace(/^"|"$/g, "");
+  // AI hay "sửa" path (bỏ tiền tố "Women's", đổi dấu &…) → path KHÔNG có trong master list → API
+  // không khớp cây 4Seller → Fail, và bản sai bị CACHE nên mọi sp cùng category trượt theo (đo 25/09:
+  // "Women's Tops / Knitwear / Women's Sweaters" trong khi cây thật là "Women's Knitwear").
+  // → Ép về path master gần nhất trước khi cache; không ép được thì KHÔNG cache.
+  const all = tiktokCategories();
+  if (!all.includes(mappedPath)) {
+    const loose = (s: string) => s.toLowerCase().replace(/\b(women'?s|men'?s|ladies|girls|boys)\b/g, "").replace(/[^a-z0-9/]/g, "");
+    const want = loose(mappedPath);
+    const snapped = all.find((p) => loose(p) === want)
+      ?? (() => { const leaf = mappedPath.split(" / ").pop() || ""; const c = all.filter((p) => p.endsWith(" / " + leaf)); return c.length === 1 ? c[0] : undefined; })();
+    if (snapped) { console.warn(`🗺️ Category AI lệch master list → ép về: ${snapped}`); mappedPath = snapped; }
+    else { console.warn(`⚠️ Category AI không có trong master list, KHÔNG cache: ${mappedPath}`); return mappedPath; }
+  }
   console.log(`🗺️ Category mapped: ${mappedPath}`);
   await geminiCache.setCategory(category, mappedPath);
   return mappedPath;

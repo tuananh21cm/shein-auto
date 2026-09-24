@@ -42,7 +42,14 @@ const resolveCategory = async (principal: string, shopId: number, pathStr: strin
     const key = `${shopId}:${parentId}`;
     let list = catCache.get(key);
     if (!list) { list = await getCategoryList(principal, parentId, shopId); catCache.set(key, list); }
+    // Khớp chính xác trước; không có thì bỏ tiền tố giới tính rồi so lại ("Knitwear" ≈ "Women's Knitwear").
+    // AI hay trả path lệch tiền tố so với cây thật (đo 25/09: 2 listing FLASH88 vào Fail vì "Knitwear").
+    const loose = (s: string) => norm(s.replace(/\b(women'?s|men'?s|ladies|girls|boys)\b/gi, ""));
     node = list.find((c) => norm(c.categoryName) === norm(seg)) ?? null;
+    if (!node) {
+      const cands = list.filter((c) => loose(c.categoryName) === loose(seg));
+      if (cands.length === 1) { node = cands[0]; console.warn(`📂 [API] category "${seg}" → khớp nới lỏng "${node.categoryName}"`); }
+    }
     if (!node) throw new Error(`Category không khớp cây 4Seller: "${seg}" trong "${pathStr}"`);
     ids.push(String(node.categoryId)); names.push(node.categoryName); parentId = String(node.categoryId);
   }

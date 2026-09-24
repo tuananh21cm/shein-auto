@@ -158,7 +158,10 @@ export const processFile = async (
           console.warn(
             `⚠️ [${owner}/${folderName}] API lỗi → fallback Playwright: ${msg.slice(0, 140)}`
           );
-          await viaPlaywright();
+          // Playwright cũng hỏng → ghi CẢ lỗi API vào Fail/history. Trước chỉ còn lỗi Playwright
+          // ("Cookie hết hạn — redirect login") nên không biết vì sao API trượt (đo 25/09).
+          try { await viaPlaywright(); }
+          catch (pwErr: any) { throw new Error(`API: ${msg.slice(0, 200)} → Playwright: ${String(pwErr?.message ?? pwErr).slice(0, 200)}`); }
         }
       }
       publishOk = true; // publish thành công trên 4Seller

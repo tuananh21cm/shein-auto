@@ -50,13 +50,26 @@ export const findCategory = async (category: string): Promise<string> => {
     return cached;
   }
 
-  const shortlist = shortlistCategories(category, tiktokCategories());
+  // Segment CUỐI của category SHEIN là TÊN SẢN PHẨM (SEO dài: "…Simple Sweater, Casual Graphic
+  // Everyday…") → chấm điểm theo từ trùng bị kéo về đồ văn phòng/học sinh, shortlist KHÔNG còn
+  // dòng knitwear nào, AI bị ép chọn sai với confidence 0.15 (đo 25/09: áo len FLASH88 → "School &
+  // Educational Supplies"). Chỉ lấy các segment danh mục thật để rút shortlist.
+  const segs = category.split(" / ").map((s) => s.trim());
+  const catOnly = segs.length > 1 && segs[segs.length - 1].split(/\s+/).length >= 5 ? segs.slice(0, -1).join(" / ") : category;
+  const shortlist = shortlistCategories(catOnly, tiktokCategories());
   console.log(`🗂️ Category shortlist: ${shortlist.length}/${tiktokCategories().length} leaf gửi Gemini`);
   const mappingResult = await mapCategoryToTikTok(category, shortlist);
   if (!mappingResult || !mappingResult.tiktok_category_path) {
     throw new Error(`findCategory thất bại: Gemini trả về null cho category "${category}"`);
   }
   let mappedPath = mappingResult.tiktok_category_path.replace(/^"|"$/g, "");
+  // AI tự báo không chắc (shortlist không có lựa chọn đúng) → dùng tạm nhưng KHÔNG cache,
+  // để lần sau còn cơ hội map lại thay vì đóng băng kết quả sai.
+  const conf = Number(mappingResult.confidence_score);
+  if (Number.isFinite(conf) && conf < 0.5) {
+    console.warn(`⚠️ Category AI confidence ${conf} < 0.5 → KHÔNG cache: ${mappedPath}`);
+    return mappedPath;
+  }
   // AI hay "sửa" path (bỏ tiền tố "Women's", đổi dấu &…) → path KHÔNG có trong master list → API
   // không khớp cây 4Seller → Fail, và bản sai bị CACHE nên mọi sp cùng category trượt theo (đo 25/09:
   // "Women's Tops / Knitwear / Women's Sweaters" trong khi cây thật là "Women's Knitwear").

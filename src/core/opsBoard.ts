@@ -223,6 +223,10 @@ export function blockReason(r: HealthRow): string | null {
   // on_hold $0), mà shop "Order penalties" vẫn đăng được — đo 21/09: 20 listing đổ vào 654
   // (payout_frozen=true) lên 4 active + 12 đang duyệt. Chặn theo cờ này sẽ ngừng oan 18 shop.
   // Cờ vẫn hiện làm nhãn cảnh báo trên màn Vận hành.
+  // "Shop closed" thì TikTok từ chối mọi listing (Listing.Back.Shop_Inactive) — đo 25/09: 14 listing
+  // đổ vào TA Scan 651 (CRM ghi closed từ 12/09) đều publish_failed. Chỉ chặn theo status closed,
+  // KHÔNG chặn theo severity blocked (Order penalties / Identity Re-verification vẫn đăng được).
+  if (/shop closed/i.test(r.status || "")) return "TikTok đã đóng shop (Shop closed)";
   if (r.penaltyCluster) return "shop đang dính đợt phạt huỷ đơn";
   if (r.publishLimit === 0) return "TikTok khoá đăng mới (hạn mức 0)";
   if (r.publishLimit != null && r.activeListings != null && r.activeListings >= r.publishLimit)

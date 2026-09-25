@@ -6,6 +6,10 @@ interface VariantImageParam {
 }
 
 const normalizeSize = (s: string): string => sizeMap()[s.toLowerCase().trim()] ?? s;
+// SHEIN có sp (vd bộ đồ ngủ) liệt kê 2 hệ size cùng lúc: "4 (S)","6 (M)"… VÀ "S","M"… → sau map
+// cả hai thành "S","M" → TikTok từ chối "Variant value cannot repeated" (đo 25/09: 3 draft
+// unpublishable). Giữ lần xuất hiện đầu, bỏ trùng — áp cho mọi danh sách size sau normalize.
+const uniqSizes = (arr: string[]): string[] => arr.map(normalizeSize).filter((s, i, a) => a.indexOf(s) === i);
 
 /**
  * Pre-process JSON data trước khi đẩy lên 4Seller:
@@ -23,9 +27,9 @@ export const preprocessData = (data: any): { mergedProductImages: string[] } => 
   // 1. SIZE NORMALIZATION
   if (data.listing_variations?.sizes) {
     const before = [...data.listing_variations.sizes];
-    data.listing_variations.sizes = data.listing_variations.sizes.map(normalizeSize);
-    data.sizes_available = (data.sizes_available || []).map(normalizeSize);
-    console.log(`📐 Size normalized: ${before.join(", ")} → ${data.listing_variations.sizes.join(", ")}`);
+    data.listing_variations.sizes = uniqSizes(data.listing_variations.sizes);
+    data.sizes_available = uniqSizes(data.sizes_available || []);
+    console.log(`📐 Size normalized: ${before.join(", ")} → ${data.listing_variations.sizes.join(", ")}${before.length !== data.listing_variations.sizes.length ? ` (bỏ ${before.length - data.listing_variations.sizes.length} size trùng sau map)` : ""}`);
   }
 
   // Quan trọng: cũng phải normalize size trong available_matrix vì
@@ -35,7 +39,7 @@ export const preprocessData = (data: any): { mergedProductImages: string[] } => 
     const normalized: Record<string, string[]> = {};
     for (const [color, sizes] of Object.entries(data.available_matrix)) {
       const sizeArr = Array.isArray(sizes) ? sizes : [];
-      normalized[color] = sizeArr.map((s) => normalizeSize(String(s)));
+      normalized[color] = uniqSizes(sizeArr.map(String));
     }
     data.available_matrix = normalized;
     console.log(`📐 Matrix sizes normalized:`, normalized);
@@ -46,7 +50,7 @@ export const preprocessData = (data: any): { mergedProductImages: string[] } => 
     const normalized: Record<string, string[]> = {};
     for (const [color, sizes] of Object.entries(data.oos_matrix)) {
       const sizeArr = Array.isArray(sizes) ? sizes : [];
-      normalized[color] = sizeArr.map((s) => normalizeSize(String(s)));
+      normalized[color] = uniqSizes(sizeArr.map(String));
     }
     data.oos_matrix = normalized;
     console.log(`📐 OOS matrix sizes normalized:`, normalized);

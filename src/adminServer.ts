@@ -1896,6 +1896,7 @@ export const startAdminServer = async () => {
   // dùng để đánh dấu dedupe → sp thiếu dữ liệu KHÔNG nằm trong đây nên cycle sau còn cào lại.
   async function crawlLinksCore(opts: {
     links: string[]; proxies?: string; output: "hub" | "shop"; shop?: string; headless?: boolean; concurrency?: number;
+    dedupeShop?: string; // có → bỏ sp trùng SPU (khác màu) với sp đã cào cho shop, và ghi mọi goods_id màu vào sổ
   }): Promise<string[]> {
       const { loadProxies, parseProxyLine, startBridges } = await import("./core/proxyPool");
       const { scrapeBatchViaProxyPool } = await import("./core/scrapeViaProxyPool");
@@ -1924,6 +1925,7 @@ export const startAdminServer = async () => {
         if (!shopBaseDir) throw new Error(`Shop "${opts.shop}" chưa cấu hình baseSheinAutoDir`);
       }
       const settled: string[] = [];
+      const settledSpu: string[] = []; // mọi goods_id màu của sp đã ghi → lưu vào sổ chống trùng
       // GATE dữ liệu: thiếu thì KHÔNG ghi file. File thiếu đăng lên sàn ra listing mô tả TRỐNG /
       // không có size chart (đo thật trên shop 657: 64/146 file cào bằng pipeline hỏng kiểu này).
       //   - attributes rỗng = panel Description không mở được (mọi sp SHEIN đều có mục Details).
@@ -1937,8 +1939,19 @@ export const startAdminServer = async () => {
         if ((d.listing_variations?.sizes || []).length >= 2 && !hasSc) miss.push("size_chart");
         return miss;
       };
+      // SHEIN xếp mỗi MÀU của 1 sản phẩm thành 1 goods_id riêng ("related colors") → 2 goods_id khác
+      // nhau vẫn là 1 sp (cùng variant_ids). Chống trùng theo goods_id là lọt (đo 25/09: Queen Chef
+      // đăng 2 listing y hệt). Ghi nhớ MỌI goods_id màu của sp đã ghi (trong lượt này + sổ sourced).
+      const spuIds = (d: any): string[] => (d?.variant_ids || []).flatMap((o: any) => Object.values(o).map(String));
+      const writtenSpu = new Set<string>(opts.dedupeShop ? await loadSourcedIds(opts.dedupeShop) : []);
       const onProduct = async (goodsId: string, data: any, error?: string) => {
         if (!data) { clog(`✗ ${goodsId}: ${(error || "fail").slice(0, 80)}`); return; }
+        const ids = [goodsId, ...spuIds(data)];
+        if (ids.some((id) => writtenSpu.has(id))) {
+          clog(`↩ ${goodsId}: cùng sản phẩm (khác màu) với sp đã có → bỏ, không ghi`);
+          settled.push(goodsId);
+          return;
+        }
         const miss = missingOf(data);
         if (miss.length) {
           const n = (crawlMiss.get(goodsId) ?? 0) + 1;
@@ -1966,6 +1979,8 @@ export const startAdminServer = async () => {
             clog(`✓ ${goodsId} → Hub (${String(data.product_name || "").slice(0, 40)})`);
           }
           settled.push(goodsId);
+          settledSpu.push(...ids);
+          ids.forEach((id) => writtenSpu.add(id));
           crawlMiss.delete(goodsId);
         } catch (e: any) { clog(`✗ ${goodsId} ghi lỗi: ${String(e?.message ?? e).slice(0, 60)}`); }
       };
@@ -1993,6 +2008,8 @@ export const startAdminServer = async () => {
       const retry = items.length - ok;
       crawlJob!.summary = { total: items.length, ok, fail: retry, crawled };
       clog(`🎉 XONG: cào được ${crawled}/${items.length} · ghi file ${ok}${retry ? ` · ${retry} sp thiếu/lỗi → cào lại cycle sau` : ""}`);
+      // Ghi MỌI goods_id màu của sp đã ghi vào sổ chống trùng (không chỉ goods_id chính).
+      if (opts.dedupeShop && settledSpu.length) await addSourcedIds(opts.dedupeShop, settledSpu);
       return settled;
   }
 
@@ -2116,7 +2133,7 @@ export const startAdminServer = async () => {
       const dest = opts.output === "shop" ? `shop ${opts.shop}` : "Hub";
       clog(`📊 Gom ${candidates.length} sp · lấy ${good.length}${opts.niche ? " (AI chọn)" : opts.minReviews || opts.minRating ? ` (review≥${opts.minReviews}, rating≥${opts.minRating})` : ""} → cào full vào ${dest}…`);
       if (!good.length) { crawlJob!.summary = { total: 0, ok: 0, fail: 0 }; clog("Không sp nào — nới ngưỡng / đổi ngách / kiểm tra link."); return; }
-      const settled = await crawlLinksCore({ links: good.map((p) => p.url as string), proxies: opts.proxies, output: opts.output ?? "hub", shop: opts.shop, headless: opts.headless, concurrency: opts.concurrency });
+      const settled = await crawlLinksCore({ links: good.map((p) => p.url as string), proxies: opts.proxies, output: opts.output ?? "hub", shop: opts.shop, headless: opts.headless, concurrency: opts.concurrency, dedupeShop: opts.dedupeShop });
       // CHỈ đánh dấu dedupe sp đã xử lý xong. Trước đây đánh dấu CẢ LÔ nên sp cào hỏng bị loại
       // vĩnh viễn khỏi mọi cycle sau — đó là lý do hàng thiếu dữ liệu không bao giờ được cào lại.
       if (opts.dedupeShop && settled.length) await addSourcedIds(opts.dedupeShop, settled);

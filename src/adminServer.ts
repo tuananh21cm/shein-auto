@@ -219,6 +219,8 @@ export const startAdminServer = async () => {
         if (/^https?:\/\/([a-z0-9-]+\.)?shein\.(com|co\.uk|de|fr|it|es|cn)$/i.test(origin)) {
           return cb(null, true);
         }
+        // Addon TikCheck (background service worker) gọi route video — auth vẫn qua localOrToken.
+        if (/^chrome-extension:\/\/[a-z]{32}$/.test(origin)) return cb(null, true);
         cb(new Error(`Origin "${origin}" không được phép`));
       },
       credentials: false,
@@ -508,6 +510,41 @@ export const startAdminServer = async () => {
       res.json({ ok: true, created, skipped });
     } catch (err: any) {
       res.status(500).json({ error: err?.message ?? "Lỗi gen video" });
+    }
+  });
+
+  // Addon: dò tên shop trong tool (4Seller shopName) từ shop TikTok đang mở.
+  // Khoá: sellingPartnerId == shop_id (54/58 khớp), dự phòng platformShopName == shop_name.
+  // Thiếu shop_id mà có code → đọc snapshot local data/tikcrm/shops/<code>.json.
+  let shopIdxCache: { ts: number; rows: { shop: string; account: string; sid: string; pname: string }[] } | null = null;
+  ingestRouter.get("/shop", localOrToken, async (req, res) => {
+    try {
+      let shopId = String(req.query.shopId || "").trim();
+      let name = String(req.query.name || "").trim();
+      const code = String(req.query.code || "").trim();
+      if (code && (!shopId || !name)) {
+        const snap = await fs.readJson(path.resolve(process.cwd(), "data", "tikcrm", "shops", `${code}.json`)).catch(() => null);
+        const p = snap?.payload || {};
+        shopId = shopId || String(p.shop_id || "");
+        name = name || String(p.shop_name || "");
+      }
+      if (!shopId && !name) return res.status(400).json({ error: "Thiếu shopId/code/name" });
+      if (!shopIdxCache || Date.now() - shopIdxCache.ts > 10 * 60_000) { // ponytail: cache 10p toàn cục, đủ cho 1 người mở panel
+        const accounts = await fsAccounts();
+        const lists = await Promise.all(accounts.map((a) => fsGetShopList(`acct:${a.uid}`).then((r) => r?.records ?? [], () => [])));
+        const rows = accounts.flatMap((a, i) => lists[i].map((s: any) => ({
+          shop: String(s.shopName || ""), account: a.label, sid: String(s.sellingPartnerId || ""), pname: normShopName(String(s.platformShopName || "")),
+        })));
+        shopIdxCache = { ts: Date.now(), rows };
+      }
+      const nn = normShopName(name);
+      let matchedBy = "id";
+      let row = shopId ? shopIdxCache.rows.find((r) => r.sid === shopId) : undefined;
+      if (!row && nn) { row = shopIdxCache.rows.find((r) => r.pname === nn); matchedBy = "name"; }
+      if (!row) return res.status(404).json({ error: `Không thấy shop ${shopId || name} trong 4Seller`, shopId, name });
+      res.json({ shop: row.shop, account: row.account, matchedBy, shopId, name });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? "Lỗi dò shop" });
     }
   });
 
@@ -2393,6 +2430,10 @@ export const startAdminServer = async () => {
       for (const [shop, cfg] of rotated) {
         // Shop hết hạn mức listing / bị khoá đăng → cào về cũng chỉ nằm chờ, tốn proxy + AI.
         if (isShopBlocked(blocked, shop)) continue;
+        // Shop KHÔNG có trong danh sách 4Seller (đã gỡ khỏi 4Seller / chưa có cookie) → không có dòng
+        // sức khoẻ → bộ chặn không biết mà chặn → cào 30 sp rồi đăng lỗi "Shop không có trong 4Seller"
+        // (đo 26/09: Fitzers đã gỡ khỏi 4Seller vẫn được cào). Không có dòng = bỏ qua.
+        if (!limitOf(shop)) { clog(`⏭ [auto] "${shop}" không có trên 4Seller (hoặc chưa cookie) → bỏ qua`); continue; }
         const target = autoSourceTarget(limitOf(shop)?.publishLimit, limitOf(shop)?.publishUnlimited);
         const liveCnt = live[shop.toLowerCase()] ?? 0;
         if (liveCnt >= target) continue;                          // shop đã đủ mục tiêu

@@ -1877,7 +1877,7 @@ export const startAdminServer = async () => {
 
   // ── Cào SHEIN theo LIST LINK (proxy pool + fingerprint anti-detect) ──────────
   // 1 job tại 1 thời điểm. Progress giữ in-memory, UI poll qua /crawl/status.
-  let crawlJob: { running: boolean; done: boolean; log: string[]; summary: any; startedAt: number } | null = null;
+  let crawlJob: { running: boolean; done: boolean; log: string[]; summary: any; startedAt: number; endedAt?: number } | null = null;
   const clog = (m: string) => {
     if (!crawlJob) return;
     crawlJob.log.push(`[${new Date().toLocaleTimeString()}] ${m}`);
@@ -2001,7 +2001,7 @@ export const startAdminServer = async () => {
     crawlJob = { running: true, done: false, log: [], summary: null, startedAt: Date.now() };
     try { await crawlLinksCore(opts); }
     catch (e: any) { clog(`❌ ${String(e?.message ?? e)}`); }
-    finally { if (crawlJob) { crawlJob.running = false; crawlJob.done = true; } }
+    finally { if (crawlJob) { crawlJob.running = false; crawlJob.done = true; crawlJob.endedAt = Date.now(); } }
   }
 
   // Gom sp từ 1 list URL (trang search /pdsearch/ HOẶC trang shop) → lọc "ngon" → cào full vào Hub.
@@ -2122,7 +2122,7 @@ export const startAdminServer = async () => {
     } catch (e: any) {
       clog(`❌ ${String(e?.message ?? e)}`);
     } finally {
-      if (crawlJob) { crawlJob.running = false; crawlJob.done = true; }
+      if (crawlJob) { crawlJob.running = false; crawlJob.done = true; crawlJob.endedAt = Date.now(); }
     }
   }
 
@@ -2353,6 +2353,10 @@ export const startAdminServer = async () => {
   }
   async function runAutoSourceOnce(): Promise<void> {
     if (autoSourceBusy || !isAutoSourceOn() || crawlJob?.running) return;
+    // NGHỈ giữa 2 lượt: cả pool proxy cùng 1 ASN, cào liên tục thì SHEIN siết dần (đo 25/09: 909/lượt
+    // 7 → 7 → 16 → 21 sau 4 giờ). cooldownMin trong data/crawl-settings.json, mặc định 10 phút.
+    const cd = Number((await loadCrawlSettings() as any).cooldownMin ?? 10) * 60_000;
+    if (crawlJob?.endedAt && Date.now() - crawlJob.endedAt < cd) return;
     autoSourceBusy = true;
     try {
       const entries = Object.entries(await loadShopNiche()).filter(([, v]) => shopNiches(v).length);

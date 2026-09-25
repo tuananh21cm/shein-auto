@@ -2349,7 +2349,14 @@ export const startAdminServer = async () => {
       const { shopBlockMap, isShopBlocked, getShopHealth, healthIndexByName } = await import("./core/opsBoard");
       const blocked = await shopBlockMap();
       const limitOf = healthIndexByName(await getShopHealth());
-      for (const [shop, cfg] of entries) {
+      // XOAY VÒNG: bắt đầu từ shop SAU shop lượt trước (round-robin) thay vì luôn từ đầu danh sách
+      // (trước: lấp đầy từng shop → 13 shop áo len đứng trước, áo khoác ở cuối chờ ~3 ngày).
+      // Mốc nhớ trên đĩa để restart không quay về đầu.
+      const rrFile = path.resolve(process.cwd(), "data", "auto-source-last-shop.txt");
+      const last = await fs.readFile(rrFile, "utf8").then((s) => s.trim()).catch(() => "");
+      const start = Math.max(0, entries.findIndex(([s]) => s === last) + 1);
+      const rotated = [...entries.slice(start), ...entries.slice(0, start)];
+      for (const [shop, cfg] of rotated) {
         // Shop hết hạn mức listing / bị khoá đăng → cào về cũng chỉ nằm chờ, tốn proxy + AI.
         if (isShopBlocked(blocked, shop)) continue;
         const target = autoSourceTarget(limitOf(shop)?.publishLimit);
@@ -2365,6 +2372,7 @@ export const startAdminServer = async () => {
         const { generateKeywords } = await import("./services/anthropic/shopSourcing");
         const keywords = await generateKeywords(niche, 6, cfg.keywords || []).catch(() => [] as string[]);
         if (!keywords.length) continue;
+        await fs.writeFile(rrFile, shop, "utf8").catch(() => {});
         const need = Math.min(AUTO_SOURCE_PER_CYCLE, target - liveCnt - backlog);
         clog(`🤖 [auto] shop "${shop}" live ${liveCnt} + chờ ${backlog} / mục tiêu ${target} → cào thêm ~${need} (ngách: ${niche.slice(0, 40)}${nichesOfShop.length > 1 ? ` · 1/${nichesOfShop.length}` : ""})`);
         // Fire-and-forget: runHarvestAndCrawl set crawlJob.running → lượt sau tự bỏ qua cho tới khi xong.

@@ -2080,6 +2080,12 @@ export const startAdminServer = async () => {
       let good = filterGoodListings(candidates, { minReviews: opts.minReviews, minRating: opts.minRating, limit: opts.niche ? 200 : opts.limit, minPrice: opts.minPrice, maxPrice: opts.maxPrice });
       // Có ngách → AI chấm hợp-ngách + đáng-bán trên số đã pre-filter (giảm token).
       if (opts.niche && good.length) {
+        // Sp KHÔNG CÓ TÊN thì AI không có gì để chấm → cho qua bừa theo giá/review (đo 25/09: thảm tắm
+        // vào shop áo len với fit 95). Bỏ hẳn trước khi gửi AI.
+        const noName = good.filter((p) => !(p.name || "").trim()).length;
+        if (noName) { clog(`   ↩ bỏ ${noName} sp không có tên (AI không chấm được)`); good = good.filter((p) => (p.name || "").trim()); }
+      }
+      if (opts.niche && good.length) {
         try {
           const { scoreListingsForShop } = await import("./services/anthropic/shopSourcing");
           clog(`🤖 AI chấm ${good.length} sp theo ngách "${opts.niche.slice(0, 50)}"…`);
@@ -2089,8 +2095,10 @@ export const startAdminServer = async () => {
           keep.slice(0, 8).forEach((s) => clog(`   ✓ fit ${s.fit} · ${s.reason}`));
           good = good.filter((p) => keepIds.has(p.goodsId));
         } catch (e: any) {
-          clog(`⚠️ AI chấm lỗi (${String(e?.message ?? e).slice(0, 60)}) → dùng lọc cơ học`);
-          good = good.slice(0, opts.limit);
+          // KHÔNG rơi về "top theo review": không có AI thì thảm/chăn/đồ lặt vặt review cao lọt thẳng
+          // vào shop thời trang. Bỏ lượt này, lượt sau (3 phút) thử lại.
+          clog(`⚠️ AI chấm lỗi (${String(e?.message ?? e).slice(0, 80)}) → BỎ lượt này, không lấy bừa theo review`);
+          good = [];
         }
       }
       // Chống trùng: bỏ goodsId đã cào trước cho shop này.

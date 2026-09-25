@@ -75,7 +75,8 @@ export async function scoreListingsForShop(
       "Cho NGÁCH của shop và DANH SÁCH sản phẩm SHEIN (kèm review=proxy lượng bán, rating, giá), " +
       "hãy chấm MỖI sp: `fit` 0-100 = hợp ngách tới đâu (loại sp/style đúng ngách), `keep` = có nên lấy về shop không " +
       "(hợp ngách VÀ đáng bán: review nhiều + rating cao + giá hợp lý), `reason` = lý do NGẮN (tiếng Việt, ≤12 từ). " +
-      "Loại thẳng (keep=false) hàng KHÔNG đúng ngách, hàng trẻ em, review quá thấp. " +
+      "Loại thẳng (keep=false) hàng KHÔNG đúng ngách, hàng trẻ em, review quá thấp, và sp KHÔNG CÓ TÊN " +
+      "(name rỗng → không xác định được là gì → keep=false, fit=0; TUYỆT ĐỐI không đoán theo giá/review). " +
       "Trả JSON {\"results\":[{\"id\":string,\"fit\":number,\"keep\":boolean,\"reason\":string}]} — đủ MỌI id nhận vào.",
     user: `Ngách shop: ${niche}\n\nSản phẩm:\n${JSON.stringify(compact)}`,
   });

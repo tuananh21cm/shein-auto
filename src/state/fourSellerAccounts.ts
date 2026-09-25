@@ -41,8 +41,10 @@ interface AccountsIndex {
  * Bỏ đuôi thị trường `_US`/`_DE`/`_UK`… (nguồn gây "không thấy shop" khi 1 bên có đuôi,
  * bên kia không) + bỏ space & mọi loại gạch + lowercase → 2 tên khác đuôi vẫn khớp.
  */
+// Bỏ luôn ký tự cấm trong tên thư mục Windows (/ \ : * ? " < > |): shop 4Seller "TN Scan 12/07 - 33-…"
+// lưu trên đĩa thành "TN Scan 12-07 - 33-…" vẫn phải khớp (đo 25/09: 2 shop không nối được → 0 listing).
 export const normShopName = (s: string): string =>
-  (s || "").toLowerCase().trim().replace(/_[a-z]{2}$/, "").replace(/[\s—–-]+/g, "");
+  (s || "").toLowerCase().trim().replace(/_[a-z]{2}$/, "").replace(/[\s—–\-\\/:*?"<>|]+/g, "");
 
 const readIndex = async (): Promise<AccountsIndex> => {
   try {

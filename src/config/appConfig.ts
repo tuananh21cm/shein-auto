@@ -125,7 +125,8 @@ export const resolveBrand = (profile: string): string => {
   if (cfg.profiles[profile]) return cfg.profiles[profile]; // exact
   // Match chuẩn hoá (bỏ space + mọi gạch, lowercase) — folder name "TA Scan 227-..."
   // khớp key "TA Scan 227 — ..." dù khác dấu gạch/space.
-  const norm = (s: string) => (s || "").toLowerCase().replace(/[\s—–-]+/g, "");
+  // Bỏ cả ký tự cấm tên thư mục (/ \ : …) để folder "TN Scan 12-07 - 33-…" khớp key "TN Scan 12/07 - 33-…".
+  const norm = (s: string) => (s || "").toLowerCase().replace(/[\s—–\-\\/:*?"<>|]+/g, "");
   const np = norm(profile);
   for (const [k, v] of Object.entries(cfg.profiles)) {
     if (v && norm(k) === np) return v;

@@ -1952,9 +1952,13 @@ export const startAdminServer = async () => {
         }
         try {
           if (opts.output === "shop") {
-            const folder = path.join(shopBaseDir!, opts.shop!);
+            // Tên shop 4Seller có thể chứa ký tự cấm trong tên thư mục ("TN Scan 12/07 - 33-…" → "/"
+            // thành thư mục lồng, queue không thấy, 0 listing — đo 25/09). Thay bằng "-"; bộ khớp
+            // folder↔shop (normShopName / resolveBrand) đều bỏ dấu gạch nên vẫn nối đúng.
+            const folderName = opts.shop!.replace(/[\\/:*?"<>|]/g, "-");
+            const folder = path.join(shopBaseDir!, folderName);
             await fs.ensureDir(folder);
-            await fs.writeFile(path.join(folder, `${opts.shop}_${Date.now()}.json`), JSON.stringify(data, null, 2), "utf-8");
+            await fs.writeFile(path.join(folder, `${folderName}_${Date.now()}.json`), JSON.stringify(data, null, 2), "utf-8");
             clog(`✓ ${goodsId} → shop ${opts.shop} (${String(data.product_name || "").slice(0, 40)})`);
           } else {
             await writeHubFile(data, "crawler");

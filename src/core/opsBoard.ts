@@ -53,6 +53,8 @@ export interface HealthRow {
   restricted: number | null; orderLimit: string | null; activeListings: number | null; dailyOrders: number | null;
   /** Hạn mức ĐĂNG MỚI TikTok đặt cho shop (0/20/100/200/1000). Active có thể > limit khi TikTok hạ hạn mức sau này. */
   publishLimit: number | null; limitFrom: "crm" | "local" | null;
+  /** TikTok "No limit" (publish_limit 0 + order_limit 999999) → publishLimit null, không bao giờ "đầy". */
+  publishUnlimited: boolean;
   /** Số listing active: số THẬT từ 4Seller lúc dựng ("4seller"), lỗi thì số TikTok trong snapshot ("tiktok"). */
   activeFrom: "4seller" | "tiktok" | null;
   /** Tín hiệu "đừng đổ hàng vào shop này" — CRM bổ sung (payout_frozen / penalty_cluster_active). */
@@ -70,6 +72,8 @@ export interface HealthResult {
    *  KHÔNG được hiện như "không có đơn" / "không có lãi" (người xem sẽ tưởng mọi thứ ổn). */
   pnlOk: boolean | null; riskOk: boolean | null;
 }
+
+const isUnlimited = (p: any): boolean => !!p && Number(p.publish_limit) === 0 && Number(p.order_limit) >= 99999;
 
 const num = (v: any): number | null => {
   const n = Number(v && typeof v === "object" && "amount" in v ? v.amount : v);
@@ -173,7 +177,11 @@ async function buildHealth(): Promise<HealthResult> {
         activeFrom: live.has(Number(s.id)) ? "4seller" : p?.total_listings_active != null ? "tiktok" : null,
         payoutFrozen: p?.payout_frozen === true, penaltyCluster: p?.penalty_cluster_active === true,
         dailyOrders: num(p?.daily_orders), updatedAt: p?._updatedAt ?? null,
-        publishLimit: num(lp?.publish_limit), limitFrom: lp && lp.publish_limit != null ? (own ? source : "local") : null,
+        // TikTok "No limit": TikCheck/CRM trả publish_limit=0 KÈM order_limit=999999 (đo 25/09 trên CRM:
+        // 124/127 shop limit 0 là kiểu này, vd AMONG.Stores 476 active). Trước hiểu là "khoá đăng mới"
+        // (0/0) → chặn oan Calmwell 412 active, RUTMAN 155 active. limit 0 + order_limit thường = khoá thật.
+        publishLimit: isUnlimited(lp) ? null : num(lp?.publish_limit), publishUnlimited: isUnlimited(lp),
+        limitFrom: lp && lp.publish_limit != null ? (own ? source : "local") : null,
       });
     }
   }

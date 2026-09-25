@@ -2196,7 +2196,7 @@ function renderListingProgress() {
   // Hạn mức listing THẬT từng shop (publish_limit TikTok: 0/20/100/200/1000) thay mốc cứng 100.
   // Chưa có số (server vừa khởi động / shop chưa có dữ liệu) → tạm tính 100 như trước.
   // Mục tiêu = min(hạn mức TikTok, 200): shop limit 1000 chỉ nhắm 200, không lấp đầy (khớp auto-source).
-  const tgtOf = (s) => Math.min(200, s.limit != null ? s.limit : LP_TARGET);
+  const tgtOf = (s) => (s.unlimited ? 200 : Math.min(200, s.limit != null ? s.limit : LP_TARGET));
   const isFull = (s) => s.cnt >= tgtOf(s); // hạn mức 0 = khoá đăng mới → luôn tính là đầy
   const totalCnt = rows.reduce((a, s) => a + s.cnt, 0);
   const totalTarget = rows.reduce((a, s) => a + tgtOf(s), 0);
@@ -2251,7 +2251,8 @@ function renderListingProgress() {
     const stTxt = s.limit === 0 ? '<span style="color:var(--danger); font-weight:700;">🔒 khoá đăng mới</span>'
       : isFull(s) ? '<span style="color:var(--success); font-weight:700;">✓ đầy</span>'
       : `<span style="color:var(--text-mute);">còn ${rem}</span>`;
-    const tgtTxt = s.limit != null ? `/${tgt}` : `/${tgt}<span title="Chưa có hạn mức thật của shop — tạm tính ${LP_TARGET}" style="cursor:help;">?</span>`;
+    const tgtTxt = s.unlimited ? `/${tgt}<span title="TikTok không giới hạn listing — mục tiêu tự đặt ${tgt}" style="cursor:help;">∞</span>`
+      : s.limit != null ? `/${tgt}` : `/${tgt}<span title="Chưa có hạn mức thật của shop — tạm tính ${LP_TARGET}" style="cursor:help;">?</span>`;
     return `<div class="shop-card ${isFull(s) ? "lp-done" : ""}" onclick="enterShopDetail('${escapeHtml(s.folder)}','${escapeHtml(s.owner || "")}')">
       <div class="cover">${s.image
         ? `<img src="${escapeHtml(s.image)}" alt="" loading="lazy" decoding="async" onerror="this.parentElement.innerHTML='<div class=&quot;placeholder&quot;>(no image)</div>'"/>`
@@ -5007,6 +5008,7 @@ const opsNum = "text-align:right; white-space:nowrap; font-variant-numeric:tabul
 // Hạn mức listing: chỗ trống ĐĂNG MỚI = publish_limit − active. limit 0 = TikTok khoá đăng mới.
 const opsCap = (r) => {
   const a = r.activeListings, l = r.publishLimit;
+  if (r.publishUnlimited) return { html: `${a ?? "?"} / ∞<div style="font-size:0.72rem; color:var(--text-mute);">không giới hạn</div>`, full: false, style: "" };
   if (l == null) return { html: opsDash(a), full: false, style: "" };
   const sub = (t, c) => `<div style="font-size:0.72rem; ${c ? "" : "color:var(--text-mute);"}">${t}</div>`;
   if (l === 0) return { html: `${a ?? "?"} / 0${sub("khoá đăng mới", 1)}`, full: true, style: "color:var(--danger); font-weight:600;" };

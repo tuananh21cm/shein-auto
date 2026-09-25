@@ -1323,6 +1323,7 @@ export const startAdminServer = async () => {
       for (const s of shops) {
         const r = byName?.(s.folder) ?? null;
         s.limit = r?.publishLimit ?? null;
+        s.unlimited = r?.publishUnlimited === true; // TikTok "No limit" → mục tiêu = trần 200, không bao giờ "đầy" theo hạn mức
         s.blocked = r ? blockReason(r) : null;
       }
       res.json({ shops, target: 100, limitsReady: !!hh });
@@ -2337,8 +2338,8 @@ export const startAdminServer = async () => {
   // Mục tiêu listing của 1 shop = min(hạn mức TikTok, 200): shop limit 100 → 100, limit 20 → 20,
   // shop limit 1000 → CHỈ 200 (không cào lấp đầy 1000). Chưa biết hạn mức → 100.
   const AUTO_SOURCE_TARGET_CAP = 200;
-  const autoSourceTarget = (publishLimit: number | null | undefined): number =>
-    Math.min(AUTO_SOURCE_TARGET_CAP, publishLimit && publishLimit > 0 ? publishLimit : 100);
+  const autoSourceTarget = (publishLimit: number | null | undefined, unlimited = false): number =>
+    unlimited ? AUTO_SOURCE_TARGET_CAP : Math.min(AUTO_SOURCE_TARGET_CAP, publishLimit && publishLimit > 0 ? publishLimit : 100);
   const AUTO_SOURCE_BACKLOG_CAP = 30;   // giữ tối đa ~30 file chờ / shop → không cào nhanh hơn publish tiêu
   const AUTO_SOURCE_PER_CYCLE = 30;     // mỗi lượt thêm tối đa ~30 sp
   let autoSourceBusy = false;
@@ -2375,7 +2376,7 @@ export const startAdminServer = async () => {
       for (const [shop, cfg] of rotated) {
         // Shop hết hạn mức listing / bị khoá đăng → cào về cũng chỉ nằm chờ, tốn proxy + AI.
         if (isShopBlocked(blocked, shop)) continue;
-        const target = autoSourceTarget(limitOf(shop)?.publishLimit);
+        const target = autoSourceTarget(limitOf(shop)?.publishLimit, limitOf(shop)?.publishUnlimited);
         const liveCnt = live[shop.toLowerCase()] ?? 0;
         if (liveCnt >= target) continue;                          // shop đã đủ mục tiêu
         const backlog = await shopBacklog(shop);

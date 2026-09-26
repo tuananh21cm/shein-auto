@@ -8,14 +8,20 @@ const dead = new Map<string, number>(); // uid → lúc phát hiện chết
 
 export const isCookieDeadError = (err: any): boolean => /Login\.Back\./.test(String(err?.message ?? err));
 
+// Ghi lại giây phút phát hiện chết + request thành công cuối (data/cookie-deaths.jsonl) để đối chiếu với
+// hoạt động của người dùng (đăng nhập trình duyệt, đổi tài khoản…) — tìm vì sao cookie chết sau ~14 giờ.
+const lastOk = new Map<string, number>();
 export function markCookieDead(uid: string): void {
   if (!dead.has(uid)) {
     dead.set(uid, Date.now());
     console.warn(`🍪❌ Cookie 4Seller acct:${uid} HẾT HẠN → dừng đăng các shop của tài khoản này`);
+    const line = JSON.stringify({ uid, deadAt: new Date().toISOString(), lastOkAt: lastOk.has(uid) ? new Date(lastOk.get(uid)!).toISOString() : null });
+    import("fs").then((fs) => fs.promises.appendFile("data/cookie-deaths.jsonl", line + "\n")).catch(() => {});
   }
 }
 
 export function markCookieAlive(uid: string): void {
+  lastOk.set(uid, Date.now());
   if (dead.delete(uid)) console.log(`🍪✅ Cookie 4Seller acct:${uid} sống lại → đăng tiếp`);
 }
 

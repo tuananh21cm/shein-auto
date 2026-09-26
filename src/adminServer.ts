@@ -23,6 +23,7 @@ import { refreshQueueSnapshot } from "./state/queueState";
 import { historyStore } from "./state/historyStore";
 import { scanListings, scanShopsSummary, resolveListingPath, scanHub, resolveHubFile, recordHubListings, removeHubMeta, isHubMetaFile, ListingStatus } from "./state/listingScan";
 import { validatePath, detectDirConflicts, getUserDirsByName, getShopOwner } from "./state/userDirs";
+import { setLiveCountsProvider } from "./core/opsBoard";
 import { processFile } from "./queue/queueManager";
 import { eventBus } from "./state/eventBus";
 import { workerConfig, reloadAppConfig, isAutoSourceOn } from "./config/appConfig";
@@ -695,7 +696,7 @@ export const startAdminServer = async () => {
 
   // ── 4Seller helpers (port từ main): shop list / live / đơn / ảnh — cache chống spam API ──
   const shopListCache = new Map<string, { ts: number; shops: string[]; source: string }>();
-  const SHOP_CACHE_TTL = 5 * 60_000;
+  const SHOP_CACHE_TTL = 30 * 60_000; // 30 phút (trước 5): 57 shop × 2 call mỗi lượt → giảm ~14.000 call 4Seller/ngày
 
   /**
    * Danh sách principal để gọi 4Seller API: mỗi TÀI KHOẢN 4Seller đã upload là 1
@@ -711,6 +712,8 @@ export const startAdminServer = async () => {
   // Cache số listing LIVE (active) thật từ 4Seller — gộp MỌI tài khoản. Key cache cố định.
   /** Map shopName(lowercase) → activeCount thật trên TikTok (qua 4Seller). Best-effort, cache 5p. */
   const liveSwr = new SwrCache<Record<string, number>>("live-counts", SHOP_CACHE_TTL);
+  // Màn Vận hành dùng lại số active này thay vì tự gọi 4Seller 1 call/shop mỗi lượt dựng.
+  setLiveCountsProvider(() => liveSwr.get("__all__"));
   async function computeLiveCounts(username: string): Promise<Record<string, number>> {
     const byShop: Record<string, number> = {};
     for (const principal of await fsPrincipals(username)) {
@@ -3610,8 +3613,8 @@ export const startAdminServer = async () => {
   };
   if (process.env.DISABLE_DASH_WARM !== "1") {
     setTimeout(() => warmDashboardCaches({ images: true }), 8000);   // warm ngay sau boot
-    setInterval(() => warmDashboardCaches(), 5 * 60_000);            // live/orders mỗi 5p
-    setInterval(() => warmDashboardCaches({ images: true }), 30 * 60_000); // + ảnh shop mỗi 30p
+    setInterval(() => warmDashboardCaches(), 30 * 60_000);           // live/orders mỗi 30p (trước 5p — 4Seller đá phiên vì tần suất)
+    setInterval(() => warmDashboardCaches({ images: true }), 60 * 60_000); // + ảnh shop mỗi 60p
     console.log("🔥 Warm cache dashboard: BẬT (live/orders 5p · ảnh shop 30p)");
   }
 

@@ -73,6 +73,10 @@ export interface HealthResult {
   pnlOk: boolean | null; riskOk: boolean | null;
 }
 
+/** Nguồn số active theo shop (tên shop lowercase → active) do dashboard nuôi — adminServer đăng ký. */
+let liveCountsProvider: (() => Record<string, number> | undefined) | null = null;
+export const setLiveCountsProvider = (fn: () => Record<string, number> | undefined): void => { liveCountsProvider = fn; };
+
 const isUnlimited = (p: any): boolean => !!p && Number(p.publish_limit) === 0 && Number(p.order_limit) >= 99999;
 
 const num = (v: any): number | null => {
@@ -148,9 +152,15 @@ async function buildHealth(): Promise<HealthResult> {
   // Số active THẬT từ 4Seller (snapshot TikTok có thể cũ vài ngày → chặn nhầm shop vừa được dọn chỗ).
   // 6 luồng song song để không dội 4Seller.
   const live = new Map<number, number>();
-  const jobs = accounts.flatMap((acc, i) => lists[i].map((s) => ({ P: `acct:${acc.uid}`, id: Number(s.id) })));
-  for (let k = 0; k < jobs.length; k += 6) {
-    await Promise.all(jobs.slice(k, k + 6).map(async (j) => {
+  const jobs = accounts.flatMap((acc, i) => lists[i].map((s) => ({ P: `acct:${acc.uid}`, id: Number(s.id), name: String(s.shopName || "").toLowerCase() })));
+  // Dashboard đã có số active theo shop (cache live-counts, cùng câu hỏi) → dùng lại, KHÔNG gọi 4Seller
+  // thêm 57 call mỗi lượt. Chỉ khi chưa có cache (vừa boot) mới tự gọi.
+  const dash = liveCountsProvider?.() ?? null;
+  const fromDash = jobs.filter((j) => dash && typeof dash[j.name] === "number");
+  for (const j of fromDash) live.set(j.id, dash![j.name]);
+  const rest = dash ? jobs.filter((j) => !fromDash.includes(j)) : jobs;
+  for (let k = 0; k < rest.length; k += 6) {
+    await Promise.all(rest.slice(k, k + 6).map(async (j) => {
       const t = (await getListingPage(j.P, { shopId: j.id, status: "active", pageSize: 1 }).catch(() => null))?.total;
       if (typeof t === "number") live.set(j.id, t);
     }));
@@ -197,13 +207,16 @@ async function buildHealth(): Promise<HealthResult> {
 }
 
 // Cache 10 phút + dùng chung 1 lần dựng cho người gọi đồng thời (dựng lạnh ~1-2s: 4Seller + đọc snapshot).
-const HEALTH_TTL = 10 * 60_000;
+// 60 phút (trước 10): mỗi lượt dựng = 1 call/shop lên 4Seller (57 shop) → 8.500 call/ngày, góp phần làm
+// 4Seller đá phiên (cả 2 cookie chết 26/09, 4 ngày sau khi bật polling). Số active đổi chậm.
+const HEALTH_TTL = 60 * 60_000;
 let healthCache: HealthResult | null = null;
 let healthInflight: Promise<HealthResult> | null = null;
 const rebuildHealth = () => (healthInflight ??= buildHealth().then((r) => (healthCache = r)).finally(() => { healthInflight = null; }));
 /** Có cache thì trả NGAY (cũ quá TTL thì làm mới ở nền) → queue/drip không bao giờ đứng chờ dựng lại. */
 // Lần dựng có nguồn CRM bị lỗi (thường chỉ chập chờn mạng) chỉ giữ 1 phút rồi thử lại, không giữ đủ 10 phút.
-const ttlOf = (h: HealthResult) => (h.crmError || h.pnlOk === false || h.riskOk === false ? 60_000 : HEALTH_TTL);
+// CRM lỗi → thử lại sau 15 phút (trước: 1 PHÚT → 57 call 4Seller mỗi phút khi CRM trục trặc).
+const ttlOf = (h: HealthResult) => (h.crmError || h.pnlOk === false || h.riskOk === false ? 15 * 60_000 : HEALTH_TTL);
 export async function getShopHealth(force = false): Promise<HealthResult> {
   if (force || !healthCache) return rebuildHealth();
   if (Date.now() - healthCache.builtAt >= ttlOf(healthCache)) void rebuildHealth().catch(() => {});

@@ -81,6 +81,37 @@ async function getCookieHeader(principal: string): Promise<string> {
   return cookiesToHeader(cookies);
 }
 
+/**
+ * 4Seller có thể GIA HẠN token qua Set-Cookie trên phản hồi API (như trình duyệt thật). Trước đây
+ * bỏ qua hoàn toàn → token trong file đứng yên cho tới khi phiên chết (đo 26/09: cả 2 cookie chết).
+ * Có Set-Cookie cho cookie 4seller → ghi đè value + hạn vào file tài khoản. Best-effort, không ném.
+ */
+export const persistSetCookie = async (principal: string, setCookie: string[] | string | undefined) => {
+  if (!principal.startsWith("acct:") || !setCookie) return;
+  const lines = Array.isArray(setCookie) ? setCookie : [setCookie];
+  const uid = principal.slice(5).replace(/[^a-zA-Z0-9_-]/g, "");
+  const file = path.join(PER_USER_COOKIE_DIR, "accounts", `${uid}.json`);
+  try {
+    const cookies: any[] = JSON.parse(await fs.readFile(file, "utf-8"));
+    let changed = 0;
+    for (const line of lines) {
+      const [nv, ...attrs] = line.split(";");
+      const eq = nv.indexOf("="); if (eq < 0) continue;
+      const name = nv.slice(0, eq).trim(), value = nv.slice(eq + 1).trim();
+      const c = cookies.find((x) => x?.name === name);
+      if (!c || c.value === value) continue; // chỉ cập nhật cookie đã có, giá trị đổi
+      c.value = value;
+      for (const a of attrs) {
+        const [k, v] = a.split("=").map((x) => (x || "").trim());
+        if (/^max-age$/i.test(k) && Number(v) > 0) c.expirationDate = Math.floor(Date.now() / 1000) + Number(v);
+        else if (/^expires$/i.test(k) && !isNaN(Date.parse(v))) c.expirationDate = Math.floor(Date.parse(v) / 1000);
+      }
+      changed++;
+    }
+    if (changed) { await fs.writeFile(file, JSON.stringify(cookies, null, 2), "utf-8"); console.log(`🍪 acct:${uid}: 4Seller gia hạn ${changed} cookie → đã lưu`); }
+  } catch { /* file lỗi → bỏ qua */ }
+};
+
 /** Ghi nhận sống/chết cookie tài khoản (chỉ principal "acct:<uid>") — xem state/cookieHealth. */
 function trackCookie(principal: string, data: any): void {
   if (!principal.startsWith("acct:")) return;
@@ -88,6 +119,20 @@ function trackCookie(principal: string, data: any): void {
   if (data?.code === 0) markCookieAlive(uid);
   else if (isCookieDeadError(data?.msg ?? data?.messages)) markCookieDead(uid);
 }
+
+// Đếm request 4Seller theo giờ, in mỗi giờ 1 dòng — để đo tải thật sau khi giảm polling (mục tiêu < 300/giờ).
+const REQ_COUNT = new Map<string, number>();
+const countReq = (pathSeg: string) => {
+  const k = pathSeg.split("?")[0];
+  REQ_COUNT.set(k, (REQ_COUNT.get(k) ?? 0) + 1);
+};
+setInterval(() => {
+  const total = [...REQ_COUNT.values()].reduce((a, b) => a + b, 0);
+  if (!total) return;
+  const top = [...REQ_COUNT.entries()].sort((a, b) => b[1] - a[1]).slice(0, 4).map(([k, v]) => `${k.replace(/^/api//, "")} ${v}`).join(" · ");
+  console.log(`📡 4Seller: ${total} request/giờ qua · ${top}`);
+  REQ_COUNT.clear();
+}, 60 * 60_000).unref();
 
 const COMMON_HEADERS = {
   "Content-Type": "application/json",
@@ -105,6 +150,7 @@ export async function fourSellerPost<T = any>(
   opts?: { form?: boolean }
 ): Promise<T> {
   const cookieHeader = await getCookieHeader(username);
+  countReq(pathSeg);
   const isForm = !!opts?.form;
   const payload = isForm
     ? new URLSearchParams(body).toString()
@@ -120,6 +166,7 @@ export async function fourSellerPost<T = any>(
       throw new Error(`4Seller ${pathSeg} HTTP ${res.status}: ${JSON.stringify(res.data).slice(0, 200)}`);
     }
     trackCookie(username, res.data);
+    void persistSetCookie(username, res.headers?.["set-cookie"] as any);
     if (res.data?.code !== 0) {
       const msg = res.data?.msg ?? res.data?.messages ?? "Unknown error";
       throw new Error(`4Seller ${pathSeg} error: ${msg}`);
@@ -138,6 +185,7 @@ export async function fourSellerGet<T = any>(
   pathSeg: string
 ): Promise<T> {
   const cookieHeader = await getCookieHeader(username);
+  countReq(pathSeg);
   try {
     const res = await axios.get(`${BASE_URL}${pathSeg}`, {
       headers: { ...COMMON_HEADERS, Cookie: cookieHeader },
@@ -148,6 +196,7 @@ export async function fourSellerGet<T = any>(
       throw new Error(`4Seller ${pathSeg} HTTP ${res.status}: ${JSON.stringify(res.data).slice(0, 200)}`);
     }
     trackCookie(username, res.data);
+    void persistSetCookie(username, res.headers?.["set-cookie"] as any);
     if (res.data?.code !== 0) {
       const msg = res.data?.msg ?? res.data?.messages ?? "Unknown error";
       throw new Error(`4Seller ${pathSeg} error: ${msg}`);

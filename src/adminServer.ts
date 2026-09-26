@@ -410,18 +410,23 @@ export const startAdminServer = async () => {
     try {
       const { VideoDb } = await import("./state/videoDb");
       const db = new VideoDb();
-      const rows = db.list({
-        shop: (req.query.shop as string) || undefined,
-        status: (req.query.status as string) || "ready",
-        limit: Math.min(200, Number(req.query.limit) || 100),
-      });
+      const status = (req.query.status as string) || "ready";
+      // ?ids=1,2 → tra đúng các video (mọi status) để addon theo dõi tiến trình gen.
+      const ids = String(req.query.ids || "").split(",").map(Number).filter((n) => n > 0).slice(0, 50);
+      const rows = ids.length
+        ? ids.map((id) => db.get(id)).filter((r): r is NonNullable<typeof r> => !!r)
+        : status.split(",").flatMap((st) => db.list({   // status=ready,posted → gộp nhiều trạng thái
+          shop: (req.query.shop as string) || undefined,
+          status: st.trim(),
+          limit: Math.min(200, Number(req.query.limit) || 100),
+        }));
       db.close();
       res.json({
-        videos: rows.filter((r) => r.file).map((r) => {
+        videos: rows.filter((r) => ids.length || !/ready|posted/.test(status) || r.file).map((r) => {
           let content: any = null;
           try { content = r.script_json ? JSON.parse(r.script_json) : null; } catch { /* ignore */ }
           return {
-            id: r.id, shop: r.shop, title: r.title, status: r.status, productId: r.product_id || null,
+            id: r.id, shop: r.shop, title: r.title, status: r.status, error: r.error || null, createdAt: r.created_at, postedAt: r.posted_at || null, productId: r.product_id || null,
             caption: content?.caption || content?.description || null,
             hashtags: Array.isArray(content?.hashtags) ? content.hashtags : null,
           };
@@ -430,6 +435,15 @@ export const startAdminServer = async () => {
     } catch (err: any) {
       res.status(500).json({ error: err?.message ?? "Lỗi list video" });
     }
+  });
+
+  // Addon thấy dialog "Your video has been posted" của TikTok → đánh dấu đã đăng.
+  ingestRouter.post("/videos/:id/posted", localOrToken, async (req, res) => {
+    const { VideoDb } = await import("./state/videoDb");
+    const db = new VideoDb();
+    try { db.markPosted(Number(req.params.id)); res.json({ ok: true }); }
+    catch (err: any) { res.status(500).json({ error: err?.message ?? "Lỗi đánh dấu" }); }
+    finally { db.close(); }
   });
 
   ingestRouter.get("/videos/:id/file", localOrToken, async (req, res) => {
@@ -2448,8 +2462,14 @@ export const startAdminServer = async () => {
         const niche = nichesOfShop[Math.floor(Math.random() * nichesOfShop.length)];
         const s = await loadCrawlSettings();
         const { generateKeywords } = await import("./services/anthropic/shopSourcing");
-        const keywords = await generateKeywords(niche, 6, cfg.keywords || []).catch(() => [] as string[]);
-        if (!keywords.length) continue;
+        let kwErr = "";
+        const keywords = await generateKeywords(niche, 6, cfg.keywords || []).catch((e: any) => { kwErr = String(e?.message ?? e); return [] as string[]; });
+        // Keyword AI lỗi → vẫn chạy bằng keyword gán sẵn trong shop-niche.json; trước đây `continue` IM LẶNG
+        // → cả vòng xoay đứng mà không để lại dấu vết (đo 26/09 17:01→00:44: 0 lượt cào).
+        if (!keywords.length) {
+          if (cfg.keywords?.length) { clog(`⚠️ [auto] AI sinh keyword lỗi (${kwErr.slice(0, 80)}) → dùng keyword gán sẵn`); keywords.push(...cfg.keywords); }
+          else { clog(`⚠️ [auto] "${shop}": AI sinh keyword lỗi (${kwErr.slice(0, 80)}), không có keyword gán sẵn → bỏ qua`); continue; }
+        }
         await fs.writeFile(rrFile, shop, "utf8").catch(() => {});
         const need = Math.min(AUTO_SOURCE_PER_CYCLE, target - liveCnt - backlog);
         clog(`🤖 [auto] shop "${shop}" live ${liveCnt} + chờ ${backlog} / mục tiêu ${target} → cào thêm ~${need} (ngách: ${niche.slice(0, 40)}${nichesOfShop.length > 1 ? ` · 1/${nichesOfShop.length}` : ""})`);

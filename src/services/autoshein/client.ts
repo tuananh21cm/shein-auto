@@ -34,7 +34,7 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE()}${path}`, {
     ...init,
     headers: { Authorization: `Bearer ${KEY()}`, ...(init?.body ? { "Content-Type": "application/json" } : {}), ...(init?.headers ?? {}) },
-  });
+  }).catch((e: any) => { throw new Error(`Không tới được server render ${BASE()} (${e?.cause?.code || e?.message || e}) — máy LAN tắt hoặc chưa chạy service`); });
   const text = await res.text();
   if (!res.ok) throw new Error(`autoshein ${path} → HTTP ${res.status}: ${text.slice(0, 200)}`);
   try { return JSON.parse(text) as T; } catch { return text as any; }

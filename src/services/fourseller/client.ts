@@ -98,6 +98,9 @@ export const persistSetCookie = async (principal: string, setCookie: string[] | 
       const [nv, ...attrs] = line.split(";");
       const eq = nv.indexOf("="); if (eq < 0) continue;
       const name = nv.slice(0, eq).trim(), value = nv.slice(eq + 1).trim();
+      // Phiên chết → 4Seller trả "userToken=; Max-Age=0" (xoá cookie). KHÔNG ghi giá trị rỗng vào file:
+      // token cũ giữ nguyên để người dùng còn thấy/đối chiếu, và không xoá nhầm khi 4Seller trả lời lạ.
+      if (!value || attrs.some((a) => /^\s*max-age\s*=\s*0\s*$/i.test(a))) continue;
       const c = cookies.find((x) => x?.name === name);
       if (!c || c.value === value) continue; // chỉ cập nhật cookie đã có, giá trị đổi
       c.value = value;

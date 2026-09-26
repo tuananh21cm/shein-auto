@@ -129,7 +129,7 @@ const countReq = (pathSeg: string) => {
 setInterval(() => {
   const total = [...REQ_COUNT.values()].reduce((a, b) => a + b, 0);
   if (!total) return;
-  const top = [...REQ_COUNT.entries()].sort((a, b) => b[1] - a[1]).slice(0, 4).map(([k, v]) => `${k.replace(/^/api//, "")} ${v}`).join(" · ");
+  const top = [...REQ_COUNT.entries()].sort((a, b) => b[1] - a[1]).slice(0, 4).map(([k, v]) => `${k.replace(/^\/api\//, "")} ${v}`).join(" · ");
   console.log(`📡 4Seller: ${total} request/giờ qua · ${top}`);
   REQ_COUNT.clear();
 }, 60 * 60_000).unref();

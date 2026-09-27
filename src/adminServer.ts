@@ -2437,13 +2437,14 @@ export const startAdminServer = async () => {
       const { shopBlockMap, isShopBlocked, getShopHealth, healthIndexByName } = await import("./core/opsBoard");
       const blocked = await shopBlockMap();
       const limitOf = healthIndexByName(await getShopHealth());
-      // XOAY VÒNG: bắt đầu từ shop SAU shop lượt trước (round-robin) thay vì luôn từ đầu danh sách
-      // (trước: lấp đầy từng shop → 13 shop áo len đứng trước, áo khoác ở cuối chờ ~3 ngày).
-      // Mốc nhớ trên đĩa để restart không quay về đầu.
       const rrFile = path.resolve(process.cwd(), "data", "auto-source-last-shop.txt");
-      const last = await fs.readFile(rrFile, "utf8").then((s) => s.trim()).catch(() => "");
-      const start = Math.max(0, entries.findIndex(([s]) => s === last) + 1);
-      const rotated = [...entries.slice(start), ...entries.slice(0, start)];
+      // ƯU TIÊN (27/09): shop ít listing nhất (live + file chờ) đi trước; shop đã ≥100 (đang lên 200) xếp sau.
+      // Bỏ qua 5 shop vừa ghé gần nhất → shop cào ra 0 file không bị chọn lặp mãi.
+      const recent = (await fs.readFile(rrFile, "utf8").catch(() => "")).split("\n").map((s) => s.trim()).filter(Boolean);
+      const have = async (shop: string) => (live[shop.toLowerCase()] ?? 0) + await shopBacklog(shop);
+      const keyed = await Promise.all(entries.map(async (e) => ({ e, n: await have(e[0]) })));
+      keyed.sort((a, b) => (Number(a.n >= 100) - Number(b.n >= 100)) || (a.n - b.n));
+      const rotated = [...keyed.filter((k) => !recent.includes(k.e[0])), ...keyed.filter((k) => recent.includes(k.e[0]))].map((k) => k.e);
       for (const [shop, cfg] of rotated) {
         // Shop hết hạn mức listing / bị khoá đăng → cào về cũng chỉ nằm chờ, tốn proxy + AI.
         if (isShopBlocked(blocked, shop)) continue;
@@ -2470,7 +2471,7 @@ export const startAdminServer = async () => {
           if (cfg.keywords?.length) { clog(`⚠️ [auto] AI sinh keyword lỗi (${kwErr.slice(0, 80)}) → dùng keyword gán sẵn`); keywords.push(...cfg.keywords); }
           else { clog(`⚠️ [auto] "${shop}": AI sinh keyword lỗi (${kwErr.slice(0, 80)}), không có keyword gán sẵn → bỏ qua`); continue; }
         }
-        await fs.writeFile(rrFile, shop, "utf8").catch(() => {});
+        await fs.writeFile(rrFile, [shop, ...recent.filter((s) => s !== shop)].slice(0, 5).join("\n"), "utf8").catch(() => {});
         const need = Math.min(AUTO_SOURCE_PER_CYCLE, target - liveCnt - backlog);
         clog(`🤖 [auto] shop "${shop}" live ${liveCnt} + chờ ${backlog} / mục tiêu ${target} → cào thêm ~${need} (ngách: ${niche.slice(0, 40)}${nichesOfShop.length > 1 ? ` · 1/${nichesOfShop.length}` : ""})`);
         // Fire-and-forget: runHarvestAndCrawl set crawlJob.running → lượt sau tự bỏ qua cho tới khi xong.

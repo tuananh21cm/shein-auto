@@ -43,12 +43,11 @@ export function matchOption(
   // lấy tên option DÀI NHẤT → Material = Elastane (1%) → TikTok đình chỉ "PDP Inconsistent Information"
   // (đo 28/09: 32/34 listing chọn thành phần phụ bị suspend).
   const parts = [...rawValue.matchAll(/(\d+(?:\.\d+)?)\s*%\s*([^,;/%\d]+)/g)].map((m) => ({ pct: +m[1], name: m[2].trim() }));
+  // CHỈ thành phần chính: lùi xuống thành phần phụ vẫn là khai lệch (94% Viscose → "Recycled polyester
+  // blends" vì TikTok không có Viscose). Không khớp → bỏ trống field (optional) còn hơn khai sai.
   if (parts.length > 1) {
-    for (const p of parts.sort((a, b) => b.pct - a.pct)) {
-      const hit = matchOption(p.name, options, synonyms);
-      if (hit) return hit;
-    }
-    return null;
+    const top = parts.sort((a, b) => b.pct - a.pct)[0];
+    return matchOption(top.name, options, synonyms);
   }
   let v = norm(rawValue);
   if (synonyms[v]) v = norm(synonyms[v]); // áp synonym (vd "machine wash, do not dry clean" → "machine wash")

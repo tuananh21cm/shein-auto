@@ -1983,16 +1983,9 @@ export const startAdminServer = async () => {
       // GATE dữ liệu: thiếu thì KHÔNG ghi file. File thiếu đăng lên sàn ra listing mô tả TRỐNG /
       // không có size chart (đo thật trên shop 657: 64/146 file cào bằng pipeline hỏng kiểu này).
       //   - attributes rỗng = panel Description không mở được (mọi sp SHEIN đều có mục Details).
-      //   - có ≥2 size mà không có bảng size = drawer Size Guide không mở được (sp one-size /
-      //     phụ kiện thì vốn không có bảng → không tính là thiếu).
-      const missingOf = (d: any): string[] => {
-        const miss: string[] = [];
-        if (!d.attributes || !Object.keys(d.attributes).length) miss.push("attributes");
-        const sc = d.size_chart;
-        const hasSc = !!(sc && ((sc.data || []).length || (sc.sections || []).some((s: any) => s?.data?.length)));
-        if ((d.listing_variations?.sizes || []).length >= 2 && !hasSc) miss.push("size_chart");
-        return miss;
-      };
+      //   - Thiếu bảng size VẪN GHI (user chốt 28/09: cosplay/nội y hay không có bảng → cào lại vô ích).
+      const missingOf = (d: any): string[] =>
+        !d.attributes || !Object.keys(d.attributes).length ? ["attributes"] : [];
       // SHEIN xếp mỗi MÀU của 1 sản phẩm thành 1 goods_id riêng ("related colors") → 2 goods_id khác
       // nhau vẫn là 1 sp (cùng variant_ids). Chống trùng theo goods_id là lọt (đo 25/09: Queen Chef
       // đăng 2 listing y hệt). Ghi nhớ MỌI goods_id màu của sp đã ghi (trong lượt này + sổ sourced).

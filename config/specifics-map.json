@@ -12,8 +12,6 @@
     "sleeve type": "Sleeve Type",
     "season": "Season",
     "style": "Style",
-    "material": "Material",
-    "composition": "Material",
     "care instructions": ["Care Instructions", "Washing Instructions"],
     "fabric elasticity": "Feature",
     "details": ["Design", "Back Style"],

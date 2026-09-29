@@ -11,7 +11,7 @@ import fs from "fs-extra";
 
 const DB_PATH = path.join(process.cwd(), "data", "videos.db");
 
-export type VideoStatus = "queued" | "generating" | "ready" | "error" | "posted";
+export type VideoStatus = "queued" | "generating" | "ready" | "error" | "posted" | "discarded"; // discarded = bỏ tay (29/09: video tồn tên shop cũ)
 
 export interface VideoRow {
   id: number;

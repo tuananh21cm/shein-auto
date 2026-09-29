@@ -15,16 +15,18 @@ export interface SegmentPlan {
   durations: number[];  // giây, gross (đã gồm phần overlap fade)
   fade: number;         // giây
   totalSec: number;     // duration video cuối
+  introCount: number;   // số segment intro đầu video (0 nếu không có) → transition intro dùng fade mượt
 }
 
 const FADE = 0.4;
 const TARGET_SEG = 3.5;   // giây/ảnh lý tưởng
 const MIN_SEG = 2.0;
 const MAX_SEG = 6.5;
-// Hook giữ chân: intro cắt nhanh 3 ảnh đầu (~0.9s/ảnh) tạo nhịp giật 2.5s đầu,
-// sau đó mới vào Ken Burns chậm. Chỉ áp dụng khi video đủ dài.
+// Hook giữ chân: intro cắt hơi nhanh 3 ảnh đầu rồi vào Ken Burns chậm. 1.4s/ảnh (trước
+// là 0.9s — quá nhanh, giật/khó chịu): mỗi ảnh đứng ~1s, zoom chậm hơn, transition intro
+// dùng fade mượt (xem buildFfmpegArgs). Chỉ áp dụng khi video đủ dài.
 const INTRO_N = 3;
-const INTRO_DUR = 0.9;
+const INTRO_DUR = 1.4;
 const INTRO_MIN_TOTAL = 12;
 
 export function planSegments(imageCount: number, voiceMs: number): SegmentPlan {
@@ -38,7 +40,7 @@ export function planSegments(imageCount: number, voiceMs: number): SegmentPlan {
     while (n > 2 && gross(n) < MIN_SEG) n--;
     while (gross(n) > MAX_SEG) n++;
     const d = gross(n);
-    return { n, durations: Array.from({ length: n }, () => round2(d)), fade: FADE, totalSec: round2(totalSec) };
+    return { n, durations: Array.from({ length: n }, () => round2(d)), fade: FADE, totalSec: round2(totalSec), introCount: 0 };
   }
 
   // Intro 3 cắt nhanh + k segment chính:
@@ -57,6 +59,7 @@ export function planSegments(imageCount: number, voiceMs: number): SegmentPlan {
     ],
     fade: FADE,
     totalSec: round2(totalSec),
+    introCount: INTRO_N,
   };
 }
 
@@ -121,7 +124,9 @@ export function buildFfmpegArgs(o: FfmpegArgsOpts): string[] {
   for (let m = 1; m < plan.n; m++) {
     cum += plan.durations[m - 1];
     const offset = (cum - m * plan.fade).toFixed(2);
-    const tr = seededPick(rng, XFADE_TRANSITIONS);
+    // Transition dính segment intro (m ≤ introCount) → "fade" mượt, tránh slide/smooth
+    // giật ở nhịp nhanh đầu video. Phần thân giữ transition đa dạng theo seed.
+    const tr = m <= plan.introCount ? "fade" : seededPick(rng, XFADE_TRANSITIONS);
     const outLbl = m === plan.n - 1 ? "vx" : `x${m}`;
     parts.push(`[${prev}][v${m}]xfade=transition=${tr}:duration=${plan.fade}:offset=${offset}[${outLbl}]`);
     prev = outLbl;

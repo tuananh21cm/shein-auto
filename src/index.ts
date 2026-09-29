@@ -48,6 +48,7 @@ const bootstrap = async () => {
 
   schedulePromotionCron(); // cào promotion 4Seller (Flash/Discount) mỗi 2 giờ
   scheduleCookieAutoRefresh(); // cookie hết hạn → tự login lại (account đã lưu user/pass)
+  import("./core/videoStudio/videoQueue").then((m) => m.scheduleVideoQueueCron()).catch(() => {}); // render video LOCAL (29/09)
 
   // Làm nóng chỉ mục Hub (quét lạnh ~1s) → lần đầu mở tab Hub/Ngách không phải chờ.
   import("./state/listingScan").then((m) => m.scanHub()).catch(() => {});

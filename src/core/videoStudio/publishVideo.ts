@@ -404,11 +404,12 @@ export async function publishVideo(opts: PublishOptions): Promise<PublishResult>
     result.posted = true;
     log(`✅ Đăng thành công video #${opts.videoId} (TikTok xác nhận "Your video has been posted")`);
 
-    if (opts.holdAfterPostMs) {
-      log(`   ⏸️ GIỮ MÀN HÌNH ${Math.round(opts.holdAfterPostMs / 1000)}s để soi.`);
-      await sleep(opts.holdAfterPostMs);
-      await shot(page, opts.videoId, "after-hold");
-    }
+    // Dialog "posted" hiện NGAY nhưng TikTok còn xử lý/tải video lên — đóng profile liền thì video
+    // không lên (user nhắc 30/09). Luôn giữ phiên tối thiểu 90s sau xác nhận.
+    const hold = Math.max(opts.holdAfterPostMs ?? 0, 90_000);
+    log(`   ⏳ Giữ phiên ${Math.round(hold / 1000)}s cho TikTok xử lý xong video rồi mới đóng…`);
+    await sleep(hold);
+    if (opts.holdAfterPostMs) await shot(page, opts.videoId, "after-hold");
 
     // Đóng dialog bằng "Open TikTok" (hoặc X) để phiên sạch cho lần sau.
     await clickIfVisible(page, 'button:has-text("Open TikTok")', 4000, log, "Open TikTok (đóng dialog)");

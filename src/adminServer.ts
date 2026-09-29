@@ -1173,6 +1173,25 @@ export const startAdminServer = async () => {
   };
 
   /**
+   * Chủ sở hữu của 1 shop ĐÍCH khi clone / list Hub → shop.
+   *
+   * getShopOwner tra theo profiles rồi tới folder trên đĩa. Nhưng picker "List → shop"
+   * còn liệt kê MỌI shop lấy từ tài khoản 4Seller (all=1) — shop chưa cào lần nào thì
+   * chưa có folder lẫn chưa khai profiles, và picker gán tạm owner = người đang đăng nhập.
+   * Server không biết luật đó nên trả "Không có shop đích hợp lệ" dù user vừa tick shop
+   * ngay trên màn hình. Ở đây lặp lại đúng luật của picker: shop có thật trên 4Seller thì
+   * người bấm là chủ, folder sẽ được tạo trong baseSheinAutoDir của họ.
+   */
+  const resolveTargetOwner = async (shop: string, sessionUser: SessionUser): Promise<string | null> => {
+    const owner = await getShopOwner(shop);
+    if (owner) return owner;
+    const accounts = await fsAccounts().catch(() => [] as any[]);
+    const known = accounts.some((a: any) =>
+      (a.shops || []).some((s: any) => normShopName(String(s)) === normShopName(shop)));
+    return known ? sessionUser.username : null;
+  };
+
+  /**
    * Danh sách shop folders user được phép xem. Admin → undefined (xem tất cả).
    * Non-admin → list folders theo profiles user khai báo, hoặc scan baseDir nếu profiles rỗng.
    */
@@ -1735,8 +1754,8 @@ export const startAdminServer = async () => {
       const targets = new Map<string, { base: string; owner: string }>();
       for (const shop of shops) {
         if (/[\/\\]|\.\./.test(shop)) { skipped.push({ shop, reason: "tên shop không hợp lệ" }); continue; }
-        const owner = await getShopOwner(shop);
-        if (!owner) { skipped.push({ shop, reason: "không tìm được owner của shop" }); continue; }
+        const owner = await resolveTargetOwner(shop, sessionUser);
+        if (!owner) { skipped.push({ shop, reason: "shop không thuộc user nào và không có trên 4Seller" }); continue; }
         if (sessionUser.role !== "admin" && owner !== sessionUser.username) {
           skipped.push({ shop, reason: "không có quyền ghi shop này" });
           continue;
@@ -2651,8 +2670,8 @@ export const startAdminServer = async () => {
       const skipped: { file?: string; shop?: string; reason: string }[] = [];
       for (const shop of shops) {
         if (/[\/\\]|\.\./.test(shop)) { skipped.push({ shop, reason: "tên shop không hợp lệ" }); continue; }
-        const owner = await getShopOwner(shop);
-        if (!owner) { skipped.push({ shop, reason: "không tìm được owner" }); continue; }
+        const owner = await resolveTargetOwner(shop, sessionUser);
+        if (!owner) { skipped.push({ shop, reason: "shop không thuộc user nào và không có trên 4Seller" }); continue; }
         if (sessionUser.role !== "admin" && owner !== sessionUser.username) {
           skipped.push({ shop, reason: "không có quyền ghi shop này" }); continue;
         }

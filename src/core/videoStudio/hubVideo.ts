@@ -1,5 +1,6 @@
 /**
- * Gen video từ ảnh sản phẩm HUB qua render server LAN (autoshein).
+ * Gen video từ ảnh sản phẩm HUB — RENDER LOCAL từ 29/09 (enqueueVideo → videoQueue). Phần poll job
+ * server LAN (trackJob/resumePendingHubJobs) chỉ còn để nhận nốt job cũ đã gửi đi trước đó.
  * Luồng: đọc title + product_images từ file Hub → submitVideoJob → poll tới ready →
  * tải mp4 về data/videos/hub → cập nhật videoDb. KHÔNG render local (offload sang server).
  * Nguồn ảnh là URL http nên KHÔNG cần 4Seller/getListingDetail.
@@ -9,6 +10,9 @@ import path from "path";
 import { config } from "../../config";
 import { VideoDb } from "../../state/videoDb";
 import { submitVideoJob, getVideoJob, downloadVideoJob, type SubmitJobInput } from "../../services/autoshein/client";
+import { videoQueue } from "./videoQueue";
+import { resolveImage } from "./externalJob";
+import { resolveAccountForShop } from "../../state/fourSellerAccounts";
 
 const OUT_DIR = path.join(process.cwd(), "data", "videos", "hub");
 const MIN_IMAGES = 3;
@@ -92,14 +96,23 @@ export { priceOf };
  * Dùng chung cho Hub lẫn listing theo shop. Throw nếu submit lỗi.
  */
 export async function enqueueVideo(
-  db: VideoDb,
+  _db: VideoDb,
   item: { shop: string; productId: string; title: string; images: string[]; price?: number }
 ): Promise<number> {
-  const ref = await submitVideoJob({ title: item.title, images: item.images, price: item.price });
-  const id = db.create({ shop: item.shop, productId: item.productId, listingId: "", title: item.title, seed: ref.jobId });
-  db.setStatus(id, { status: "generating", step: "remote" });
-  db.setJobId(id, ref.jobId);
-  void trackJob(id, ref.jobId);
+  // RENDER LOCAL (29/09): máy render LAN 10.10.10.254 chập chờn → không gửi đi nữa. Ảnh ghi vào
+  // assets/<productId>/src_N.jpg (fetchImages dùng cache này, không gọi 4Seller) rồi vào videoQueue
+  // local (ffmpeg + Edge TTS, bản render nhánh external-video-api). Shop không có tài khoản 4Seller
+  // (hub, ext:…) → "api:<shop>" để videoQueue bỏ bước tra account.
+  const dir = path.join(process.cwd(), "data", "videos", "assets", item.productId);
+  await fs.ensureDir(dir);
+  let n = 0;
+  for (let i = 0; i < item.images.length && n < MAX_IMAGES; i++) {
+    try { await fs.writeFile(path.join(dir, `src_${n}.jpg`), new Uint8Array(await resolveImage(https(item.images[i]), i))); n++; }
+    catch (e: any) { console.warn(`⚠️ [enqueueVideo ${item.productId}] ${e?.message ?? e}`); }
+  }
+  if (n < MIN_IMAGES) throw new Error(`Chỉ tải được ${n}/${item.images.length} ảnh (cần ≥${MIN_IMAGES})`);
+  const shop = (await resolveAccountForShop(item.shop)) ? item.shop : `api:${item.shop}`;
+  const [id] = videoQueue.enqueue(shop, [{ productId: item.productId, listingId: item.productId, title: item.title, price: item.price != null ? String(item.price) : undefined }]);
   return id;
 }
 

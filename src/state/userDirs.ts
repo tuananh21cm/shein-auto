@@ -96,19 +96,39 @@ export const resolveBrandForUser = async (
   return resolveBrand(profileName);
 };
 
+/** Bỏ đuôi thị trường `_US`/`_DE`… + mọi space/gạch + lowercase — khớp tên shop lệch đuôi. */
+const normShop = (s: string): string =>
+  (s || "").toLowerCase().trim().replace(/_[a-z]{2}$/, "").replace(/[\s—–-]+/g, "");
+
 /**
  * Tìm chủ sở hữu thật của 1 shop folder:
  *   - Ưu tiên 1: user có shop trong `profiles` explicit
- *   - Ưu tiên 2: user catch-all (profiles=[]) đầu tiên (sort alphabetical)
+ *   - Ưu tiên 2: khớp profiles sau khi chuẩn hoá tên (shop đổi tên thêm/bớt đuôi `_US`)
+ *   - Ưu tiên 3: user có FOLDER shop đó trong baseSheinAutoDir
+ *   - Ưu tiên 4: user catch-all (profiles=[]) đầu tiên (sort alphabetical)
  *   - Trả null nếu không có user nào
  *
- * Dùng cho manual paths (run-now, retry) để lấy đúng cookie/preferences
- * của shop owner thay vì user đầu trong dedup merge.
+ * Vì sao cần ưu tiên 3: bảng chọn shop đích ở UI liệt kê shop theo FOLDER trên đĩa của
+ * từng user, trong khi hàm này trước đây chỉ tra `profiles`. Shop có folder nhưng chưa
+ * khai trong profiles thì UI vẫn cho chọn, còn server lại trả "Không có shop đích hợp lệ".
+ *
+ * Dùng cho manual paths (run-now, retry, clone, list Hub → shop) để lấy đúng
+ * cookie/preferences của shop owner thay vì user đầu trong dedup merge.
  */
 export const getShopOwner = async (shop: string): Promise<string | null> => {
   const cfg = await loadAdminConfig();
   for (const u of cfg.users) {
     if ((u.profiles ?? []).includes(shop)) return u.username;
+  }
+  const target = normShop(shop);
+  for (const u of cfg.users) {
+    if ((u.profiles ?? []).some((p) => normShop(p) === target)) return u.username;
+  }
+  for (const u of cfg.users) {
+    const base = resolveUserDirs(u).baseSheinAutoDir;
+    try {
+      if ((await fs.stat(path.join(base, shop))).isDirectory()) return u.username;
+    } catch { /* user này không có folder đó */ }
   }
   const catchAlls = cfg.users
     .filter((u) => (u.profiles ?? []).length === 0)

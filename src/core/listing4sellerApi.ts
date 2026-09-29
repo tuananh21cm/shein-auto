@@ -295,8 +295,23 @@ export const listing4sellerApi = async (
   const [aiTitle, catPath] = await Promise.all([genTitleFromShein(data.product_name), findCategory(data.category)]);
   const brand = await resolveBrandForUser(opts?.cookieUser, targetProfile);
   const productName = cleanTitle(aiTitle, brand);
-  const [cat, warehouseId] = await Promise.all([resolveCategory(principal, shopId, catPath), defaultWarehouse(principal, shopId)]);
-  const schema = await getSchema(principal, shopId, cat.categoryId);
+  let [cat, warehouseId] = await Promise.all([resolveCategory(principal, shopId, catPath), defaultWarehouse(principal, shopId)]);
+  let schema = await getSchema(principal, shopId, cat.categoryId);
+  // Sp có size (≥2) mà category TikTok không có sales attr Size → không đăng được. Hay gặp khi SHEIN xếp
+  // đồ mặc vào nhánh đồ chơi (29/09: đồng phục cosplay → "Toys / Party Costumes" 940944). Map lại theo
+  // tên sp trong nhánh quần áo nữ.
+  const hasSizeAttr = (s: Attr[]) => s.some((x) => x.attrType === 2 && norm(x.attrName) === norm("Size"));
+  const sizeList = (data.listing_variations?.sizes ?? data.sizes_available ?? []).filter((s: string) => !/one[- ]?size/i.test(s));
+  if (!hasSizeAttr(schema) && sizeList.length >= 2) {
+    // Segment cuối của category SHEIN là tên sp (dài, bị shortlist bỏ) → lấy segment danh mục ngay trước nó.
+    const segs = String(data.category || "").split(" / ");
+    const leaf = segs.length >= 2 ? segs[segs.length - 2] : String(data.product_name || "");
+    const alt = await findCategory(`Women / Women Clothing / ${leaf}`);
+    const altCat = await resolveCategory(principal, shopId, alt);
+    const altSchema = await getSchema(principal, shopId, altCat.categoryId);
+    console.warn(`⚠️ [API] ${cat.categoryPath} không có Size → map lại: ${altCat.categoryPath}`);
+    if (hasSizeAttr(altSchema)) { cat = altCat; schema = altSchema; }
+  }
   const sales = salesValueMap(schema, cat.categoryId);
   console.log(`📂 [API] ${cat.categoryPath} (${cat.categoryIdPath}) · warehouse ${warehouseId}`);
 

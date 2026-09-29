@@ -69,9 +69,10 @@ export async function crawlBatchInContext(
       if (!(await searchViaBox(page, goodsId, (m) => log(`[${idx + 1}] ${m}`)))) continue;
       // Kết quả render sau điều hướng — không chờ là thấy trang rỗng rồi bỏ oan cả vòng.
       await page.waitForSelector('a[href*="-p-"]', { timeout: 15_000 }).catch(() => {});
-      const exact = page.locator(`a[href*="-p-${goodsId}.html"]`);
-      const card = (await exact.count().catch(() => 0)) ? exact.first() : page.locator('a[href*="-p-"]').first();
-      if (!(await card.count().catch(() => 0))) { log(`[${idx + 1}] vòng ${round}: trang kết quả rỗng`); continue; }
+      // CHỈ bấm thẻ ĐÚNG mã. Trước đây không thấy thì bấm thẻ đầu tiên → cào nhầm sp quảng cáo
+      // (29/09: bóng bóp stress 549153387 vào 3 shop hoodie/jeans/đồ ngủ).
+      const card = page.locator(`a[href*="-p-${goodsId}.html"]`).first();
+      if (!(await card.count().catch(() => 0))) { log(`[${idx + 1}] vòng ${round}: kết quả không có mã ${goodsId}`); continue; }
       // Thẻ sp mở TAB MỚI. Đừng ép target=_self (SHEIN chặn, bấm xong không đi đâu — đo 24/09);
       // đón tab mới và gắn bộ bắt realtime_data ngay lúc tab sinh ra (trước khi response về).
       // Cuộn tới + hover trước khi bấm: thẻ ngoài viewport / ảnh lazy hay nuốt cú click đầu.
@@ -94,6 +95,12 @@ export async function crawlBatchInContext(
         continue;
       }
       await dp.waitForSelector(".product-intro__head-name", { timeout: 20_000 }).catch(() => {});
+      const landed = dp.url().match(/-p-(\d+)\.html/i)?.[1];
+      if (landed && landed !== goodsId) {
+        log(`[${idx + 1}] vòng ${round}: vào nhầm sp ${landed} (cần ${goodsId}), tìm lại`);
+        stats.detach(); if (popup) await popup.close().catch(() => {});
+        continue;
+      }
       if (await dp.locator(".product-intro__head-name").first().count().catch(() => 0)) return { page: dp, stats };
       log(`[${idx + 1}] vòng ${round}: chưa vào được detail (${dp.url().slice(0, 45)})`);
       stats.detach(); if (popup) await popup.close().catch(() => {});

@@ -9,6 +9,7 @@ const escape = (s: string): string =>
 const send = async (text: string, parseMode: "MarkdownV2" | "HTML" = "MarkdownV2"): Promise<void> => {
   const { telegramBotToken: token, telegramChatId: chatId } = config;
   if (!token || !chatId) return; // notification tắt
+  if (process.env.TELEGRAM_MUTED === "1") return; // tắt tạm (user 30/09) — xoá dòng trong .env để bật lại
 
   try {
     await axios.post(

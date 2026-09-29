@@ -2484,6 +2484,62 @@ export const startAdminServer = async () => {
     }
   });
 
+  /**
+   * Xoá bớt MÀU khỏi 1 sản phẩm Hub (nút Sửa ở thẻ sản phẩm).
+   *
+   * Màu nằm rải ở 6 cấu trúc song song nên phải gỡ đồng bộ cả 6, sót một chỗ là listing
+   * lệch (vd còn ảnh của màu đã xoá). Danh sách size tổng cũng phải tính lại từ màu CÒN
+   * LẠI — nếu không sẽ chào bán size mà không màu nào có.
+   */
+  app.post("/admin/api/hub/variants", async (req, res) => {
+    try {
+      const sessionUser = (req.session as any).user as SessionUser;
+      if (sessionUser.role === "viewer") return res.status(403).json({ error: "Viewer không thể sửa" });
+
+      const { file, remove } = req.body as { file?: string; remove?: string[] };
+      if (!Array.isArray(remove) || remove.length === 0) return res.status(400).json({ error: "Chưa chọn màu nào để xoá" });
+      const full = resolveHubFile(file || "");
+      if (!full || !(await fs.pathExists(full))) return res.status(404).json({ error: "File không tồn tại" });
+
+      const data = JSON.parse(await fs.readFile(full, "utf-8"));
+      const drop = new Set(remove.map((c) => String(c)));
+      const colors: string[] = data?.listing_variations?.colors ?? [];
+      const kept = colors.filter((c) => !drop.has(c));
+      if (kept.length === 0) return res.status(400).json({ error: "Phải giữ lại ít nhất 1 màu" });
+      if (kept.length === colors.length) return res.status(400).json({ error: "Không có màu nào khớp để xoá" });
+
+      // 3 mảng song song dạng [{ "<màu>": <giá trị> }]
+      const keepEntry = (arr: any[]) => (arr ?? []).filter((it) => !drop.has(Object.keys(it ?? {})[0]));
+      data.variant_ids = keepEntry(data.variant_ids);
+      data.variant_images = keepEntry(data.variant_images);
+      data.variant_price = keepEntry(data.variant_price);
+      // 2 map dạng { "<màu>": [size...] }
+      for (const c of drop) {
+        delete data.available_matrix?.[c];
+        delete data.oos_matrix?.[c];
+      }
+      data.listing_variations.colors = kept;
+
+      // Size tổng = hợp của size (còn hàng + hết hàng) trên các màu GIỮ LẠI. Rỗng thì giữ
+      // nguyên danh sách cũ, tránh biến listing thành không còn size nào.
+      const sizes = new Set<string>();
+      for (const c of kept) {
+        for (const s of data.available_matrix?.[c] ?? []) sizes.add(String(s));
+        for (const s of data.oos_matrix?.[c] ?? []) sizes.add(String(s));
+      }
+      if (sizes.size > 0) data.listing_variations.sizes = [...sizes];
+
+      await fs.writeFile(full, JSON.stringify(data, null, 2), "utf-8");
+      // Không phải vứt cache tay: chỉ mục Hub của homie khoá theo (mtime, size) của chính
+      // file, ghi đè file là chữ ký đổi → lần quét sau tự dựng lại thẻ.
+
+      console.log(`✏️  Hub ${path.basename(full)}: xoá ${colors.length - kept.length} màu (${[...drop].join(", ")}), còn ${kept.length}`);
+      res.json({ ok: true, removed: colors.length - kept.length, colors: kept, sizes: data.listing_variations.sizes });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? "Lỗi sửa variant" });
+    }
+  });
+
   // Xem JSON gốc 1 sản phẩm Hub.
   app.get("/admin/api/hub/json", async (req, res) => {
     try {

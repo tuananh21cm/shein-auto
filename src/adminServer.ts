@@ -1246,6 +1246,28 @@ export const startAdminServer = async () => {
   };
 
   /**
+   * Khai shop vào `profiles` của owner nếu chưa có.
+   *
+   * Hàng đợi chỉ quét shop nằm trong profiles (queueManager.listShopFolders). Đẩy list sang
+   * một shop 4Seller chưa từng cào sẽ tạo folder mới nhưng KHÔNG khai profiles → file nằm
+   * đó vĩnh viễn, không ai chạy. Đo 30/09: 75 file pending ở KBT-Homie-127 và
+   * KBT-Homie-235_US đứng im vì đúng lý do này.
+   * Profiles rỗng = catch-all (nhận mọi shop) → để nguyên, thêm vào sẽ thu hẹp quyền.
+   */
+  const ensureShopInProfiles = async (owner: string, shop: string): Promise<void> => {
+    try {
+      const cfg = await loadAdminConfig();
+      const u = cfg.users.find((x) => x.username === owner);
+      if (!u || (u.profiles ?? []).length === 0 || u.profiles.includes(shop)) return;
+      u.profiles = [...u.profiles, shop];
+      await saveAdminConfig(cfg);
+      console.log(`📇 Khai shop "${shop}" vào profiles của ${owner} → hàng đợi mới chạy file trong đó.`);
+    } catch (e: any) {
+      console.warn(`⚠️ Không khai được shop "${shop}" vào profiles:`, e?.message ?? e);
+    }
+  };
+
+  /**
    * Danh sách shop folders user được phép xem. Admin → undefined (xem tất cả).
    * Non-admin → list folders theo profiles user khai báo, hoặc scan baseDir nếu profiles rỗng.
    */
@@ -1817,6 +1839,7 @@ export const startAdminServer = async () => {
         }
         const dirs = await getUserDirsByName(owner);
         if (!dirs?.baseSheinAutoDir) { skipped.push({ shop, reason: "owner chưa cấu hình baseSheinAutoDir" }); continue; }
+        await ensureShopInProfiles(owner, shop); // không khai thì hàng đợi bỏ qua folder này
         targets.set(shop, { base: dirs.baseSheinAutoDir, owner });
       }
       if (targets.size === 0) {
@@ -2788,6 +2811,7 @@ export const startAdminServer = async () => {
         const dirs = await getUserDirsByName(owner);
         if (!dirs?.baseSheinAutoDir) { skipped.push({ shop, reason: "owner chưa cấu hình baseSheinAutoDir" }); continue; }
         const existing = await buildShopProductIds(dirs.baseSheinAutoDir, shop);
+        await ensureShopInProfiles(owner, shop); // không khai thì hàng đợi bỏ qua folder này
         targets.set(shop, { base: dirs.baseSheinAutoDir, owner, existing });
       }
       if (targets.size === 0) return res.status(400).json({ error: "Không có shop đích hợp lệ", skipped });

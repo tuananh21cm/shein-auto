@@ -62,6 +62,7 @@ export function recordVerifyFail(): void {
 // Giãn nhịp: imgbb free rate-limit khi upload dồn dập → đảm bảo cách nhau tối thiểu.
 let _lastUploadAt = 0;
 let _keyIdx = 0; // con trỏ xoay vòng key (round-robin để rải tải đều)
+let _exhaustedUntil = 0; // mọi key hết hạn mức → nghỉ tới mốc này, không thử nữa
 const MIN_GAP_MS = 1200;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -105,11 +106,17 @@ export async function uploadToImgbb(filePath: string): Promise<string | null> {
     console.warn("⚠️ IMGBB_API_KEY(S) chưa set — bỏ qua upload.");
     return null;
   }
+  // HẾT HẠN MỨC CẢ NGÀY: khi mọi key đều bị chặn, kiên nhẫn chờ hết 9 phút cho MỖI ảnh là
+  // vô ích — đo thực tế 30/09: 451 lần bỏ cuộc liên tiếp, listing đội từ ~2 phút lên 47 phút
+  // và chiếm sạch 6 luồng. Trượt 1 lần → nghỉ hẳn COOLDOWN_MS, mọi lần gọi sau trả null ngay.
+  const COOLDOWN_MS = 15 * 60_000;
+  if (Date.now() < _exhaustedUntil) return null;
+
   const b64 = fs.readFileSync(filePath).toString("base64");
 
   // Mỗi "cycle" = thử LẦN LƯỢT tất cả key. Key bị rate-limit → xoay sang key kế NGAY (không chờ).
-  // Chỉ khi CẢ các key đều limit trong 1 cycle mới chờ backoff rồi cycle lại (kiên nhẫn).
-  const backoffs = [0, 15000, 30000, 60000, 120000, 300000]; // 0,15s,30s,1p,2p,5p
+  // Chỉ khi CẢ các key đều limit trong 1 cycle mới chờ backoff rồi cycle lại.
+  const backoffs = [0, 15000, 30000]; // 0,15s,30s — quá đây thì coi như hết hạn mức, khỏi chờ thêm
   for (let cycle = 0; cycle < backoffs.length; cycle++) {
     if (backoffs[cycle]) {
       console.warn(`⚠️ imgbb: tất cả ${keys.length} key đều rate-limit — chờ ${backoffs[cycle] / 1000}s rồi thử lại…`);
@@ -148,7 +155,10 @@ export async function uploadToImgbb(filePath: string): Promise<string | null> {
       }
     }
   }
-  // Hết mọi cycle backoff mà vẫn limit → banner/size-guide của listing này SẼ THIẾU
+  // Hết mọi cycle mà vẫn limit → coi như imgbb hết hạn mức, nghỉ hẳn một lúc.
+  // Listing vẫn đăng, chỉ thiếu ảnh mô tả/banner — hơn hẳn việc mỗi ảnh ngốn 9 phút.
+  _exhaustedUntil = Date.now() + COOLDOWN_MS;
+  console.warn(`⚠️ imgbb: mọi key hết hạn mức → NGỪNG upload ${COOLDOWN_MS / 60000} phút. Cấu hình R2_* để hết cảnh này.`);
   const s = stats(); s.gaveup++; s.lastGaveupAt = Date.now(); saveStats();
   return null;
 }

@@ -8,27 +8,46 @@ import axios from "axios";
  * Trả null nếu tải lỗi.
  */
 export async function fetchAsDataUri(url: string): Promise<string | null> {
-  try {
-    const res = await axios.get(url, {
-      responseType: "arraybuffer",
-      timeout: 15_000,
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36",
-        Referer: "https://us.shein.com/",
-      },
-    });
-    const mime = (res.headers["content-type"] as string) || "image/jpeg";
-    const b64 = Buffer.from(res.data).toString("base64");
-    return `data:${mime};base64,${b64}`;
-  } catch {
-    return null;
+  // Lỗi mạng chập chờn (ECONNRESET khi 6 listing cùng kéo ảnh) → thử lại, đừng bỏ ảnh ngay.
+  // Trước đây catch nuốt sạch lỗi nên log chỉ nói "0/15 ảnh" mà không biết vì sao.
+  let last = "";
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const res = await axios.get(url, {
+        responseType: "arraybuffer",
+        timeout: 15_000,
+        headers: {
+          "User-Agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36",
+          Referer: "https://us.shein.com/",
+        },
+      });
+      const mime = (res.headers["content-type"] as string) || "image/jpeg";
+      const b64 = Buffer.from(res.data).toString("base64");
+      return `data:${mime};base64,${b64}`;
+    } catch (e: any) {
+      last = e?.code || e?.response?.status || e?.message || String(e);
+      if (attempt < 3) await new Promise((r) => setTimeout(r, 600 * attempt + Math.random() * 400));
+    }
   }
+  console.warn(`⚠️ tải ảnh hỏng sau 3 lần (${last}): ${url.slice(0, 90)}`);
+  return null;
 }
 
-/** Tải nhiều ảnh → data URI song song; bỏ ảnh tải lỗi (giữ thứ tự ảnh tải được). */
+/**
+ * Tải nhiều ảnh → data URI; bỏ ảnh tải lỗi (giữ thứ tự ảnh tải được).
+ *
+ * Giới hạn 4 ảnh một lúc: bắn cả 15 request song song × 6 listing chạy cùng lúc là 90 kết
+ * nối tới cùng CDN SHEIN — đó là lúc ECONNRESET nổ hàng loạt và banner mất sạch ảnh.
+ */
 export async function fetchImagesAsDataUris(urls: string[]): Promise<string[]> {
-  const out = await Promise.all(urls.map(fetchAsDataUri));
+  const out: (string | null)[] = new Array(urls.length).fill(null);
+  const LIMIT = 4;
+  let next = 0;
+  const worker = async () => {
+    for (let i = next++; i < urls.length; i = next++) out[i] = await fetchAsDataUri(urls[i]);
+  };
+  await Promise.all(Array.from({ length: Math.min(LIMIT, urls.length) }, worker));
   return out.filter((u): u is string => !!u);
 }
 

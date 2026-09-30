@@ -147,6 +147,9 @@ export async function runPublishTick(opts: {
         continue;
       }
 
+      // Dừng giữa lượt nếu user vừa TẮT auto-publish hoặc đã hết khung giờ (30/09: lượt bắt đầu 8h50 vẫn đăng tới 9h08 sau khi tắt).
+      if (!opts.dryRun && (!isAutoPublishOn() || !inPostingWindow(new Date(), cfg))) { log(`⏹️ Dừng lượt đăng: auto-publish tắt / hết khung giờ.`); break; }
+
       // Đăng 1 video của shop này
       const row = vdb.get(d.video!.id)!;
       log(`\n🚀 ${shop}: đăng video #${row.id} — ${row.title.slice(0, 45)} (${d.postedToday + 1}/${cfg.perShopPerDay} hôm nay)`);

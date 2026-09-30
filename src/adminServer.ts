@@ -1227,6 +1227,25 @@ export const startAdminServer = async () => {
   };
 
   /**
+   * Chủ sở hữu của 1 shop ĐÍCH khi clone / list Hub → shop.
+   *
+   * getShopOwner tra theo profiles rồi tới folder trên đĩa. Nhưng picker "List → shop"
+   * còn liệt kê MỌI shop lấy từ tài khoản 4Seller (all=1) — shop chưa cào lần nào thì
+   * chưa có folder lẫn chưa khai profiles, và picker gán tạm owner = người đang đăng nhập.
+   * Server không biết luật đó nên trả "Không có shop đích hợp lệ" dù user vừa tick shop
+   * ngay trên màn hình. Ở đây lặp lại đúng luật của picker: shop có thật trên 4Seller thì
+   * người bấm là chủ, folder sẽ được tạo trong baseSheinAutoDir của họ.
+   */
+  const resolveTargetOwner = async (shop: string, sessionUser: SessionUser): Promise<string | null> => {
+    const owner = await getShopOwner(shop);
+    if (owner) return owner;
+    const accounts = await fsAccounts().catch(() => [] as any[]);
+    const known = accounts.some((a: any) =>
+      (a.shops || []).some((s: any) => normShopName(String(s)) === normShopName(shop)));
+    return known ? sessionUser.username : null;
+  };
+
+  /**
    * Danh sách shop folders user được phép xem. Admin → undefined (xem tất cả).
    * Non-admin → list folders theo profiles user khai báo, hoặc scan baseDir nếu profiles rỗng.
    */
@@ -1790,8 +1809,8 @@ export const startAdminServer = async () => {
       const targets = new Map<string, { base: string; owner: string }>();
       for (const shop of shops) {
         if (/[\/\\]|\.\./.test(shop)) { skipped.push({ shop, reason: "tên shop không hợp lệ" }); continue; }
-        const owner = await getShopOwner(shop);
-        if (!owner) { skipped.push({ shop, reason: "không tìm được owner của shop" }); continue; }
+        const owner = await resolveTargetOwner(shop, sessionUser);
+        if (!owner) { skipped.push({ shop, reason: "shop không thuộc user nào và không có trên 4Seller" }); continue; }
         if (sessionUser.role !== "admin" && owner !== sessionUser.username) {
           skipped.push({ shop, reason: "không có quyền ghi shop này" });
           continue;
@@ -2594,6 +2613,62 @@ export const startAdminServer = async () => {
     }
   });
 
+  /**
+   * Xoá bớt MÀU khỏi 1 sản phẩm Hub (nút Sửa ở thẻ sản phẩm).
+   *
+   * Màu nằm rải ở 6 cấu trúc song song nên phải gỡ đồng bộ cả 6, sót một chỗ là listing
+   * lệch (vd còn ảnh của màu đã xoá). Danh sách size tổng cũng phải tính lại từ màu CÒN
+   * LẠI — nếu không sẽ chào bán size mà không màu nào có.
+   */
+  app.post("/admin/api/hub/variants", async (req, res) => {
+    try {
+      const sessionUser = (req.session as any).user as SessionUser;
+      if (sessionUser.role === "viewer") return res.status(403).json({ error: "Viewer không thể sửa" });
+
+      const { file, remove } = req.body as { file?: string; remove?: string[] };
+      if (!Array.isArray(remove) || remove.length === 0) return res.status(400).json({ error: "Chưa chọn màu nào để xoá" });
+      const full = resolveHubFile(file || "");
+      if (!full || !(await fs.pathExists(full))) return res.status(404).json({ error: "File không tồn tại" });
+
+      const data = JSON.parse(await fs.readFile(full, "utf-8"));
+      const drop = new Set(remove.map((c) => String(c)));
+      const colors: string[] = data?.listing_variations?.colors ?? [];
+      const kept = colors.filter((c) => !drop.has(c));
+      if (kept.length === 0) return res.status(400).json({ error: "Phải giữ lại ít nhất 1 màu" });
+      if (kept.length === colors.length) return res.status(400).json({ error: "Không có màu nào khớp để xoá" });
+
+      // 3 mảng song song dạng [{ "<màu>": <giá trị> }]
+      const keepEntry = (arr: any[]) => (arr ?? []).filter((it) => !drop.has(Object.keys(it ?? {})[0]));
+      data.variant_ids = keepEntry(data.variant_ids);
+      data.variant_images = keepEntry(data.variant_images);
+      data.variant_price = keepEntry(data.variant_price);
+      // 2 map dạng { "<màu>": [size...] }
+      for (const c of drop) {
+        delete data.available_matrix?.[c];
+        delete data.oos_matrix?.[c];
+      }
+      data.listing_variations.colors = kept;
+
+      // Size tổng = hợp của size (còn hàng + hết hàng) trên các màu GIỮ LẠI. Rỗng thì giữ
+      // nguyên danh sách cũ, tránh biến listing thành không còn size nào.
+      const sizes = new Set<string>();
+      for (const c of kept) {
+        for (const s of data.available_matrix?.[c] ?? []) sizes.add(String(s));
+        for (const s of data.oos_matrix?.[c] ?? []) sizes.add(String(s));
+      }
+      if (sizes.size > 0) data.listing_variations.sizes = [...sizes];
+
+      await fs.writeFile(full, JSON.stringify(data, null, 2), "utf-8");
+      // Không phải vứt cache tay: chỉ mục Hub của homie khoá theo (mtime, size) của chính
+      // file, ghi đè file là chữ ký đổi → lần quét sau tự dựng lại thẻ.
+
+      console.log(`✏️  Hub ${path.basename(full)}: xoá ${colors.length - kept.length} màu (${[...drop].join(", ")}), còn ${kept.length}`);
+      res.json({ ok: true, removed: colors.length - kept.length, colors: kept, sizes: data.listing_variations.sizes });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? "Lỗi sửa variant" });
+    }
+  });
+
   // Xem JSON gốc 1 sản phẩm Hub.
   app.get("/admin/api/hub/json", async (req, res) => {
     try {
@@ -2705,8 +2780,8 @@ export const startAdminServer = async () => {
       const skipped: { file?: string; shop?: string; reason: string }[] = [];
       for (const shop of shops) {
         if (/[\/\\]|\.\./.test(shop)) { skipped.push({ shop, reason: "tên shop không hợp lệ" }); continue; }
-        const owner = await getShopOwner(shop);
-        if (!owner) { skipped.push({ shop, reason: "không tìm được owner" }); continue; }
+        const owner = await resolveTargetOwner(shop, sessionUser);
+        if (!owner) { skipped.push({ shop, reason: "shop không thuộc user nào và không có trên 4Seller" }); continue; }
         if (sessionUser.role !== "admin" && owner !== sessionUser.username) {
           skipped.push({ shop, reason: "không có quyền ghi shop này" }); continue;
         }

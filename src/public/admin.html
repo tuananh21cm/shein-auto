@@ -3171,7 +3171,18 @@ function setHubBy(val) {
   renderHub(true);
 }
 
-const HUB_PAGE = 48;
+// Số sản phẩm/trang ở Hub — mặc định 50, đổi bằng dropdown, nhớ qua localStorage.
+const HUB_PAGE_SIZES = [10, 20, 50, 100];
+function hubPageSize() {
+  const v = Number(localStorage.getItem('hubPageSize'));
+  return HUB_PAGE_SIZES.includes(v) ? v : 50;
+}
+function setHubPageSize(v) {
+  const n = Number(v);
+  if (!HUB_PAGE_SIZES.includes(n)) return;
+  try { localStorage.setItem('hubPageSize', String(n)); } catch { /* chế độ ẩn danh */ }
+  renderHub(true); // đổi cỡ trang thì về trang 1, tránh rơi vào trang không còn tồn tại
+}
 function gotoHubPage(p) {
   state.hubPage = p;
   renderHub();
@@ -3197,13 +3208,8 @@ function hubPager(totalPages, total) {
     <span class="hub-pg-info">Trang ${p}/${totalPages} · ${total} sp</span>
   </div>`;
 }
-function renderHub(resetPage) {
-  ensureHubState();
-  if (resetPage || state.hubPage == null) state.hubPage = 1;
-  renderHubStaff();
-  renderHubNicheDashboard();
-  renderHubNicheStrip();
-  populateHubBy();
+/** Danh sách Hub sau khi lọc + sắp xếp — dùng chung cho render và "Chọn tất cả". */
+function hubItemsFiltered() {
   const search = ($("#hubSearch").value || "").toLowerCase().trim();
   const filter = $("#hubFilter")?.value || "";
   const byF = state.hubBy || "";
@@ -3232,6 +3238,17 @@ function renderHub(resetPage) {
   const sort = $("#hubSort")?.value || "";
   if (sort === "listed_desc") items = [...items].sort((a, b) => (b.listedCount || 0) - (a.listedCount || 0));
   else if (sort === "listed_asc") items = [...items].sort((a, b) => (a.listedCount || 0) - (b.listedCount || 0));
+  return items;
+}
+
+function renderHub(resetPage) {
+  ensureHubState();
+  if (resetPage || state.hubPage == null) state.hubPage = 1;
+  renderHubStaff();
+  renderHubNicheDashboard();
+  renderHubNicheStrip();
+  populateHubBy();
+  let items = hubItemsFiltered();
   const listedProducts = state.hub.items.filter((i) => (i.listedCount || 0) > 0).length;
   const totalListings = state.hub.items.reduce((n, i) => n + (i.listedCount || 0), 0);
   $("#hubSubtitle").innerHTML = `Kho chung · <b>${state.hub.items.length}</b> sản phẩm · đã list <b>${listedProducts}</b> sp lên tổng <b>${totalListings}</b> lượt shop`;
@@ -3249,18 +3266,27 @@ function renderHub(resetPage) {
     return `${pr.currency}${pr.min.toFixed(2)} – ${pr.currency}${pr.max.toFixed(2)}`;
   };
 
-  const toolbar = canEdit ? `
+  const perPage = hubPageSize();
+  const totalPages = Math.max(1, Math.ceil(items.length / perPage));
+  if (state.hubPage > totalPages) state.hubPage = totalPages;
+  const startIdx = (state.hubPage - 1) * perPage;
+  const shown = items.slice(startIdx, startIdx + perPage);
+
+  const sizeSel = `<span style="margin-left:auto; color:var(--text-mute); display:flex; align-items:center; gap:6px;">
+        Hiện
+        <select onchange="setHubPageSize(this.value)" style="width:auto; padding:3px 8px; margin:0;">
+          ${HUB_PAGE_SIZES.map((n) => `<option value="${n}" ${n === perPage ? 'selected' : ''}>${n}</option>`).join('')}
+        </select>
+        sp/trang
+      </span>`;
+  const toolbar = `
     <div style="display:flex; align-items:center; gap:10px; margin-bottom:12px; padding:10px 14px; background:var(--bg-elev); border-radius:8px; font-size:0.85rem;">
-      <button class="btn btn-ghost" onclick="selectAllHub()" style="padding:5px 12px;">☑ Chọn tất cả (${items.length})</button>
+      ${canEdit ? `<button class="btn btn-ghost" onclick="selectAllHub()" style="padding:5px 12px;">☑ Chọn cả trang (${shown.length})</button>
       <button class="btn btn-ghost" onclick="clearHubSelect()" style="padding:5px 12px;">Bỏ chọn</button>
       <button class="btn btn-ghost" onclick="openVideoLibrary()" style="padding:5px 12px;">🎬 Thư viện video</button>
-      <span style="color:var(--text-mute);">Click card để chọn → “📤 List” hoặc “🎬 Tạo video”</span>
-    </div>` : '';
-
-  const totalPages = Math.max(1, Math.ceil(items.length / HUB_PAGE));
-  if (state.hubPage > totalPages) state.hubPage = totalPages;
-  const startIdx = (state.hubPage - 1) * HUB_PAGE;
-  const shown = items.slice(startIdx, startIdx + HUB_PAGE);
+      <span style="color:var(--text-mute);">Click card để chọn → “📤 List” hoặc “🎬 Tạo video”</span>` : ''}
+      ${sizeSel}
+    </div>`;
   $("#hubGrid").innerHTML = toolbar + '<div class="listings-grid">' + shown.map((it) => {
     const idEnc = encodeURIComponent(it.id);
     const isSel = state.hub.selected.has(it.id);
@@ -3315,19 +3341,12 @@ function toggleHubSelect(idEnc, checked) {
 
 function selectAllHub() {
   ensureHubState();
-  const search = ($("#hubSearch").value || "").toLowerCase().trim();
-  const filter = $("#hubFilter")?.value || "";
-  const byF = state.hubBy || "", nicheF = state.hubNiche || "";
-  let items = state.hub.items;
-  if (nicheF === "__none") items = items.filter((it) => !it.niche);
-  else if (nicheF) items = items.filter((it) => it.niche === nicheF);
-  if (byF === "__me") items = items.filter((it) => it.addedBy === state.user?.username);
-  else if (byF === "__nobody") items = items.filter((it) => !it.addedBy);
-  else if (byF) items = items.filter((it) => it.addedBy === byF);
-  if (filter === "listed") items = items.filter((it) => (it.listedCount || 0) > 0);
-  else if (filter === "unlisted") items = items.filter((it) => (it.listedCount || 0) === 0);
-  if (search) items = items.filter((it) => (it.title || "").toLowerCase().includes(search));
-  for (const it of items) state.hub.selected.add(it.id);
+  // Chỉ chọn sản phẩm ĐANG HIỆN trên trang này. Trước đây chọn hết mọi trang sau khi lọc,
+  // bấm nhầm là ôm cả nghìn sản phẩm vào lượt list.
+  const items = hubItemsFiltered();
+  const perPage = hubPageSize();
+  const startIdx = (state.hubPage - 1) * perPage;
+  for (const it of items.slice(startIdx, startIdx + perPage)) state.hub.selected.add(it.id);
   renderHub();
 }
 

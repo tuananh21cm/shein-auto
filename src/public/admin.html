@@ -772,7 +772,7 @@
 
       <div id="hubNicheDash"></div>
       <div class="card">
-        <div style="display:flex; gap:10px; align-items:center; margin-bottom:12px;">
+        <div style="display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin-bottom:12px;">
           <select id="hubFilter" onchange="renderHub(true)" style="width:auto; min-width:160px;">
             <option value="">Tất cả</option>
             <option value="listed">📤 Đã đẩy</option>
@@ -795,9 +795,9 @@
           </select>
           <input id="hubSearch" placeholder="🔍 Tìm sản phẩm..." oninput="renderHub(true)" style="width:240px;" />
           <div style="flex:1;"></div>
-          <button class="btn btn-primary" id="hubImportBtn" onclick="document.getElementById('hubImportInput').click()">📥 Import file</button>
+          <button class="btn btn-primary" id="hubImportBtn" style="white-space:nowrap;" onclick="document.getElementById('hubImportInput').click()">📥 Import file</button>
           <input type="file" id="hubImportInput" accept=".json,application/json" multiple hidden onchange="hubImportFiles(this.files)" />
-          <span style="display:inline-flex; align-items:center; gap:6px; border-left:1px solid var(--border, #e5e7eb); padding-left:10px;" title="Trao đổi Hub với máy khác: xuất zip gửi đi / nhập zip nhận về (tự bỏ trùng, gộp thông tin đã list)">
+          <span style="display:inline-flex; align-items:center; gap:6px; white-space:nowrap; border-left:1px solid var(--border, #e5e7eb); padding-left:10px;" title="Trao đổi Hub với máy khác: xuất zip gửi đi / nhập zip nhận về (tự bỏ trùng, gộp thông tin đã list)">
             <input type="date" id="hubZipSince" title="Chỉ xuất sản phẩm thêm hoặc list từ ngày này. Để trống = toàn bộ Hub" style="width:auto;" />
             <button class="btn btn-ghost" id="hubZipExportBtn" onclick="hubExportZip()">📤 Xuất zip</button>
             <button class="btn btn-ghost" id="hubZipImportBtn" onclick="document.getElementById('hubZipInput').click()">📦 Nhập zip</button>

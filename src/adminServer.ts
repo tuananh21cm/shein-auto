@@ -1968,7 +1968,8 @@ export const startAdminServer = async () => {
   const writeHubFile = async (data: any, addedBy?: string): Promise<string> => {
     await fs.ensureDir(config.hubDir);
     const fileName = `hub_${Date.now()}_${Math.floor(Math.random() * 1e6)}.json`;
-    const withMeta = { ...data, _addedBy: addedBy || data?._addedBy || null, _addedAt: data?._addedAt || Date.now() };
+    // _host = máy ghi file (Hub share LAN → nhiều máy cùng ghi; không có thì không phân biệt được local/máy khác).
+    const withMeta = { ...data, _addedBy: addedBy || data?._addedBy || null, _addedAt: data?._addedAt || Date.now(), _host: os.hostname() };
     await fs.writeFile(path.join(config.hubDir, fileName), JSON.stringify(withMeta, null, 2), "utf-8");
     return fileName;
   };
@@ -2617,7 +2618,7 @@ export const startAdminServer = async () => {
   app.get("/admin/api/hub", async (_req, res) => {
     try {
       const items = await scanHub();
-      res.json({ items, hubMode: hubModeInfo() });
+      res.json({ items, hubMode: hubModeInfo(), host: os.hostname() }); // host = máy này → UI lọc "Máy này"/"máy khác"
     } catch (err: any) {
       res.status(500).json({ error: err?.message ?? "Lỗi scan hub" });
     }

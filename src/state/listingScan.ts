@@ -453,6 +453,8 @@ export interface HubItem {
   importedBy?: string | null;
   importedFrom?: string | null;
   importedAt?: number | null;
+  /** Máy đã ghi file vào Hub (_host) — Hub share LAN nhiều máy cùng ghi. */
+  host?: string | null;
   id: string; // = filename (unique trong hubDir)
   file: string;
   title: string;
@@ -580,6 +582,7 @@ const buildHubItem = async (dir: string, f: string, stat: fs.Stats): Promise<Hub
         importedBy: raw?._importedBy ?? null,
         importedFrom: raw?._importedFrom ?? null,
         importedAt: raw?._importedAt ?? null,
+        host: raw?._host ?? null,
         listedCount: m ? m.shops.length : 0,
         listedShops: m ? m.shops : [],
         lastListedMs: m ? m.lastAt : 0,

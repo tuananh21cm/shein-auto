@@ -169,6 +169,7 @@ export async function importHub(opts: { sources: string[]; by?: string; log?: (m
       else {
         // _addedBy = người cào gốc (giữ nguyên); _importedBy/_importedFrom/_importedAt = ai nhập, từ máy nào, lúc nào.
         const out = { ...d, _addedBy: d._addedBy || by, _addedAt: d._addedAt || Date.now(),
+          _host: os.hostname(), // máy ghi file (máy đang nhập)
           _importedBy: by, _importedAt: importedAt, ...(b.from ? { _importedFrom: b.from } : {}) };
         localName = `hub_${Date.now()}_${counter++}_${Math.floor(Math.random() * 1e6)}.json`;
         await fs.writeFile(path.join(config.hubDir, localName), JSON.stringify(out, null, 2), "utf-8");

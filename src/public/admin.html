@@ -778,6 +778,7 @@
             <option value="listed">📤 Đã đẩy</option>
             <option value="unlisted">⏳ Chưa đẩy</option>
           </select>
+          <select id="hubHost" onchange="state.hubHost=this.value; renderHub(true)" style="width:auto; min-width:140px;" title="Lọc theo máy đã ghi sản phẩm vào Hub (Hub share LAN: nhiều máy cùng ghi)"></select>
           <select id="hubBy" onchange="state.hubBy=this.value; renderHub(true)" style="width:auto; min-width:150px;" title="Lọc theo người cào">
             <option value="">👥 Cả đội</option>
           </select>
@@ -2975,6 +2976,7 @@ async function loadHub() {
     const data = await res.json();
     if (!res.ok) throw new Error(data.error);
     state.hub.items = data.items || [];
+    state.hub.host = data.host || ""; // máy này (server) → lọc "Máy này"/"máy khác"
     renderHubModeBtn(data.hubMode);
     const valid = new Set(state.hub.items.map((i) => i.id));
     for (const k of [...state.hub.selected]) if (!valid.has(k)) state.hub.selected.delete(k);
@@ -3170,6 +3172,22 @@ async function hubImportZip(fileList) {
   finally { btn.disabled = false; btn.textContent = old; if (input) input.value = ""; }
 }
 
+function populateHubHost() {
+  const sel = $("#hubHost"); if (!sel) return;
+  const me = state.hub.host || "";
+  const items = state.hub.items || [];
+  const hosts = [...new Set(items.map((it) => it.host).filter(Boolean))].sort();
+  const noHost = items.filter((it) => !it.host).length;
+  const cur = state.hubHost || "";
+  sel.innerHTML = `<option value="">💻 Mọi máy</option>` +
+    (me ? `<option value="__this">🖥 Máy này (${escapeHtml(me)})</option>` : "") +
+    (hosts.filter((h) => h !== me).length ? `<option value="__others">🌐 Máy khác</option>` : "") +
+    hosts.filter((h) => h !== me).map((h) => `<option value="${escapeHtml(h)}">💻 ${escapeHtml(h)}</option>`).join("") +
+    (noHost ? `<option value="__none">(chưa rõ máy: ${noHost})</option>` : "");
+  sel.value = [...sel.options].some((o) => o.value === cur) ? cur : "";
+  sel.style.display = (hosts.length === 0 && !me) ? "none" : "";
+}
+
 function populateHubBy() {
   const sel = $("#hubBy"); if (!sel) return;
   const me = state.user?.username;
@@ -3243,6 +3261,7 @@ function renderHub(resetPage) {
   renderHubNicheDashboard();
   renderHubNicheStrip();
   populateHubBy();
+  populateHubHost();
   const search = ($("#hubSearch").value || "").toLowerCase().trim();
   const filter = $("#hubFilter")?.value || "";
   const byF = state.hubBy || "";
@@ -3253,6 +3272,12 @@ function renderHub(resetPage) {
   if (byF === "__me") items = items.filter((it) => it.addedBy === state.user?.username);
   else if (byF === "__nobody") items = items.filter((it) => !it.addedBy);
   else if (byF) items = items.filter((it) => it.addedBy === byF);
+  // Lọc theo máy ghi file (_host). File cũ chưa có _host → "(chưa rõ máy)".
+  const hostF = state.hubHost || "", meHost = state.hub.host || "";
+  if (hostF === "__this") items = items.filter((it) => it.host && it.host === meHost);
+  else if (hostF === "__others") items = items.filter((it) => it.host && it.host !== meHost);
+  else if (hostF === "__none") items = items.filter((it) => !it.host);
+  else if (hostF) items = items.filter((it) => it.host === hostF);
   if (filter === "listed") items = items.filter((it) => (it.listedCount || 0) > 0);
   else if (filter === "unlisted") items = items.filter((it) => (it.listedCount || 0) === 0);
   if (search) items = items.filter((it) => (it.title || "").toLowerCase().includes(search));
@@ -3322,6 +3347,7 @@ function renderHub(resetPage) {
             <span class="pill" title="${escapeHtml((it.listedShops || []).join(', ') || 'Chưa list lên shop nào')}" style="${it.listedCount > 0 ? 'border-color:var(--accent);color:var(--accent);' : ''}">📤 ${it.listedCount || 0} shop</span>
             ${it.niche ? `<span class="pill" title="Ngách" style="text-transform:capitalize;">🎯 ${escapeHtml(it.niche.replace(/-/g, ' '))}</span>` : ''}
             ${it.addedBy ? `<span class="pill" title="Người cào: ${escapeHtml(it.addedBy)}" style="${it.addedBy === state.user?.username ? 'border-color:var(--success);color:var(--success);' : ''}">🧑 ${escapeHtml(it.addedBy)}</span>` : ''}
+            ${it.host && state.hub.host && it.host !== state.hub.host ? `<span class="pill" title="Ghi vào Hub từ máy ${escapeHtml(it.host)}" style="border-color:var(--warning, #d97706);color:var(--warning, #d97706);">💻 ${escapeHtml(it.host)}</span>` : ''}
             ${it.importedAt ? `<span class="pill" title="Nhập từ zip ${escapeHtml(absTime(it.importedAt))}${it.importedFrom ? ' · máy ' + escapeHtml(it.importedFrom) : ''}${it.importedBy ? ' · bởi ' + escapeHtml(it.importedBy) : ''}">📦 ${escapeHtml(it.importedFrom || 'nhập')}</span>` : ''}
           </div>
         </div>

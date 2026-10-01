@@ -787,11 +787,14 @@
             <option value="yesterday">Hôm qua</option>
             <option value="7d">7 ngày qua</option>
             <option value="30d">30 ngày qua</option>
+            <option value="imp_today">📦 Nhập hôm nay</option>
+            <option value="imp_7d">📦 Nhập 7 ngày qua</option>
           </select>
           <select id="hubSort" onchange="renderHub(true)" style="width:auto; min-width:190px;">
             <option value="">Mới nhất</option>
             <option value="listed_desc">📤 Đã đẩy: nhiều → ít</option>
             <option value="listed_asc">📤 Đã đẩy: ít → nhiều</option>
+            <option value="imported_desc">📦 Mới nhập từ máy khác</option>
           </select>
           <input id="hubSearch" placeholder="🔍 Tìm sản phẩm..." oninput="renderHub(true)" style="width:240px;" />
           <div style="flex:1;"></div>
@@ -3269,11 +3272,15 @@ function hubItemsFiltered() {
     else if (dateF === "yesterday") items = items.filter((it) => ts(it) >= t0 - day && ts(it) < t0);
     else if (dateF === "7d") items = items.filter((it) => ts(it) >= t0 - 6 * day);
     else if (dateF === "30d") items = items.filter((it) => ts(it) >= t0 - 29 * day);
+    // Nhập từ zip máy khác (importedAt do core/hubTransfer ghi lúc nhập)
+    else if (dateF === "imp_today") items = items.filter((it) => (it.importedAt || 0) >= t0);
+    else if (dateF === "imp_7d") items = items.filter((it) => (it.importedAt || 0) >= t0 - 6 * day);
   }
   // Sort theo số shop đã đẩy (tạo bản sao để không mutate state.hub.items)
   const sort = $("#hubSort")?.value || "";
   if (sort === "listed_desc") items = [...items].sort((a, b) => (b.listedCount || 0) - (a.listedCount || 0));
   else if (sort === "listed_asc") items = [...items].sort((a, b) => (a.listedCount || 0) - (b.listedCount || 0));
+  else if (sort === "imported_desc" || (!sort && dateF.startsWith("imp_"))) items = [...items].sort((a, b) => (b.importedAt || 0) - (a.importedAt || 0)); // lọc "nhập" mà chưa chọn sort → mới nhập lên đầu
   return items;
 }
 
@@ -3341,6 +3348,7 @@ function renderHub(resetPage) {
             <span class="pill" title="${escapeHtml((it.listedShops || []).join(', ') || 'Chưa list lên shop nào')}" style="${it.listedCount > 0 ? 'border-color:var(--accent);color:var(--accent);' : ''}">📤 ${it.listedCount || 0} shop</span>
             ${it.niche ? `<span class="pill" title="Ngách" style="text-transform:capitalize;">🎯 ${escapeHtml(it.niche.replace(/-/g, ' '))}</span>` : ''}
             ${it.addedBy ? `<span class="pill" title="Người cào: ${escapeHtml(it.addedBy)}" style="${it.addedBy === state.user?.username ? 'border-color:var(--success);color:var(--success);' : ''}">🧑 ${escapeHtml(it.addedBy)}</span>` : ''}
+            ${it.importedAt ? `<span class="pill" title="Nhập từ zip ${escapeHtml(absTime(it.importedAt))}${it.importedFrom ? ' · máy ' + escapeHtml(it.importedFrom) : ''}${it.importedBy ? ' · bởi ' + escapeHtml(it.importedBy) : ''}">📦 ${escapeHtml(it.importedFrom || 'nhập')}</span>` : ''}
           </div>
         </div>
         <div class="time-row"><span title="${escapeHtml(absTime(it.mtimeMs))}">⏱ ${escapeHtml(relTime(it.mtimeMs))}</span>${it.lastListedMs ? `<span class="scraped" title="List gần nhất">📤 ${escapeHtml(relTime(it.lastListedMs))}</span>` : ''}</div>

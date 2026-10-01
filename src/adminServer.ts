@@ -520,10 +520,19 @@ export const startAdminServer = async () => {
   });
 
   // Listing ACTIVE của 1 shop trên 4Seller (cho addon) — có productId TikTok (dài) + ảnh.
+  // Cache listing theo shop 5p: 4Seller kéo 10 trang ~9s/lần. ?fresh=1 (nút ↻ addon) bỏ qua cache.
+  // ponytail: Map toàn cục không giới hạn — ~100 shop × ~400 item là nhỏ; thêm LRU nếu RAM thành vấn đề.
+  const listingsCache = new Map<string, { ts: number; listings: any[] }>();
+  const LISTINGS_TTL_MS = 5 * 60_000;
   ingestRouter.get("/listings", localOrToken, async (req, res) => {
     try {
       const shop = String(req.query.shop || "").trim();
       if (!shop) return res.status(400).json({ error: "Thiếu shop" });
+      const cacheKey = normShopName(shop);
+      const hit = listingsCache.get(cacheKey);
+      if (req.query.fresh !== "1" && hit && Date.now() - hit.ts < LISTINGS_TTL_MS) {
+        return res.json({ listings: hit.listings, cached: true, ageSec: Math.round((Date.now() - hit.ts) / 1000) });
+      }
       const { resolveAccountForShop } = await import("./state/fourSellerAccounts");
       const acc = await resolveAccountForShop(shop);
       if (!acc) return res.status(400).json({ error: `Shop "${shop}" chưa map tài khoản 4Seller (tab Cookie).` });
@@ -545,7 +554,8 @@ export const startAdminServer = async () => {
         }
         if ((r.records?.length ?? 0) < 100 || listings.length >= (r.total ?? 0)) break;
       }
-      res.json({ listings });
+      listingsCache.set(cacheKey, { ts: Date.now(), listings });
+      res.json({ listings, cached: false });
     } catch (err: any) {
       res.status(500).json({ error: err?.message ?? "Lỗi list listing" });
     }

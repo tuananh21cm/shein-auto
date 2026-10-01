@@ -2,6 +2,7 @@ import express from "express";
 import session from "express-session";
 import cors from "cors";
 import path from "path";
+import os from "os";
 import fs from "fs-extra";
 import { chromium } from "playwright-core";
 import {
@@ -2740,6 +2741,42 @@ export const startAdminServer = async () => {
       res.json({ ok: true, imported, duplicates, invalid });
     } catch (err: any) {
       res.status(500).json({ error: err?.message ?? "Lỗi import Hub" });
+    }
+  });
+
+  // ── Trao đổi Hub giữa các máy (team): xuất zip sp + .hubmeta / nhập zip máy khác gửi. Logic: core/hubTransfer.ts ──
+  app.get("/admin/api/hub/export.zip", async (req, res) => {
+    try {
+      const sinceRaw = String(req.query.since || "").trim();
+      const sinceMs = sinceRaw ? (/^\d+$/.test(sinceRaw) ? Number(sinceRaw) : Date.parse(sinceRaw)) : 0;
+      if (sinceRaw && !Number.isFinite(sinceMs)) return res.status(400).json({ error: "Ngày không hợp lệ" });
+      const { exportHub } = await import("./core/hubTransfer");
+      const stamp = new Date().toISOString().slice(0, 10);
+      const out = path.join(os.tmpdir(), `hub-export-${stamp}-${Date.now()}.zip`);
+      const r = await exportHub({ out, sinceMs });
+      if (!r.products) return res.status(404).json({ error: `Không có sản phẩm nào để xuất${sinceMs ? " từ ngày đã chọn" : ""}` });
+      res.setHeader("X-Hub-Export", JSON.stringify({ products: r.products, metas: r.metas, total: r.total }));
+      res.download(out, `hub-export-${stamp}${sinceMs ? "-since-" + new Date(sinceMs).toISOString().slice(0, 10) : ""}.zip`, () => { fs.remove(out).catch(() => {}); });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? "Lỗi xuất Hub" });
+    }
+  });
+  // Body = chính file zip (Content-Type application/zip), không cần multer. Viewer không được nhập.
+  app.post("/admin/api/hub/import-zip", express.raw({ type: () => true, limit: "500mb" }), async (req, res) => {
+    const sessionUser = (req.session as any).user as SessionUser;
+    if (sessionUser.role === "viewer") return res.status(403).json({ error: "Viewer không thể nhập" });
+    const buf = req.body as Buffer;
+    if (!Buffer.isBuffer(buf) || buf.length < 22 || buf[0] !== 0x50 || buf[1] !== 0x4b) return res.status(400).json({ error: "File không phải zip" });
+    const tmp = path.join(os.tmpdir(), `hub-upload-${Date.now()}.zip`);
+    try {
+      await fs.writeFile(tmp, buf);
+      const { importHub } = await import("./core/hubTransfer");
+      const r = await importHub({ sources: [tmp], by: sessionUser.username, log: (m) => console.log(`[hub-import ${sessionUser.username}] ${m}`) });
+      res.json({ ok: true, ...r });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? "Lỗi nhập Hub" });
+    } finally {
+      await fs.remove(tmp).catch(() => {});
     }
   });
 

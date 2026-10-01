@@ -797,6 +797,12 @@
           <div style="flex:1;"></div>
           <button class="btn btn-primary" id="hubImportBtn" onclick="document.getElementById('hubImportInput').click()">📥 Import file</button>
           <input type="file" id="hubImportInput" accept=".json,application/json" multiple hidden onchange="hubImportFiles(this.files)" />
+          <span style="display:inline-flex; align-items:center; gap:6px; border-left:1px solid var(--border, #e5e7eb); padding-left:10px;" title="Trao đổi Hub với máy khác: xuất zip gửi đi / nhập zip nhận về (tự bỏ trùng, gộp thông tin đã list)">
+            <input type="date" id="hubZipSince" title="Chỉ xuất sản phẩm thêm hoặc list từ ngày này. Để trống = toàn bộ Hub" style="width:auto;" />
+            <button class="btn btn-ghost" id="hubZipExportBtn" onclick="hubExportZip()">📤 Xuất zip</button>
+            <button class="btn btn-ghost" id="hubZipImportBtn" onclick="document.getElementById('hubZipInput').click()">📦 Nhập zip</button>
+            <input type="file" id="hubZipInput" accept=".zip,application/zip,application/x-zip-compressed" hidden onchange="hubImportZip(this.files)" />
+          </span>
         </div>
         <div id="hubStaff" style="margin-bottom:12px;"></div>
         <div id="hubNicheStrip" style="margin-bottom:12px;"></div>
@@ -3129,6 +3135,36 @@ async function hubImportFiles(fileList) {
     if (btn) { btn.disabled = false; btn.textContent = "📥 Import file"; }
     if (input) input.value = ""; // cho phép chọn lại cùng file
   }
+}
+
+// ── Trao đổi Hub giữa các máy: xuất zip (sp + đã list shop nào) / nhập zip máy khác gửi ──
+async function hubExportZip() {
+  const btn = $("#hubZipExportBtn"); const since = ($("#hubZipSince")?.value || "").trim();
+  const old = btn.textContent; btn.disabled = true; btn.textContent = "📤 Đang gom…";
+  try {
+    const res = await apiFetch("/admin/api/hub/export.zip" + (since ? "?since=" + encodeURIComponent(since) : ""));
+    if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || ("HTTP " + res.status)); }
+    const info = JSON.parse(res.headers.get("X-Hub-Export") || "{}");
+    const blob = await res.blob();
+    const name = ((res.headers.get("content-disposition") || "").match(/filename="?([^";]+)/) || [])[1] || "hub-export.zip";
+    const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name; a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 60000);
+    toast(`📤 Đã xuất ${info.products ?? "?"}/${info.total ?? "?"} sản phẩm · ${info.metas ?? 0} meta · ${(blob.size / 1e6).toFixed(1)} MB → gửi file cho máy kia bấm "Nhập zip"`);
+  } catch (e) { toast("Xuất zip lỗi: " + e.message, "error"); }
+  finally { btn.disabled = false; btn.textContent = old; }
+}
+async function hubImportZip(fileList) {
+  const f = fileList && fileList[0]; const input = $("#hubZipInput"); if (!f) return;
+  const btn = $("#hubZipImportBtn"); const old = btn.textContent;
+  btn.disabled = true; btn.textContent = `📦 Đang nhập ${(f.size / 1e6).toFixed(1)} MB…`;
+  try {
+    const res = await apiFetch("/admin/api/hub/import-zip", { method: "POST", headers: { "Content-Type": "application/zip" }, body: f });
+    const d = await res.json();
+    if (!res.ok) throw new Error(d.error || ("HTTP " + res.status));
+    toast(`📦 Nhập: ${d.imported} sản phẩm mới · ${d.dup} trùng (bỏ) · ${d.metaMerged} đã gộp thông tin list${d.invalid ? ` · ${d.invalid} file bỏ qua` : ""}`);
+    loadHub();
+  } catch (e) { toast("Nhập zip lỗi: " + e.message, "error"); }
+  finally { btn.disabled = false; btn.textContent = old; if (input) input.value = ""; }
 }
 
 function populateHubBy() {

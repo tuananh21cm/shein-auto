@@ -449,6 +449,10 @@ export interface HubItem {
   niche?: string | null;
   addedBy?: string | null;
   addedAt?: number | null;
+  /** Nhập từ zip máy khác (core/hubTransfer): ai nhập, từ máy nào, lúc nào. */
+  importedBy?: string | null;
+  importedFrom?: string | null;
+  importedAt?: number | null;
   id: string; // = filename (unique trong hubDir)
   file: string;
   title: string;
@@ -573,6 +577,9 @@ const buildHubItem = async (dir: string, f: string, stat: fs.Stats): Promise<Hub
         niche: card.niche ?? null,
         addedBy: raw?._addedBy ?? null,
         addedAt: raw?._addedAt ?? null,
+        importedBy: raw?._importedBy ?? null,
+        importedFrom: raw?._importedFrom ?? null,
+        importedAt: raw?._importedAt ?? null,
         listedCount: m ? m.shops.length : 0,
         listedShops: m ? m.shops : [],
         lastListedMs: m ? m.lastAt : 0,

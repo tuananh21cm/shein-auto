@@ -147,13 +147,19 @@ export async function importHub(opts: { sources: string[]; by?: string; log?: (m
     for (const f of (await fs.readdir(config.hubDir)).filter((f) => f.endsWith(".json") && !isHubMeta(f))) {
       try { existing.set(dedupKey(await fs.readJson(path.join(config.hubDir, f))), f); } catch { /* ignore */ }
     }
-    let files: string[] = [];
-    for (const d of dirs) files = files.concat(await walk(d));
-    log(`🔎 Tìm thấy ${files.length} file json trong nguồn.`);
+    // Mỗi nguồn zip kèm manifest.json {host, exportedAt} → sp mới ghi _importedFrom = tên máy xuất.
+    const batches: { files: string[]; from: string | null }[] = [];
+    for (const d of dirs) {
+      const mf = await fs.readJson(path.join(d, "manifest.json")).catch(() => null);
+      batches.push({ files: await walk(d), from: mf?.host ? String(mf.host) : null });
+    }
+    const found = batches.reduce((n, b) => n + b.files.length, 0);
+    log(`🔎 Tìm thấy ${found} file json trong nguồn.`);
 
-    const r: ImportResult = { found: files.length, imported: 0, dup: 0, metaMerged: 0, invalid: 0 };
+    const r: ImportResult = { found, imported: 0, dup: 0, metaMerged: 0, invalid: 0 };
+    const importedAt = Date.now();
     let counter = 0;
-    for (const f of files) {
+    for (const b of batches) for (const f of b.files) {
       let d: any;
       try { d = await fs.readJson(f); } catch { r.invalid++; continue; }
       if (!looksLikeProduct(d)) { r.invalid++; continue; }
@@ -161,7 +167,9 @@ export async function importHub(opts: { sources: string[]; by?: string; log?: (m
       let localName = existing.get(key);
       if (localName) r.dup++;
       else {
-        const out = { ...d, _addedBy: d._addedBy || by, _addedAt: d._addedAt || Date.now() };
+        // _addedBy = người cào gốc (giữ nguyên); _importedBy/_importedFrom/_importedAt = ai nhập, từ máy nào, lúc nào.
+        const out = { ...d, _addedBy: d._addedBy || by, _addedAt: d._addedAt || Date.now(),
+          _importedBy: by, _importedAt: importedAt, ...(b.from ? { _importedFrom: b.from } : {}) };
         localName = `hub_${Date.now()}_${counter++}_${Math.floor(Math.random() * 1e6)}.json`;
         await fs.writeFile(path.join(config.hubDir, localName), JSON.stringify(out, null, 2), "utf-8");
         existing.set(key, localName);

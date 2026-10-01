@@ -259,12 +259,21 @@ export const resolveAccountForShop = async (
   const accounts = await listAccounts();
   if (accounts.length === 0) return null;
   const target = normShopName(shopFolder);
-  for (const acc of accounts) {
-    if (acc.shops.some((s) => normShopName(s) === target)) return acc;
+  const find = (list: FourSellerAccount[]) => list.find((acc) => acc.shops.some((s) => normShopName(s) === target)) ?? null;
+  const hit = find(accounts);
+  if (hit) return hit;
+  // Danh sách shop chỉ cập nhật lúc import cookie → user đổi tên profile trên 4Seller (vd 29/09
+  // KBT-TA-008-Calmwell → KBT-TA-025-BrussellMusic) là tra hụt. Làm mới rồi tra lại (≤ 1 lần/10′).
+  if (Date.now() - lastShopRefresh > 10 * 60_000) {
+    lastShopRefresh = Date.now();
+    for (const acc of accounts) await refreshAccountShops(acc.uid).catch(() => {});
+    const again = find(await listAccounts());
+    if (again) return again;
   }
   if (accounts.length === 1) return accounts[0];
   return null;
 };
+let lastShopRefresh = 0;
 
 /**
  * Path file cookie cho 1 shop — dùng bởi worker. Throw message rõ ràng khi chưa

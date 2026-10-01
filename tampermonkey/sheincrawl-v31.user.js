@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         SHEIN → Hub Scraper v30 (one-click)
 // @namespace    http://tampermonkey.net/
-// @version      31.1.0
+// @version      31.2.0
 // @description  Cào sản phẩm SHEIN vào Hub: 1 nút ở trang sản phẩm, hoặc gom link ở trang danh mục cho server cào nền. Không panel, không chọn shop, không phải dán token — tự lấy từ phiên đã đăng nhập admin.
 // @author       shein-auto
 // @match        *://*.shein.com/*
@@ -42,7 +42,28 @@
     };
 
     /* ====================== UTILS ====================== */
-    const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+    /**
+     * Đồng hồ chờ chạy trong Web Worker.
+     *
+     * Chrome BÓP setTimeout của tab ẩn: xuống 1 lần/giây, và sau ~5 phút ẩn thì còn
+     * 1 lần/PHÚT. Vòng dò của script nhịp 60ms nên chuyển tab là coi như đứng hẳn.
+     * Timer trong Worker không bị bóp kiểu đó → cào nền vẫn chạy.
+     *
+     * Worker dựng từ blob; trang nào chặn blob: (CSP) thì tự lùi về setTimeout thường.
+     */
+    const _timer = (() => {
+        try {
+            const src = 'onmessage=function(e){var d=e.data;setTimeout(function(){postMessage(d.id)},d.ms)}';
+            const w = new Worker(URL.createObjectURL(new Blob([src], { type: 'text/javascript' })));
+            const pending = new Map();
+            let seq = 0;
+            w.onmessage = (e) => { const r = pending.get(e.data); if (r) { pending.delete(e.data); r(); } };
+            return (ms) => new Promise((r) => { const id = ++seq; pending.set(id, r); w.postMessage({ id, ms }); });
+        } catch {
+            return null;
+        }
+    })();
+    const wait = (ms) => (_timer ? _timer(ms) : new Promise((r) => setTimeout(r, ms)));
 
     /** Nhịp dò DOM. 150ms là quá thưa — mỗi lần chờ mất trung bình nửa nhịp cho không. */
     const POLL_MS = 60;

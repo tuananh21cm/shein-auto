@@ -470,6 +470,8 @@ export interface HubItem {
   listedCount: number;
   listedShops: string[];
   lastListedMs: number;
+  /** Mọi productId SHEIN của sp: id trong url + id từng màu (variant_ids) — để ô tìm kiếm tra theo mã. */
+  pids: string[];
 }
 
 // Meta Hub PER-PRODUCT (sidecar <hubfile>.hubmeta.json) thay cho __hub_meta.json global.
@@ -564,9 +566,19 @@ const buildHubItem = async (dir: string, f: string, stat: fs.Stats): Promise<Hub
       const card = await parseListingFile(path.join(dir, f), "hub", "hub", "success", { stat, data: raw });
       if (!card) return null;
       const m = await readOneMeta(f);
+      // Mã sp: lấy từ url (-p-<id>.html) + id của từng màu trong variant_ids. Dân cào quen
+      // tra theo mã màu chứ không chỉ mã sp gốc, nên gom hết vào một mảng cho ô tìm kiếm.
+      const pids = new Set<string>();
+      const um = String(raw?.url ?? "").match(/-p-(\d+)\.html/);
+      if (um) pids.add(um[1]);
+      for (const v of Array.isArray(raw?.variant_ids) ? raw.variant_ids : []) {
+        const id = Object.values(v ?? {})[0];
+        if (id != null && /^\d+$/.test(String(id))) pids.add(String(id));
+      }
       return {
         id: f,
         file: f,
+        pids: [...pids],
         title: card.title,
         image: card.image,
         url: typeof raw?.url === "string" ? raw.url : null,

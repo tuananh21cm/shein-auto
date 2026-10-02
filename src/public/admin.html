@@ -797,7 +797,7 @@
             <option value="listed_asc">📤 Đã đẩy: ít → nhiều</option>
             <option value="imported_desc">📦 Mới nhập từ máy khác</option>
           </select>
-          <input id="hubSearch" placeholder="🔍 Tìm sản phẩm..." oninput="renderHub(true)" style="width:240px;" />
+          <input id="hubSearch" placeholder="🔍 Tìm theo tên hoặc mã sp" title="Gõ tên sản phẩm, hoặc dán mã SHEIN (mã gốc / mã từng màu)" oninput="renderHub(true)" style="width:240px;" />
           <div style="flex:1;"></div>
           <button class="btn btn-primary" id="hubImportBtn" style="white-space:nowrap;" onclick="document.getElementById('hubImportInput').click()">📥 Import file</button>
           <input type="file" id="hubImportInput" accept=".json,application/json" multiple hidden onchange="hubImportFiles(this.files)" />
@@ -3285,7 +3285,13 @@ function hubItemsFiltered() {
   else if (hostF) items = items.filter((it) => it.host === hostF);
   if (filter === "listed") items = items.filter((it) => (it.listedCount || 0) > 0);
   else if (filter === "unlisted") items = items.filter((it) => (it.listedCount || 0) === 0);
-  if (search) items = items.filter((it) => (it.title || "").toLowerCase().includes(search));
+  // Gõ toàn số = tra theo MÃ sản phẩm (mã gốc hoặc mã từng màu), còn lại tìm trong tên.
+  if (search) {
+    const byId = /^\d{6,}$/.test(search);
+    items = byId
+      ? items.filter((it) => (it.pids || []).includes(search) || (it.url || "").includes(search))
+      : items.filter((it) => (it.title || "").toLowerCase().includes(search));
+  }
   // Lọc theo ngày thêm vào Hub (addedAt; fallback scrapedAt/mtime). Mốc theo NGÀY local.
   const dateF = $("#hubDate")?.value || "";
   if (dateF) {

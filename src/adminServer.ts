@@ -356,29 +356,15 @@ export const startAdminServer = async () => {
       if (!dirs?.baseSheinAutoDir) {
         return res.status(400).json({ error: "User chưa cấu hình baseSheinAutoDir" });
       }
-      const existsIn: string[] = [];
-      for (const shop of userShops) {
-        // Check trong pending + Success + Fail folder của shop
-        for (const sub of ["", "Success", "Fail"]) {
-          const dir = sub
-            ? path.join(dirs.baseSheinAutoDir, shop, sub)
-            : path.join(dirs.baseSheinAutoDir, shop);
-          if (!(await fs.pathExists(dir))) continue;
-          const files = (await fs.readdir(dir)).filter((f) => f.toLowerCase().endsWith(".json"));
-          // Grep cho productId trong filenames hoặc content
-          let found = files.some((f) => f.includes(productId));
-          if (!found) {
-            for (const f of files) {
-              try {
-                const raw = await fs.readFile(path.join(dir, f), "utf-8");
-                if (raw.includes(productId)) { found = true; break; }
-              } catch {}
-            }
-          }
-          if (found) { existsIn.push(shop); break; }
-        }
-      }
-      res.json({ existsIn });
+      // Tra bằng chỉ mục mã (có nhớ theo từng file) thay vì đọc nội dung mọi file mỗi lần.
+      // Các shop chạy song song — chúng độc lập nhau.
+      const hits = await Promise.all(
+        userShops.map(async (shop) => {
+          const ids = await buildShopProductIds(dirs.baseSheinAutoDir, shop).catch(() => new Set<string>());
+          return ids.has(String(productId)) ? shop : null;
+        })
+      );
+      res.json({ existsIn: hits.filter((s): s is string => !!s) });
     } catch (err: any) {
       res.status(500).json({ error: err?.message ?? "Lỗi check" });
     }
@@ -2879,19 +2865,55 @@ export const startAdminServer = async () => {
     }
   });
 
-  // Tập productId đã có trong 1 shop (quét pending + Success + Fail). Đọc mỗi file 1 lần.
+  /**
+   * Mọi productId SHEIN trong 1 file listing: mã trong url + mã của TỪNG MÀU.
+   * Extension cầm mã màu đi tra là chuyện thường, chỉ lấy mã đầu sẽ sót.
+   */
+  const extractAllProductIds = (data: any): string[] => {
+    const out = new Set<string>();
+    const m = String(data?.url ?? "").match(/-p-(\d+)\.html/);
+    if (m) out.add(m[1]);
+    for (const v of Array.isArray(data?.variant_ids) ? data.variant_ids : []) {
+      const id = Object.values(v ?? {})[0];
+      if (id != null && /^\d+$/.test(String(id))) out.add(String(id));
+    }
+    return [...out];
+  };
+
+  /**
+   * Nhớ mã của từng file theo (mtime, size) — file listing ghi xong là không đổi nữa,
+   * nên lần quét sau chỉ phải đọc file MỚI. Sống trong tiến trình, worker restart là dựng lại.
+   */
+  const _fileIds = new Map<string, { mtimeMs: number; size: number; ids: string[] }>();
+
+  /**
+   * Tập productId đã có trong 1 shop (pending + Success + Fail).
+   *
+   * Bản cũ của /ingest/check đọc TOÀN BỘ nội dung mọi file cho MỖI lần tra — vài nghìn file
+   * nhân vài trăm KB mỗi file, nên extension tra một mã mất hàng chục giây. Giờ chỉ stat file
+   * để biết cái nào mới, parse đúng cái đó, phần còn lại lấy từ bộ nhớ.
+   */
   const buildShopProductIds = async (base: string, shop: string): Promise<Set<string>> => {
     const set = new Set<string>();
     for (const sub of ["", "Success", "Fail"]) {
       const dir = sub ? path.join(base, shop, sub) : path.join(base, shop);
-      if (!(await fs.pathExists(dir))) continue;
-      const files = (await fs.readdir(dir)).filter((f) => f.toLowerCase().endsWith(".json"));
-      for (const f of files) {
-        try {
-          const id = extractProductId(JSON.parse(await fs.readFile(path.join(dir, f), "utf-8")));
-          if (id) set.add(id);
-        } catch { /* ignore */ }
-      }
+      let files: string[];
+      try { files = (await fs.readdir(dir)).filter((f) => f.toLowerCase().endsWith(".json")); }
+      catch { continue; } // folder chưa tồn tại
+      await Promise.all(files.map(async (f) => {
+        const full = path.join(dir, f);
+        const st = await fs.stat(full).catch(() => null);
+        if (!st) return;
+        const hit = _fileIds.get(full);
+        if (hit && hit.mtimeMs === st.mtimeMs && hit.size === st.size) {
+          for (const id of hit.ids) set.add(id);
+          return;
+        }
+        let ids: string[] = [];
+        try { ids = extractAllProductIds(JSON.parse(await fs.readFile(full, "utf-8"))); } catch { /* file hỏng */ }
+        _fileIds.set(full, { mtimeMs: st.mtimeMs, size: st.size, ids });
+        for (const id of ids) set.add(id);
+      }));
     }
     return set;
   };

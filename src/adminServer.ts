@@ -2003,18 +2003,56 @@ export const startAdminServer = async () => {
     return null;
   };
 
-  // Tập productId đã có sẵn trong Hub (bỏ file meta). Đọc mỗi file 1 lần.
+  /**
+   * Mọi productId SHEIN trong 1 file listing: mã trong url + mã của TỪNG MÀU.
+   * Extension cầm mã màu đi tra là chuyện thường, chỉ lấy mã đầu sẽ sót.
+   */
+  const extractAllProductIds = (data: any): string[] => {
+    const out = new Set<string>();
+    const m = String(data?.url ?? "").match(/-p-(\d+)\.html/);
+    if (m) out.add(m[1]);
+    for (const v of Array.isArray(data?.variant_ids) ? data.variant_ids : []) {
+      const id = Object.values(v ?? {})[0];
+      if (id != null && /^\d+$/.test(String(id))) out.add(String(id));
+    }
+    return [...out];
+  };
+
+  /**
+   * Tập productId đã có sẵn trong Hub (bỏ file meta).
+   *
+   * Userscript gọi /hub/check TRƯỚC KHI cào mỗi sản phẩm. Bản cũ parse lại toàn bộ Hub mỗi
+   * lần — đo 02/10 với 6.149 file: 4,3 giây một lượt tra. Giờ nhớ mã theo từng file
+   * (mtime+size), file Hub ghi xong không đổi nên lần sau chỉ đọc file MỚI.
+   *
+   * Gom CẢ mã từng màu (variant_ids), không chỉ mã đầu: mở màu khác của cùng sản phẩm
+   * cũng phải báo đã có trong Hub.
+   */
+  const _hubFileIds = new Map<string, { mtimeMs: number; size: number; ids: string[] }>();
   const buildHubProductIds = async (): Promise<Set<string>> => {
     const set = new Set<string>();
-    if (!(await fs.pathExists(config.hubDir))) return set;
-    const files = (await fs.readdir(config.hubDir)).filter(
-      (f) => f.toLowerCase().endsWith(".json") && !isHubMetaFile(f)
-    );
-    for (const f of files) {
-      try {
-        const id = extractProductId(JSON.parse(await fs.readFile(path.join(config.hubDir, f), "utf-8")));
-        if (id) set.add(id);
-      } catch { /* ignore */ }
+    let files: string[];
+    try {
+      files = (await fs.readdir(config.hubDir)).filter(
+        (f) => f.toLowerCase().endsWith(".json") && !isHubMetaFile(f)
+      );
+    } catch { return set; }
+    const BATCH = 200; // nhường event loop, lần quét lạnh không khoá server
+    for (let i = 0; i < files.length; i += BATCH) {
+      await Promise.all(files.slice(i, i + BATCH).map(async (f) => {
+        const full = path.join(config.hubDir, f);
+        const st = await fs.stat(full).catch(() => null);
+        if (!st) return;
+        const hit = _hubFileIds.get(full);
+        if (hit && hit.mtimeMs === st.mtimeMs && hit.size === st.size) {
+          for (const id of hit.ids) set.add(id);
+          return;
+        }
+        let ids: string[] = [];
+        try { ids = extractAllProductIds(JSON.parse(await fs.readFile(full, "utf-8"))); } catch { /* file hỏng */ }
+        _hubFileIds.set(full, { mtimeMs: st.mtimeMs, size: st.size, ids });
+        for (const id of ids) set.add(id);
+      }));
     }
     return set;
   };
@@ -2865,20 +2903,6 @@ export const startAdminServer = async () => {
     }
   });
 
-  /**
-   * Mọi productId SHEIN trong 1 file listing: mã trong url + mã của TỪNG MÀU.
-   * Extension cầm mã màu đi tra là chuyện thường, chỉ lấy mã đầu sẽ sót.
-   */
-  const extractAllProductIds = (data: any): string[] => {
-    const out = new Set<string>();
-    const m = String(data?.url ?? "").match(/-p-(\d+)\.html/);
-    if (m) out.add(m[1]);
-    for (const v of Array.isArray(data?.variant_ids) ? data.variant_ids : []) {
-      const id = Object.values(v ?? {})[0];
-      if (id != null && /^\d+$/.test(String(id))) out.add(String(id));
-    }
-    return [...out];
-  };
 
   /**
    * Nhớ mã của từng file theo (mtime, size) — file listing ghi xong là không đổi nữa,

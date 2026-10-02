@@ -235,7 +235,7 @@
     .listing-card .meta .pill { background: var(--bg-elev); border: 1px solid var(--border); padding: 2px 8px; border-radius: 999px; }
     .listing-card .select-cb { position: absolute; top: 8px; left: 8px; z-index: 5; width: 20px; height: 20px; cursor: pointer; accent-color: var(--accent); background: rgba(0,0,0,0.55); border-radius: 4px; }
     .listing-card.selected { outline: 3px solid var(--accent); outline-offset: -2px; }
-    .listing-card.selectable { cursor: pointer; }
+    .listing-card.selectable { cursor: pointer; user-select: none; } /* giữ Shift bấm không bôi đen chữ */
     .bulk-bar { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); background: var(--bg-card); border: 1px solid var(--accent); border-radius: 14px; padding: 12px 18px; display: flex; align-items: center; gap: 14px; box-shadow: 0 10px 40px rgba(0,0,0,0.4); z-index: 400; }
     .bulk-bar .count { font-weight: 700; color: var(--accent); }
     .listing-card .time-row { display: flex; align-items: center; gap: 6px; padding: 0 12px 8px; font-size: 0.72rem; color: var(--text-mute); }
@@ -3358,7 +3358,7 @@ function renderHub(resetPage) {
       ${canEdit ? `<button class="btn btn-ghost" onclick="selectAllHub()" style="padding:5px 12px;">☑ Chọn cả trang (${shown.length})</button>
       <button class="btn btn-ghost" onclick="clearHubSelect()" style="padding:5px 12px;">Bỏ chọn</button>
       <button class="btn btn-ghost" onclick="openVideoLibrary()" style="padding:5px 12px;">🎬 Thư viện video</button>
-      <span style="color:var(--text-mute);">Click card để chọn → “📤 List” hoặc “🎬 Tạo video”</span>` : ''}
+      <span style="color:var(--text-mute);">Click card để chọn · giữ <b>Shift</b> để chọn cả dải → “📤 List” hoặc “🎬 Tạo video”</span>` : ''}
       ${sizeSel}
     </div>`;
   $("#hubGrid").innerHTML = toolbar + '<div class="listings-grid">' + shown.map((it) => {
@@ -3366,7 +3366,7 @@ function renderHub(resetPage) {
     const isSel = state.hub.selected.has(it.id);
     return `
       <div class="listing-card${isSel ? ' selected' : ''}${canEdit ? ' selectable' : ''}" ${canEdit ? `onclick="onHubCardClick(event, '${idEnc}')"` : ''}>
-        ${canEdit ? `<input type="checkbox" class="select-cb hub-select-cb" data-id="${escapeHtml(it.id)}" ${isSel ? 'checked' : ''} onclick="toggleHubSelect('${idEnc}', this.checked); event.stopPropagation();" />` : ''}
+        ${canEdit ? `<input type="checkbox" class="select-cb hub-select-cb" data-id="${escapeHtml(it.id)}" ${isSel ? 'checked' : ''} onclick="event.stopPropagation(); hubClickSelect(event, '${idEnc}');" />` : ''}
         <div class="img-wrap">
           ${it.image ? `<img src="${escapeHtml(it.image)}" alt="" loading="lazy" decoding="async" onerror="this.parentElement.innerHTML='<div class=&quot;placeholder&quot;>(no image)</div>'" />` : `<div class="placeholder">(no image)</div>`}
         </div>
@@ -3395,24 +3395,65 @@ function renderHub(resetPage) {
   renderHubBulkBar();
 }
 
+// ─── Chọn sản phẩm Hub: bấm thường = lật, giữ Shift = chọn cả dải ───
+// Mốc = sản phẩm bấm gần nhất KHÔNG giữ Shift. Shift không đổi mốc, để bấm tiếp vẫn nới
+// rộng từ mốc cũ (giống File Explorer).
+
+/** Id các thẻ theo đúng thứ tự đang hiện trên lưới (= trang hiện tại, đã lọc + sắp xếp). */
+function hubVisibleIds() {
+  return [...document.querySelectorAll('#hubGrid .listing-card .hub-select-cb')].map((cb) => cb.dataset.id);
+}
+
+/** Đồng bộ ô tick + viền thẻ theo state.hub.selected, rồi cập nhật thanh dưới. */
+function syncHubCards() {
+  ensureHubState();
+  document.querySelectorAll('#hubGrid .listing-card').forEach((card) => {
+    const cb = card.querySelector('.hub-select-cb');
+    if (!cb) return;
+    const on = state.hub.selected.has(cb.dataset.id);
+    cb.checked = on;
+    card.classList.toggle('selected', on);
+  });
+  renderHubBulkBar();
+}
+
+/** Chọn mọi sản phẩm nằm giữa 2 id (tính cả 2 đầu). Trả false nếu mốc không còn trên trang. */
+function hubSelectRange(fromId, toId) {
+  ensureHubState();
+  const ids = hubVisibleIds();
+  const a = ids.indexOf(fromId), b = ids.indexOf(toId);
+  if (a < 0 || b < 0) return false;
+  for (let i = Math.min(a, b); i <= Math.max(a, b); i++) state.hub.selected.add(ids[i]);
+  syncHubCards();
+  return true;
+}
+
+/** Bấm vào thẻ hoặc vào ô tick — dùng chung để Shift hoạt động ở cả hai chỗ. */
+function hubClickSelect(event, idEnc) {
+  ensureHubState();
+  const id = decodeURIComponent(idEnc);
+  if (event && event.shiftKey && state.hubAnchorId && state.hubAnchorId !== id
+      && hubSelectRange(state.hubAnchorId, id)) {
+    // Giữ Shift kéo chuột sẽ bôi đen chữ trong thẻ → xoá vùng bôi cho sạch.
+    try { window.getSelection().removeAllRanges(); } catch { /* trình duyệt chặn */ }
+    return; // mốc GIỮ NGUYÊN để nới rộng tiếp
+  }
+  if (state.hub.selected.has(id)) state.hub.selected.delete(id); else state.hub.selected.add(id);
+  state.hubAnchorId = id;
+  syncHubCards();
+}
+
 function onHubCardClick(event, idEnc) {
-  if (event.target.closest('button, a, input, .error-snippet')) return;
-  const cb = event.currentTarget.querySelector('.hub-select-cb');
-  if (!cb) return;
-  cb.checked = !cb.checked;
-  toggleHubSelect(idEnc, cb.checked);
+  if (event.target.closest('button, a, .error-snippet')) return;
+  hubClickSelect(event, idEnc);
 }
 
 function toggleHubSelect(idEnc, checked) {
   ensureHubState();
   const id = decodeURIComponent(idEnc);
   if (checked) state.hub.selected.add(id); else state.hub.selected.delete(id);
-  renderHubBulkBar();
-  document.querySelectorAll('#hubGrid .listing-card').forEach((card) => {
-    const cb = card.querySelector('.hub-select-cb');
-    if (!cb) return;
-    if (cb.checked) card.classList.add('selected'); else card.classList.remove('selected');
-  });
+  state.hubAnchorId = id;
+  syncHubCards();
 }
 
 function selectAllHub() {
@@ -3423,10 +3464,10 @@ function selectAllHub() {
   const perPage = hubPageSize();
   const startIdx = (state.hubPage - 1) * perPage;
   for (const it of items.slice(startIdx, startIdx + perPage)) state.hub.selected.add(it.id);
-  renderHub();
+  syncHubCards();
 }
 
-function clearHubSelect() { ensureHubState(); state.hub.selected = new Set(); renderHub(); }
+function clearHubSelect() { ensureHubState(); state.hub.selected = new Set(); state.hubAnchorId = null; syncHubCards(); }
 
 function renderHubBulkBar() {
   const n = state.hub?.selected?.size ?? 0;
